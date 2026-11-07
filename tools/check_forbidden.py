@@ -4,14 +4,17 @@
 
 Python (AST), non-test code unless noted:
   F-SUDO-BROWSE   .sudo().browse( / sudo() search or read with request values
-  F-ROUTE         route auth='none', csrf=False, type='json'
+  F-ROUTE         route auth='none', csrf=False, type='json' (odoo.http.route under any alias)
   F-MAIL-TEMPLATE create/write/unlink on mail.template
   F-USERS         creating res.users; writing groups_id
   F-MARKUP        Markup( on non-literals; sanitize=False / sanitize_attributes=False
   F-PATH          open( / os.path.join( / tempfile with non-constant paths
-  F-REDIRECT      request.redirect( with anything but a literal or a %d-only local path
+  F-REDIRECT      redirect( / redirect_query( (request, werkzeug, odoo.http, any alias) and a
+                  'Location' header (dict key, tuple, headers[...] =) with anything but a literal
+                  or a %d-only local path
   F-HOST          request.httprequest.host / host_url, HTTP_HOST, X-Forwarded-Host
-  F-SESSION       session.uid, pre_uid, authenticate(, finalize(
+  F-SESSION       session uid / pre_uid / pre_login / login / session_token as attribute,
+                  item (session['uid']) or .get/.pop/.setdefault key; authenticate(, finalize(
   F-HASH          hashlib.sha1 / md5
   F-NUMCAST       float( / bool( / complex( of request values
   F-TOKEN-API     limited_field_access_token, _get_limited_field_access_token, generate_access_token
@@ -20,7 +23,10 @@ Python (AST), non-test code unless noted:
                   abort(, return request.not_found(  (T-STAT-23, ER-29)
   F-FORCE-SEND    force_send=True (tests included; T-STAT-25, ER-35)
   F-TOUCH         .touch( calls (T-STAT-21, R2b-02)
-  F-SESSION-MUT   in-place mutation of request.session[...] values (T-STAT-21, R2b-03)
+  F-SESSION-MUT   in-place mutation of request.session values: request.session[k][..] = ,
+                  request.session.get(k)[..] = , .pop/.update/... on such a value, attribute
+                  assignment request.session.x = , request.session.update/pop/setdefault/clear(
+                  (http.request / odoo.http.request count as request) (T-STAT-21, R2b-03)
   F-TEST-PASSWORD password literals in tests
 Text:
   F-QWEB-RAW      t-raw in XML                      F-COMMERCIAL commercial_partner_id in
@@ -89,6 +95,32 @@ def _chain_has_sudo(node):
     return False
 
 
+SESSION_KEYS = ('uid', 'pre_uid', 'pre_login', 'login', 'session_token')
+SESSION_SLOTS = ('can_save', 'is_dirty', 'is_new', 'should_rotate', 'sid')
+SESSION_MUTATORS = ('pop', 'update', 'setdefault', 'clear', 'append', 'popitem', 'extend', 'remove',
+                    'add', 'discard', 'insert')
+
+
+def _is_session(node):
+    """request.session (also http.request.session, odoo.http.request.session)."""
+    return isinstance(node, ast.Attribute) and node.attr == 'session' and A.req_dotted(node) == 'request.session'
+
+
+def _is_any_session(node):
+    """<anything>.session, for the uid / pre_uid key rules."""
+    return isinstance(node, ast.Attribute) and node.attr == 'session'
+
+
+def _is_session_value(node):
+    """A value stored in the session: request.session[...] or request.session.get/setdefault(...)."""
+    if isinstance(node, ast.Subscript):
+        return _is_session(node.value)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+            and node.func.attr in ('get', 'setdefault'):
+        return _is_session(node.func.value)
+    return False
+
+
 def _redirect_ok(arg):
     if A.const_str(arg) is not None:
         return True
@@ -104,6 +136,13 @@ def check_python(src, out):
     path = src.relpath
     is_test = A.is_test_path(path)
     in_controllers = '/controllers/' in '/' + path
+    mods, routes, _requests, _ctrls = A.http_aliases(src.tree)
+    redirect_names = {'redirect', 'redirect_query'}
+    for node in ast.walk(src.tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name in ('redirect', 'redirect_query') and alias.asname:
+                    redirect_names.add(alias.asname)
     for node in ast.walk(src.tree):
         line = getattr(node, 'lineno', 1)
         if isinstance(node, ast.Call):
@@ -125,7 +164,7 @@ def check_python(src, out):
                     and any(_refs_request(a) for a in list(node.args) + [k.value for k in node.keywords]):
                 out.append(A.Violation(path, line, 'F-SUDO-BROWSE',
                                        'sudo() search/read with request values'))
-            if name == 'route':
+            if A.is_route_func(func, mods, routes):
                 for keyword in node.keywords:
                     value = keyword.value
                     if (keyword.arg == 'auth' and A.const_str(value) == 'none') or \
@@ -158,10 +197,11 @@ def check_python(src, out):
                 for keyword in node.keywords:
                     if keyword.arg in ('dir', 'prefix', 'suffix') and A.const_str(keyword.value) is None:
                         out.append(A.Violation(path, line, 'F-PATH', 'tempfile with a non-constant %s' % keyword.arg))
-            if name == 'redirect' and A.dotted(func).startswith('request.'):
-                if not node.args or not _redirect_ok(node.args[0]):
+            if name in redirect_names:
+                target = node.args[0] if node.args else (A.kw(node, 'location') or A.kw(node, 'url'))
+                if target is None or not _redirect_ok(target):
                     out.append(A.Violation(path, line, 'F-REDIRECT',
-                                           'request.redirect( needs a literal or a %d-only local path'))
+                                           '%s( needs a literal or a %%d-only local path' % name))
             if name in ('authenticate', 'finalize'):
                 out.append(A.Violation(path, line, 'F-SESSION', '%s( is not allowed' % name))
             if name in ('limited_field_access_token', '_get_limited_field_access_token',
@@ -191,11 +231,16 @@ def check_python(src, out):
                             break
             if name == 'touch':
                 out.append(A.Violation(path, line, 'F-TOUCH', '.touch( is not allowed (R2b-02)'))
-            if name in ('pop', 'update', 'setdefault', 'clear', 'append', 'popitem') \
-                    and isinstance(func, ast.Attribute) and isinstance(func.value, ast.Subscript) \
-                    and A.dotted(func.value).startswith('request.session'):
+            if name in SESSION_MUTATORS and isinstance(func, ast.Attribute) and (
+                    _is_session_value(func.value) or
+                    (_is_session(func.value) and name in ('pop', 'update', 'setdefault', 'clear', 'popitem'))):
                 out.append(A.Violation(path, line, 'F-SESSION-MUT',
                                        'copy the session value, change it, then reassign it (R2b-03)'))
+            if name in ('get', 'pop', 'setdefault') and isinstance(func, ast.Attribute) \
+                    and _is_any_session(func.value) and node.args \
+                    and A.const_str(node.args[0]) in SESSION_KEYS:
+                out.append(A.Violation(path, line, 'F-SESSION',
+                                       'session %r must not be touched' % A.const_str(node.args[0])))
             if in_controllers and name == 'abort':
                 out.append(A.Violation(path, line, 'F-HTTPEXC', 'abort( in a controller; return a Response'))
         elif is_test:
@@ -216,13 +261,17 @@ def check_python(src, out):
                 out.append(A.Violation(path, line, 'F-HOST', 'request host is untrusted'))
             elif node.attr == 'host_url':
                 out.append(A.Violation(path, line, 'F-HOST', 'host_url is untrusted'))
-            elif node.attr == 'uid' and A.dotted(node.value).endswith('session'):
-                out.append(A.Violation(path, line, 'F-SESSION', 'session.uid must not be touched'))
+            elif node.attr in ('uid', 'login', 'session_token') and A.dotted(node.value).endswith('session'):
+                out.append(A.Violation(path, line, 'F-SESSION', 'session.%s must not be touched' % node.attr))
             elif node.attr in ('pre_uid', 'pre_login'):
                 out.append(A.Violation(path, line, 'F-SESSION', '%s must not be touched' % node.attr))
             if node.attr in ('sha1', 'md5') and A.dotted(node.value) == 'hashlib' \
                     and not isinstance(A.parent(node), ast.Call):
                 out.append(A.Violation(path, line, 'F-HASH', 'sha1/md5 are not allowed'))
+        elif isinstance(node, ast.Subscript) and _is_any_session(node.value) \
+                and A.const_str(node.slice) in SESSION_KEYS:
+            out.append(A.Violation(path, line, 'F-SESSION',
+                                   'session[%r] must not be touched' % A.const_str(node.slice)))
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             low = node.value.lower()
             if 'http_host' in low or 'x-forwarded-host' in low:
@@ -233,25 +282,50 @@ def check_python(src, out):
         elif isinstance(node, (ast.Assign, ast.AugAssign, ast.Delete)):
             targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
             for target in targets:
-                if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Subscript) \
-                        and A.dotted(target.value).startswith('request.session'):
+                if isinstance(target, ast.Subscript) and (
+                        _is_session_value(target.value) or
+                        (isinstance(target.value, ast.Subscript) and
+                         A.req_dotted(target.value).startswith('request.session'))):
                     out.append(A.Violation(path, line, 'F-SESSION-MUT',
                                            'copy the session value, change it, then reassign it (R2b-03)'))
+                if isinstance(target, ast.Attribute) and _is_session(target.value) \
+                        and target.attr not in SESSION_SLOTS:
+                    out.append(A.Violation(path, line, 'F-SESSION-MUT',
+                                           'request.session.%s = writes a session key; assign '
+                                           'request.session[KEY] = <copied dict> (R2b-03)' % target.attr))
+                if isinstance(target, ast.Subscript) and _is_any_session(target.value) \
+                        and A.const_str(target.slice) in SESSION_KEYS:
+                    out.append(A.Violation(path, line, 'F-SESSION',
+                                           'session[%r] must not be set' % A.const_str(target.slice)))
+                if isinstance(target, ast.Subscript) and (A.const_str(target.slice) or '').lower() == 'location' \
+                        and A.dotted(target.value).endswith('headers') and isinstance(node, ast.Assign) \
+                        and not _redirect_ok(node.value):
+                    out.append(A.Violation(path, line, 'F-REDIRECT',
+                                           'Location header needs a literal or a %d-only local path'))
                 if isinstance(target, ast.Attribute) and target.attr == 'groups_id':
                     out.append(A.Violation(path, line, 'F-USERS', 'groups_id must not be written'))
                 if isinstance(target, ast.Attribute) and target.attr in ('uid', 'pre_uid') \
                         and A.dotted(target.value).endswith('session'):
                     out.append(A.Violation(path, line, 'F-SESSION', 'session uid must not be set'))
+        elif isinstance(node, ast.Tuple):
+            if len(node.elts) == 2 and (A.const_str(node.elts[0]) or '').lower() == 'location' \
+                    and not _redirect_ok(node.elts[1]):
+                out.append(A.Violation(path, line, 'F-REDIRECT',
+                                       'Location header needs a literal or a %d-only local path'))
         elif isinstance(node, ast.Dict):
-            for key in node.keys:
+            for key, value in zip(node.keys, node.values):
                 if key is not None and A.const_str(key) == 'groups_id':
                     out.append(A.Violation(path, line, 'F-USERS', 'groups_id must not be written'))
+                if key is not None and (A.const_str(key) or '').lower() == 'location' \
+                        and not _redirect_ok(value):
+                    out.append(A.Violation(path, line, 'F-REDIRECT',
+                                           'Location header needs a literal or a %d-only local path'))
         if in_controllers and not is_test and isinstance(node, (ast.Raise, ast.Return)):
             value = node.exc if isinstance(node, ast.Raise) else node.value
             if value is None:
                 continue
             target = value.func if isinstance(value, ast.Call) else value
-            text = A.dotted(target)
+            text = A.req_dotted(target)
             bad = text == 'request.not_found' or text.startswith('werkzeug.exceptions.')
             if isinstance(node, ast.Raise):
                 bad = bad or (isinstance(target, ast.Name) and target.id in HTTP_EXC) or \

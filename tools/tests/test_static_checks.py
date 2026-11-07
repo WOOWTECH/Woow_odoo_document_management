@@ -325,11 +325,74 @@ class TestCheckRoutes(ToolCase):
         for line in ("request.env['woow.document.share'].search([])",
                      'request.session.touch()',
                      "request.session['woow_doc_grants'] = {}",
-                     "request.env['woow.document.log']._log_event('view', channel='share')"):
+                     "request.env['woow.document.log']._log_event('view', channel='share')",
+                     "http.request.env['woow.document.share'].search([])",
+                     "http.request.session['woow_doc_grants'] = {}",
+                     "env = request.env",
+                     "request.session.woow_seen = 1",
+                     "request.session.update({'k': 1})",
+                     "request.session.get('woow_doc_grants', {})['1'] = {}",
+                     "request.session.pop('woow_doc_grants', None)"):
             with self.subTest(line=line):
                 self.tree('routes_good')
                 self.mutate(W + 'controllers/share.py', '"""Landing page."""', '"""Landing page."""\n        ' + line)
                 self.assertRule('routes', 'R11')
+
+    def test_check_routes_alias_and_indirect_decorators(self):
+        """T-STAT-04 R1/R3/R5: route under an import alias, a stored route object, other decorators."""
+        cases = (
+            ("from odoo.http import route as r\n\n\nclass Evil(http.Controller):\n"
+             "    @r('/woow_document/evil2', auth='public', csrf=False, methods=['GET'])\n"
+             "    def evil2(self, **kw):\n        return None\n", {'R3', 'R5', 'R12'}),
+            ("import odoo.http as oh\n\n\nclass Evil(oh.Controller):\n"
+             "    @oh.route('/woow_document/evil3', auth='public', methods=['GET'])\n"
+             "    def evil3(self, **kw):\n        return None\n", {'R3', 'R12'}),
+            ("dec = http.route('/woow_document/evil', auth='none', csrf=False, type='json')\n\n\n"
+             "class Evil(http.Controller):\n    @dec\n    def evil(self, **kw):\n        return None\n",
+             {'R1'}),
+            ("import functools\nwrap = functools.partial(http.route, auth='none')\n", {'R1'}),
+            ("class Evil(http.Controller):\n    @getattr(http, 'route')('/woow_document/e', auth='none')\n"
+             "    def evil(self, **kw):\n        return None\n", {'R1'}),
+        )
+        for code, rules in cases:
+            with self.subTest(code=code[:40]):
+                self.tree('routes_good')
+                path = os.path.join(self.root, W + 'controllers/main.py')
+                _write(self.root, W + 'controllers/main.py', _read(path) + '\n\n' + code)
+                found = set(self.rules('routes'))
+                self.assertTrue(rules <= found, (rules, found))
+
+    def test_check_routes_r9_core_controller_inheritance(self):
+        """T-STAT-04 R9: no core controller subclass, no undecorated or core-route override."""
+        cases = (
+            (W + 'controllers/main.py',
+             "from odoo.addons.web.controllers.binary import Binary\n\n\nclass EvilBin(Binary):\n"
+             "    def content_common(self, **kw):\n        return super().content_common(**kw)\n"),
+            (W + 'controllers/portal.py',
+             "class Evil2(WoowDocumentPortal):\n    def home(self, **kw):\n        return super().home(**kw)\n"),
+            (W + 'controllers/main.py',
+             "class Evil3(WoowDocumentController):\n    def woow_zip(self, **kw):\n"
+             "        return super().woow_zip(**kw)\n"),
+        )
+        for relpath, code in cases:
+            with self.subTest(code=code[:40]):
+                self.tree('routes_good')
+                _write(self.root, relpath, _read(os.path.join(self.root, relpath)) + '\n\n' + code)
+                self.assertRule('routes', 'R9')
+
+    def test_check_routes_r9_undecorated_override(self):
+        """T-STAT-04 R9: CustomerPortal.account / security overridden without a decorator."""
+        for name in ('account', 'security', 'some_public_helper'):
+            with self.subTest(name=name):
+                self.tree('routes_good')
+                self.mutate(W + 'controllers/portal.py', '    def _prepare_home_portal_values(self, counters):',
+                            '    def %s(self, **post):\n        return super().%s(**post)\n\n'
+                            '    def _prepare_home_portal_values(self, counters):' % (name, name))
+                self.assertRule('routes', 'R9')
+        self.tree('routes_good')
+        self.mutate(W + 'controllers/portal.py', "    def portal_my_docs(self",
+                    "    def account(self")
+        self.assertRule('routes', 'R9')     # decorated, but replaces a core portal route
 
     def test_emit_entry_points_matches_routes(self):
         """T-STAT-17: 17 entry points from the code, equal to the ones built from the lock file."""
@@ -412,6 +475,60 @@ class TestCheckForbidden(ToolCase):
         self.tearDown_tree()
         self.tree('forbidden_good')   # contains request.session[KEY] = dict(...)
         self.assertClean('forbidden')
+        # every in-place form on its own (each line must be caught separately)
+        for line in ("request.session.get('woow_doc_grants', {})[str(k)] = {}",
+                     "request.session.get('woow_doc_grants').pop(k)",
+                     "request.session.setdefault('woow_doc_grants', {})[k] = {}",
+                     "http.request.session['woow_doc_grants'][k] = {}",
+                     "odoo.http.request.session['woow_doc_grants'].update({})",
+                     "request.session['woow_doc_grants'][k] = {}",
+                     "request.session.woow_seen = 1",
+                     "request.session.update({'k': 1})",
+                     "request.session.setdefault('k', 1)",
+                     "request.session.clear()"):
+            with self.subTest(line=line):
+                self.put(W + 'controllers/y.py', 'import odoo\nfrom odoo import http\nfrom odoo.http import request\n\n\n'
+                         'def f(k):\n    %s\n' % line)
+                self.assertRule('forbidden', 'F-SESSION-MUT')
+        self.put(W + 'controllers/y.py', 'from odoo.http import request\n\n\ndef f(k):\n'
+                 '    g = dict(request.session.get(\'woow_doc_grants\') or {})\n    g.pop(k, None)\n'
+                 '    request.session[\'woow_doc_grants\'] = g\n    request.session.should_rotate = True\n')
+        self.assertClean('forbidden')
+
+    def test_session_uid_keys_rejected(self):
+        """T-STAT-21 / F-SESSION: uid / pre_uid / login keys as item, attribute or .get key."""
+        for line in ("request.session['uid'] = 2", "request.session['pre_uid'] = 2",
+                     "x = request.session['uid']", "x = request.session.get('uid')",
+                     "request.session.pop('pre_login', None)", "request.session['session_token'] = 'x'",
+                     "x = request.session.login", "request.session.uid = 2"):
+            with self.subTest(line=line):
+                self.put(W + 'controllers/y.py', 'from odoo.http import request\n\n\ndef f():\n    %s\n' % line)
+                self.assertRule('forbidden', 'F-SESSION')
+
+    def test_redirect_variants_rejected(self):
+        """T-STAT-05 / F-REDIRECT: redirect_query, werkzeug redirect, aliases, Location headers."""
+        for line in ("return request.redirect_query(post.get('next'))",
+                     "return request.redirect(post.get('next'))",
+                     "return werkzeug.utils.redirect(post.get('next'))",
+                     "return go(post.get('next'))",
+                     "return Response('', status=302, headers={'Location': post.get('next')})",
+                     "return Response('', status=302, headers=[('Location', post.get('next'))])",
+                     "response.headers['Location'] = post.get('next')"):
+            with self.subTest(line=line):
+                self.put(W + 'controllers/y.py', 'import werkzeug\nfrom werkzeug.utils import redirect as go\n'
+                         'from odoo.http import Response, request\n\n\ndef f(post, response):\n    %s\n' % line)
+                self.assertRule('forbidden', 'F-REDIRECT')
+        self.put(W + 'controllers/y.py', 'from odoo.http import request\n\n\ndef f(folder_id):\n'
+                 "    request.redirect('/my/docs')\n    return request.redirect('/my/docs/folder/%d' % folder_id)\n")
+        self.assertClean('forbidden')
+
+    def test_route_alias_flags_rejected(self):
+        """T-STAT-05 / F-ROUTE: auth='none', csrf=False, type='json' under an alias of route."""
+        for deco in ("@r('/x', csrf=False)", "@oh.route('/x', auth='none')", "@r('/x', type='json')"):
+            with self.subTest(deco=deco):
+                self.put(W + 'controllers/y.py', 'import odoo.http as oh\nfrom odoo.http import route as r\n\n\n'
+                         'class C(oh.Controller):\n    %s\n    def x(self):\n        return 1\n' % deco)
+                self.assertRule('forbidden', 'F-ROUTE')
 
     def test_no_raised_http_exceptions_in_controllers(self):
         """T-STAT-23 / T-SEC-81: raise/abort/return not_found in controllers (ER-29)."""
@@ -461,6 +578,24 @@ class TestCheckSql(ToolCase):
                 self.put(meta['target'], body)
         found = [v for v in self.run_tool('sql') if v.rule == 'SQL-FORMAT']
         self.assertEqual(len(found), 4, [str(v) for v in found])
+
+    def test_check_sql_rebound_query_is_rejected(self):
+        """A literal query stops being safe after any later rebinding or augmentation."""
+        self.tree('sql_good')
+        path = W + 'services/locks.py'
+        original = _read(os.path.join(self.root, path))
+        for assignment in ('q += suffix', 'q := suffix', 'for q in values: pass'):
+            with self.subTest(assignment=assignment):
+                if assignment.startswith('q :='):
+                    mutation = 'if (q := suffix): pass'
+                else:
+                    mutation = assignment
+                body = ('def try_lock(self, suffix, values):\n'
+                        '    q = "SELECT 1"\n'
+                        '    %s\n' % mutation +
+                        '    self.env.cr.execute(q)  # sql-ok: Q4\n')
+                self.put(path, original + '\n' + body)
+                self.assertRule('sql', 'SQL-FORMAT')
 
     def test_advisory_locks_only_in_locks_py(self):
         """T-STAT-22 / T-SEC-86: pg_*advisory* outside locks.py; builtin hash( in locks.py."""
@@ -600,6 +735,95 @@ class TestCheckSecurityMatrix(ToolCase):
                '<field name="implied_ids" eval="[(4, ref(\'group_woow_document_user\'))]"/></record></odoo>')
         self.assertRule('security_matrix', 'MTX-GROUP')
 
+    def test_group_ids_follow_the_matrix(self):
+        """The admin-assignment allowlist of group ids equals the matrix groups."""
+        mx = _astlib.load_yaml_file(os.path.join(REPO, 'tools/security_matrix.yaml'))
+        self.assertEqual(set(TOOLS_MOD['security_matrix'].GROUP_IDS), set(mx['groups']))
+
+    def test_check_security_matrix_whole_addon(self):
+        """T-STAT-09 / T-SEC-79: ACL, rules and group writes outside security/ (DEC-10, ER-38)."""
+        ref_user = "ref('woow_document_management.group_woow_document_user')"
+        cases = (
+            ('data/ir_cron.xml', '<record id="rule_all" model="ir.rule"><field name="model_id" ref="model_woow_document"/>'
+             '<field name="groups" eval="[(4, ref(\'base.group_user\'))]"/>'
+             '<field name="domain_force">[(1, \'=\', 1)]</field></record>', {'MTX-LOCATION', 'MTX-RULE'}),
+            ('data/ir_cron.xml', '<record id="acl_pub" model="ir.model.access"><field name="name">x</field>'
+             '<field name="model_id" ref="model_woow_document"/><field name="group_id" ref="base.group_public"/>'
+             '<field name="perm_read" eval="1"/></record>', {'MTX-LOCATION', 'MTX-ACL'}),
+            ('data/ir_cron.xml', '<record id="base.default_user" model="res.users">'
+             '<field name="groups_id" eval="[(4, %s)]"/></record>' % ref_user, {'MTX-GROUP'}),
+            ('views/x.xml', '<record id="base.group_portal" model="res.groups"><field name="implied_ids" '
+             'eval="[(4, ref(\'woow_document_management.group_woow_document_manager\'))]"/></record>',
+             {'MTX-LOCATION', 'MTX-GROUP'}),
+            ('data/ir_cron.xml', '<function model="res.groups" name="write" eval="[[ref(\'base.group_user\')], '
+             '{\'implied_ids\': [(4, %s)]}]"/>' % ref_user, {'MTX-FUNCTION'}),
+            ('data/ir_cron.xml', '<function model="ir.config_parameter" name="set_param" '
+             'eval="[\'x\', \'groups_id\']"/>', {'MTX-FUNCTION'}),
+            ('data/ir_cron.xml', '<delete model="ir.rule" id="rule_woow_document_company"/>', {'MTX-DELETE'}),
+            ('data/ir_cron.xml', '<record id="cat2" model="ir.module.category"><field name="name">x</field></record>',
+             {'MTX-LOCATION'}),
+            ('security/extra.xml', '<record id="group_x" model="res.groups"><field name="name">x</field></record>',
+             {'MTX-LOCATION', 'MTX-GROUP'}),
+            ('data/admin_assignment.xml', '<record id="group_woow_document_manager" model="res.groups">'
+             '<field name="implied_ids" eval="[(4, ref(\'base.group_portal\'))]"/></record>', {'MTX-LOCATION'}),
+            ('data/admin_assignment.xml', '<function model="res.groups" name="write" eval="[[ref('
+             '\'woow_document_management.group_woow_document_manager\')], {\'users\': [(4, ref(\'base.user_admin\'))],'
+             ' \'implied_ids\': [(4, ref(\'base.group_portal\'))]}]"/>', {'MTX-FUNCTION'}),
+            ('data/admin_assignment.xml', '<function model="res.groups" name="write" eval="[[ref('
+             '\'base.group_user\')], {\'users\': [(4, ref(\'base.user_admin\'))]}]"/>', {'MTX-FUNCTION'}),
+        )
+        for relpath, body, rules in cases:
+            with self.subTest(body=body[:50]):
+                self.full()
+                for stale in ('data', 'views', 'security/extra.xml'):
+                    target = os.path.join(self.root, W + stale)
+                    if os.path.isdir(target):
+                        shutil.rmtree(target)
+                    elif os.path.exists(target):
+                        os.remove(target)
+                _write(self.root, W + relpath, '<odoo>%s</odoo>\n' % body)
+                found = set(self.rules('security_matrix'))
+                self.assertTrue(rules <= found, (rules, found))
+        # CSV outside security/
+        self.full()
+        shutil.rmtree(os.path.join(self.root, W + 'data'), ignore_errors=True)
+        _write(self.root, W + 'data/ir.model.access.csv',
+               'id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink\n'
+               'x,x,model_woow_document,base.group_portal,1,1,1,1\n')
+        self.assertRule('security_matrix', 'MTX-LOCATION')
+
+    def test_check_security_matrix_rule_active_and_global(self):
+        """T-STAT-09: a disabled rule (active=False) or a global field is rejected."""
+        _, rules_xml = self.full()
+        for field in ('<field name="active" eval="False"/>', '<field name="global" eval="True"/>'):
+            with self.subTest(field=field):
+                _write(self.root, W + 'security/rules.xml',
+                       rules_xml.replace('<field name="domain_force">', field + '<field name="domain_force">', 1))
+                self.assertRule('security_matrix', 'MTX-RULE')
+
+    def test_xml_acl_omitted_permission_is_false(self):
+        """Odoo ACL defaults to false when a permission field is absent."""
+        self.full()
+        _write(self.root, W + 'security/extra.xml',
+               '<odoo><record id="acl_xml" model="ir.model.access">'
+               '<field name="model_id" ref="model_woow_document"/>'
+               '<field name="group_id" ref="base.group_public"/>'
+               '</record></odoo>')
+        rows, _, _, _ = TOOLS_MOD['security_matrix'].load_actual(self.root)
+        row = next(x for x in rows if x['id'] == 'acl_xml')
+        self.assertEqual(row['perms'], '0000')
+
+    def test_admin_assignment_pr14_allowed(self):
+        """PR-14: the noupdate admin assignment (function or users-only record) passes."""
+        self.full()
+        for body in ('<function model="res.groups" name="write" eval="[[ref(\'woow_document_management.'
+                     'group_woow_document_manager\')], {\'users\': [(4, ref(\'base.user_admin\'))]}]"/>',
+                     '<record id="group_woow_document_manager" model="res.groups">'
+                     '<field name="users" eval="[(4, ref(\'base.user_admin\'))]"/></record>'):
+            with self.subTest(body=body[:40]):
+                _write(self.root, W + 'data/admin_assignment.xml', '<odoo noupdate="1">%s</odoo>\n' % body)
+                self.assertClean('security_matrix', g1=True)
+
 
 # --------------------------------------------------------------------------- CFG
 
@@ -608,7 +832,8 @@ class TestCheckSweepConfig(ToolCase):
     def setUp(self):
         super().setUp()
         for relpath in ['.security/sweep.yaml', '.github/workflows/security.yml', 'LICENSE', 'COPYING',
-                        'README.md', 'CLEANROOM.md', 'SECURITY.md', '.gitignore', '.gitattributes']:
+                        'README.md', 'CLEANROOM.md', 'SECURITY.md', '.gitignore',
+                        '.semgrepignore', '.gitattributes']:
             shutil.copy(os.path.join(REPO, relpath), self._dst(relpath))
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         for test in cfg['verify']['regression_tests']:
@@ -627,6 +852,10 @@ class TestCheckSweepConfig(ToolCase):
     def test_check_sweep_config_good(self):
         """T-STAT-10 / T-SEC-P5 (files exist): the repo config passes."""
         self.assertClean('sweep_config')
+
+    def test_semgrepignore_cannot_hide_tests(self):
+        self.put('.semgrepignore', 'tests/\n')
+        self.assertRule('sweep_config', 'CFG-SCAN')
 
     def test_check_sweep_config_rejections(self):
         """T-STAT-10: private keys, protected excludes, missing tools, exclude_rules, autofix, ..."""

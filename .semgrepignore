@@ -1,0 +1,2 @@
+# Keep Semgrep's own default exclusions from hiding tests or fixtures.
+# Git ignored build output is filtered by Git; every tracked source file is in scope.

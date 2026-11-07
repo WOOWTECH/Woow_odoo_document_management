@@ -64,6 +64,7 @@ REGRESSION_TESTS = [W + 'tests/%s.py' % name for name in (
     'test_rpc_exposure', 'test_escaping')] + ['tools/tests/test_static_checks.py']
 LEGACY_RE = re.compile(r'woow_document_management_(legacy_urls|migrate_sh)')
 REQUIRED_FILES = ['LICENSE', 'COPYING', 'README.md', 'CLEANROOM.md', 'SECURITY.md', '.gitignore',
+                  '.semgrepignore',
                   '.gitattributes', SWEEP]
 GITIGNORE_REQUIRED = ['.playwright-cli/', 'playwright-report/', 'test-results/', '*.log', '*.sql',
                       '*.dump', '.env*', 'odoo.conf', '*.pem', '*.key', '.claude/', '.omnigent*/',
@@ -188,6 +189,12 @@ def check_hygiene(root, out):
     for req in REQUIRED_FILES:
         if not os.path.isfile(os.path.join(root, req)):
             out.append(A.Violation(req, 1, 'CFG-FILES', 'required file %s is missing' % req))
+    si = os.path.join(root, '.semgrepignore')
+    if os.path.isfile(si):
+        for n, line in enumerate(A.read_text(si).splitlines(), 1):
+            if line.strip() and not line.lstrip().startswith('#'):
+                out.append(A.Violation('.semgrepignore', n, 'CFG-SCAN',
+                                       'Semgrep may not exclude source or test files'))
     gi = os.path.join(root, '.gitignore')
     if os.path.isfile(gi):
         entries = {line.strip() for line in A.read_text(gi).split('\n')}

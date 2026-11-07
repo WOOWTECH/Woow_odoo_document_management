@@ -44,18 +44,30 @@ def load_allowlist(root):
 
 def _bound_literal(name, func, module):
     """True when ``name`` is assigned only literals / SQL(<literal>) in func or at module level."""
-    found = False
-    scopes = [s for s in (func, module) if s is not None]
-    for scope in scopes:
+    for scope in (func, module):
+        if scope is None:
+            continue
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) and name in {
+                arg.arg for arg in (scope.args.posonlyargs + scope.args.args +
+                                    scope.args.kwonlyargs +
+                                    ([scope.args.vararg] if scope.args.vararg else []) +
+                                    ([scope.args.kwarg] if scope.args.kwarg else []))}:
+            return False
+        safe = set()
+        bindings = set()
         for node in ast.walk(scope):
-            if isinstance(node, ast.Assign) and any(
-                    isinstance(t, ast.Name) and t.id == name for t in node.targets):
-                if not _query_ok(node.value, None, None, depth=1):
-                    return False
-                found = True
-        if found:
-            return True
-    return found
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                    and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name \
+                    and _query_ok(node.value, None, None, depth=1):
+                safe.add(id(node.targets[0]))
+            for child in ast.walk(node) if isinstance(node, (ast.Assign, ast.AnnAssign,
+                    ast.AugAssign, ast.NamedExpr, ast.For, ast.AsyncFor, ast.With,
+                    ast.AsyncWith, ast.ExceptHandler)) else ():
+                if isinstance(child, ast.Name) and child.id == name and isinstance(child.ctx, ast.Store):
+                    bindings.add(id(child))
+        if bindings:
+            return bindings == safe
+    return False
 
 
 def _query_ok(node, func, module, depth=0):

@@ -9,9 +9,19 @@ R3  auth written out, 'user' or 'public'; 'public' only in woow_document_managem
 R4  type absent or 'http'            R5  no csrf= argument at all
 R6  path parameters only <int:name>  R7  no cors=, readonly=True, save_session=False
 R8  upload routes set max_content_length (= 99,614,720, or max_upload_body)
-R9  no path-less @route() overrides  R10 no /web/, /mail/, /portal/, /website/, /json/ prefix
+R9  no path-less @route() overrides; no inherited core routes: controller classes extend only
+    http.Controller, CustomerPortal or this module's own controller classes; in a class that
+    extends CustomerPortal or one of this module's controllers every public method carries its
+    own @route (an undecorated override inherits the parent's routing, http.py
+    _generate_routing_rules); core CustomerPortal route methods are never overridden
+R10 no /web/, /mail/, /portal/, /website/, /json/ prefix
 R11 auth='public' functions start with self._share_entry(...); the GET /woow-docs/s landing
-    instead must not touch request.env['woow.*'], .touch(, request.session[...] = or _log_event(
+    instead must not use .env[...] or bind request.env / request.session to a name, call
+    .touch( / _log_event( / create( / write( / unlink(, or change request.session (item or
+    attribute assignment, del, update/pop/setdefault/clear/popitem)
+R1 also covers the decorator form: odoo.http.route under any import alias counts, a route
+    object may only be used directly as @<route>(...), and controller functions carry no other
+    decorator than staticmethod / classmethod.
 R12 every route equals a row of tools/routes.lock.json (--g1: the two sets are equal)
 R13 website=True only in controllers/portal.py
 
@@ -46,13 +56,110 @@ HOME_ENTRY = {
 }
 
 
-def _is_route_decorator(dec):
+CORE_PORTAL_ROUTE_METHODS = frozenset({
+    # route methods of odoo.addons.portal.controllers.portal.CustomerPortal (ref odoo-18)
+    'home', 'account', 'security', 'counters', 'deactivate_account', 'attachment_add',
+    'attachment_remove',
+})
+ALLOWED_PLAIN_DECORATORS = ('staticmethod', 'classmethod')
+SESSION_MUTATORS = ('update', 'pop', 'setdefault', 'clear', 'popitem')
+SESSION_SLOTS = ('can_save', 'is_dirty', 'is_new', 'should_rotate', 'sid')
+LANDING_WRITE_CALLS = ('touch', '_log_event', 'create', 'write', 'unlink')
+
+
+def _is_route_decorator(dec, aliases=None):
     if not isinstance(dec, ast.Call):
         return False
-    func = dec.func
-    if isinstance(func, ast.Attribute):
-        return func.attr == 'route'
-    return isinstance(func, ast.Name) and func.id == 'route'
+    mods, routes = (aliases or ({'http', 'odoo.http'}, {'route'}))[:2]
+    return A.is_route_func(dec.func, mods, routes)
+
+
+def _in_controllers(relpath):
+    parts = relpath.split('/')
+    return len(parts) >= 2 and parts[-2] == 'controllers'
+
+
+def _controller_class_names(root):
+    names = set()
+    for relpath, _abspath in A.iter_files(root, exts=('.py',), include_tests=False):
+        if _in_controllers(relpath):
+            for node in ast.walk(A.parse_py(root, relpath).tree):
+                if isinstance(node, ast.ClassDef):
+                    names.add(node.name)
+    return names
+
+
+def structural(root):
+    """R1 / R9 checks that do not depend on a single route decorator."""
+    out = []
+    local_classes = _controller_class_names(root)
+    for relpath, _abspath in A.iter_files(root, exts=('.py',), include_tests=False):
+        if relpath.startswith('tools/'):
+            continue
+        src = A.parse_py(root, relpath)
+        mods, routes, _requests, ctrls = A.http_aliases(src.tree)
+        decorator_funcs = set()
+        for node in ast.walk(src.tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                for dec in node.decorator_list:
+                    if isinstance(dec, ast.Call) and A.is_route_func(dec.func, mods, routes):
+                        decorator_funcs.add(id(dec.func))
+        for node in ast.walk(src.tree):
+            # a route object used anywhere but directly as @<route>(...)
+            if A.is_route_reference(node, mods, routes) and id(node) not in decorator_funcs:
+                out.append(A.Violation(relpath, node.lineno, 'R1',
+                                       'odoo.http.route may only be used directly as a decorator'))
+            elif isinstance(node, ast.Call) and A.call_name(node) == 'getattr' and len(node.args) > 1 \
+                    and A.const_str(node.args[1]) == 'route':
+                out.append(A.Violation(relpath, node.lineno, 'R1', "getattr(..., 'route') is not allowed"))
+        if not _in_controllers(relpath):
+            continue
+        for node in ast.walk(src.tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for dec in node.decorator_list:
+                    if isinstance(dec, ast.Call) and A.is_route_func(dec.func, mods, routes):
+                        continue
+                    if isinstance(dec, ast.Name) and dec.id in ALLOWED_PLAIN_DECORATORS:
+                        continue
+                    out.append(A.Violation(relpath, dec.lineno, 'R1',
+                                           'controller functions take no decorator but @<route>(...) '
+                                           '(got @%s)' % A.dotted(dec)))
+            if not isinstance(node, ast.ClassDef):
+                continue
+            kinds = []
+            for base in node.bases:
+                text = A.dotted(base)
+                if text in ('NamedTuple', 'typing.NamedTuple'):
+                    kinds.append('plain')
+                elif (isinstance(base, ast.Name) and base.id in ctrls) or \
+                        (isinstance(base, ast.Attribute) and base.attr == 'Controller'
+                         and A.dotted(base.value) in mods):
+                    kinds.append('controller')
+                elif text == 'CustomerPortal' or text.endswith('.portal.CustomerPortal'):
+                    kinds.append('portal')
+                elif isinstance(base, ast.Name) and base.id in local_classes:
+                    kinds.append('local')
+                else:
+                    out.append(A.Violation(relpath, node.lineno, 'R9',
+                                           'class %s extends %s: controllers extend only http.Controller, '
+                                           'CustomerPortal or this module\'s own controllers' % (node.name, text)))
+                    kinds.append('core')
+            if not set(kinds) - {'plain', 'controller'}:
+                continue    # nothing to inherit routes from
+            for stmt in node.body:
+                if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                decorated = any(isinstance(d, ast.Call) and A.is_route_func(d.func, mods, routes)
+                                for d in stmt.decorator_list)
+                if stmt.name in CORE_PORTAL_ROUTE_METHODS:
+                    out.append(A.Violation(relpath, stmt.lineno, 'R9',
+                                           '%s.%s overrides a core portal route' % (node.name, stmt.name)))
+                elif not stmt.name.startswith('_') and not decorated:
+                    out.append(A.Violation(relpath, stmt.lineno, 'R9',
+                                           'public controller method %s.%s has no @route of its own '
+                                           '(an undecorated override inherits the parent route)'
+                                           % (node.name, stmt.name)))
+    return out
 
 
 def _literal(node):
@@ -77,12 +184,15 @@ def extract(root):
     """[(relpath, func_node, decorator, info, problems)] for every decorated route function."""
     found = []
     for relpath, _abspath in A.iter_files(root, exts=('.py',), include_tests=False):
+        if relpath.startswith('tools/'):
+            continue
         src = A.parse_py(root, relpath)
+        aliases = A.http_aliases(src.tree)
         for node in ast.walk(src.tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             for dec in node.decorator_list:
-                if _is_route_decorator(dec):
+                if _is_route_decorator(dec, aliases):
                     found.append((relpath, src, node, dec))
     return found
 
@@ -129,25 +239,46 @@ def _info(relpath, func, dec):
     }, problems
 
 
+def _is_request_attr(node, attr):
+    return isinstance(node, ast.Attribute) and node.attr == attr and A.req_dotted(node) == 'request.' + attr
+
+
+def _is_session_value(node):
+    """request.session[...] or request.session.get(...) / .setdefault(...)."""
+    if isinstance(node, ast.Subscript):
+        return _is_request_attr(node.value, 'session')
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+            and node.func.attr in ('get', 'setdefault'):
+        return _is_request_attr(node.func.value, 'session')
+    return False
+
+
 def _r11_landing(relpath, func, out):
+    def bad(node, message):
+        out.append(A.Violation(relpath, node.lineno, 'R11', 'landing page must not ' + message))
+
     for node in ast.walk(func):
-        if isinstance(node, ast.Subscript):
-            base = node.value
-            if isinstance(base, ast.Attribute) and base.attr == 'env' \
-                    and A.dotted(base.value) == 'request':
-                key = A.const_str(node.slice)
-                if key is None or key.startswith('woow.'):
-                    out.append(A.Violation(relpath, node.lineno, 'R11',
-                                           'landing page must not use request.env[woow.*]'))
-        if isinstance(node, ast.Call) and A.call_name(node) in ('touch', '_log_event'):
-            out.append(A.Violation(relpath, node.lineno, 'R11',
-                                   'landing page must not call %s(' % A.call_name(node)))
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) \
+                and node.value.attr == 'env':
+            bad(node, 'use .env[...] (no woow.* model, no data access)')
+        if isinstance(node, ast.Call):
+            name = A.call_name(node)
+            if name in LANDING_WRITE_CALLS:
+                bad(node, 'call %s(' % name)
+            if name in SESSION_MUTATORS and isinstance(node.func, ast.Attribute) and (
+                    _is_request_attr(node.func.value, 'session') or _is_session_value(node.func.value)):
+                bad(node, 'change request.session (%s()' % name)
+        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.NamedExpr)):
+            value = node.value
+            if value is not None and (_is_request_attr(value, 'env') or _is_request_attr(value, 'session')):
+                bad(node, 'bind request.env / request.session to a name')
         if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):
             targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
             for target in targets:
-                if isinstance(target, ast.Subscript) and A.dotted(target).startswith('request.session'):
-                    out.append(A.Violation(relpath, node.lineno, 'R11',
-                                           'landing page must not assign request.session[...]'))
+                if isinstance(target, ast.Subscript) and A.req_dotted(target).startswith('request.session'):
+                    bad(node, 'assign request.session[...]')
+                elif isinstance(target, ast.Attribute) and _is_request_attr(target.value, 'session'):
+                    bad(node, 'assign request.session.%s' % target.attr)
 
 
 def _r11_entry(stmt):
@@ -166,8 +297,7 @@ def check_route(relpath, func, dec, info, problems, out):
     for rule, message in problems:
         out.append(A.Violation(relpath, dec.lineno, rule, message))
     kws = info['kws']
-    parts = relpath.split('/')
-    if len(parts) < 2 or parts[-2] != 'controllers':
+    if not _in_controllers(relpath):
         out.append(A.Violation(relpath, dec.lineno, 'R1', 'routes are only allowed in */controllers/*.py'))
     if not info['routes']:
         out.append(A.Violation(relpath, dec.lineno, 'R9', 'path-less @route() override is not allowed'))
@@ -256,7 +386,7 @@ def compare_target(eps, target_path):
 
 
 def check(root, args):
-    out = []
+    out = structural(root)
     lock = load_lock(root)
     lock_keys = {lock_key(row) for row in lock}
     infos = []

@@ -1,0 +1,10 @@
+#! target=woow_document_management/controllers/x.py expect=F-SESSION-MUT
+from odoo import http
+
+
+def f(request, k):
+    request.session.get('woow_doc_grants', {})[str(k)] = {'exp': 1}
+    request.session.get('woow_doc_grants').pop(k)
+    http.request.session['woow_doc_grants'][k] = {}
+    request.session.woow_seen = 1
+    request.session.update({'k': 1})

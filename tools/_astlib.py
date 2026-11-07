@@ -307,6 +307,69 @@ def is_stub_raise(stmt, src):
             and 'WOOW-STUB' in src.comment(stmt.lineno))
 
 
+# --------------------------------------------------------------------------- odoo.http names
+
+REQUEST_PREFIXES = ('odoo.http.request', 'http.request')
+
+
+def http_aliases(tree):
+    """(module_names, route_names, request_names, controller_names) bound by the imports of a module.
+
+    module_names: dotted names that refer to ``odoo.http`` (``http`` from ``from odoo import http``,
+    any ``as`` alias, ``odoo.http`` itself). route_names: local names bound to ``odoo.http.route``
+    (a bare ``@route(...)`` decorator is always treated as one, see is_route_func). request_names: names bound to
+    ``odoo.http.request``. controller_names: names bound to ``odoo.http.Controller``.
+    """
+    mods, routes, requests, ctrls = {'http', 'odoo.http'}, set(), {'request'}, {'Controller'}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in ('odoo', 'odoo.http'):
+            for alias in node.names:
+                if node.module == 'odoo.http' and alias.name == '*':
+                    routes.add('route')
+                local = alias.asname or alias.name
+                if node.module == 'odoo' and alias.name == 'http':
+                    mods.add(local)
+                elif node.module == 'odoo.http':
+                    {'route': routes, 'request': requests, 'Controller': ctrls}.get(
+                        alias.name, set()).add(local)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == 'odoo.http' and alias.asname:
+                    mods.add(alias.asname)
+    return mods, routes, requests, ctrls
+
+
+def is_route_func(func, mods, routes):
+    """True when a call target is odoo.http.route under any of its local names."""
+    if isinstance(func, ast.Name):
+        return func.id in routes or func.id == 'route'
+    if isinstance(func, ast.Attribute):
+        # any ``<x>.route(`` counts (conservative); http module aliases certainly do
+        return func.attr == 'route'
+    return False
+
+
+def is_route_reference(node, mods, routes):
+    """A Name / Attribute expression that denotes odoo.http.route itself."""
+    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+        return node.id in routes
+    if isinstance(node, ast.Attribute) and node.attr == 'route':
+        return dotted(node.value) in mods
+    return False
+
+
+def norm_request(text):
+    """``http.request.x`` / ``odoo.http.request.x`` -> ``request.x`` (for prefix checks)."""
+    for prefix in REQUEST_PREFIXES:
+        if text == prefix or text.startswith(prefix + '.') or text.startswith(prefix + '['):
+            return 'request' + text[len(prefix):]
+    return text
+
+
+def req_dotted(node):
+    return norm_request(dotted(node))
+
+
 # --------------------------------------------------------------------------- git
 
 def git_toplevel(root):

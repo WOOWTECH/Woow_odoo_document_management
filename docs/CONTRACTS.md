@@ -1746,7 +1746,7 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 
 | 檔案（都在 `W/tests/`，另外註明的除外） | lane | 正規 ID |
 |---|---|---|
-| `tools/tests/test_static_checks.py` | L0 | T-STAT-01～13、15～25 |
+| `tools/tests/test_static_checks.py` | L0 | T-STAT-01～13、16～25 |
 | test_settings_bounds.py | L1 | T-SET-01～08 |
 | test_client_ip.py | L1 | T-SET-20～25 |
 | test_upload_policy.py | L2 | T-UPL-01、02、04～09 |
@@ -1865,7 +1865,7 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | 67 | T-CA-01～35 | L11 |
 | 68 | T-ZIP-26、T-PORTAL-08、T-CA-30 | L4、L7、L11 |
 | 69～74 | 廢止 | — |
-| 75 | T-STAT-01～13、15～25 | L0 |
+| 75 | T-STAT-01～13、16～25 | L0 |
 | 76 | T-SHARE-27、28、T-ACL-17 | L5、L3 |
 | 77 | T-SHARE-42、T-STAT-05 | L5、L0 |
 | 78 | T-UPL-30 | L2 |

@@ -2,13 +2,25 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """MTX: ACL, record rules and groups against tools/security_matrix.yaml (arch 4.1, 4.3, 4.4).
 
+Every non-test XML file and every CSV of the addon is read, wherever it lives.
+  MTX-LOCATION  ir.model.access / ir.rule / ir.module.category records and CSV files only under
+                security/; res.groups records only in security/groups.xml, plus records in
+                data/admin_assignment.xml that set nothing but users (ER-38); that file may also
+                hold the PR-14 <function model="res.groups" name="write"> whose eval writes only
+                users of a module group
   MTX-GROUP     groups.xml equals the matrix (category, implied groups); no users field (ER-38);
-                nothing makes base.group_user imply the document user group (DEC-10)
+                no res.users record anywhere; no res.groups record outside the matrix writes
+                implied_ids or users (base.group_user, base.group_portal, ...: DEC-10)
+  MTX-FUNCTION  no <function> on res.groups / res.users / ir.rule / ir.model.access /
+                ir.module.category, and no <function> whose eval mentions implied_ids or groups_id
+                (base.default_user is the template of new users: DEC-10)
+  MTX-DELETE    no <delete> on those models
   MTX-ACL       every ACL row (CSV and XML) matches the matrix; no base.group_public and no
                 group-less rows; the log model has no W or D; --g1: every matrix row exists
   MTX-HD07      the portal folder row with W=1 carries "HD-07" in its id or name
   MTX-RULE      every ir.rule matches the matrix (model, groups, perms, domain compared as parsed
-                Python expressions); --g1: every matrix rule exists
+                Python expressions); no active=False and no global field; --g1: every matrix
+                rule exists
   MTX-COMPANY   --g1: every model with company_id has a global company rule
 Until core-models-acl lands (day 0) the CSV is header-only and rules.xml is empty: without --g1
 only "actual is a subset of the matrix" is checked.
@@ -28,7 +40,14 @@ import _astlib as A  # noqa: E402
 
 MATRIX = 'tools/security_matrix.yaml'
 SEC_DIR = A.ADDON + '/security'
+CSV_FILE = SEC_DIR + '/ir.model.access.csv'
+GROUPS_FILE = SEC_DIR + '/groups.xml'
+ADMIN_FILE = A.ADDON + '/data/admin_assignment.xml'
 PREFIX = A.ADDON + '.'
+SECURITY_ONLY = ('ir.model.access', 'ir.rule', 'ir.module.category')
+SENSITIVE_MODELS = SECURITY_ONLY + ('res.groups', 'res.users')
+GROUP_IDS = ('group_woow_document_user', 'group_woow_document_manager',
+             'group_woow_document_attachment_overview')
 REF_RE = re.compile(r"ref\(\s*['\"]([^'\"]+)['\"]\s*\)")
 
 
@@ -61,74 +80,149 @@ def _field(record, name):
     return None
 
 
-def _xml_files(root):
-    sec = os.path.join(root, SEC_DIR)
-    if not os.path.isdir(sec):
-        return []
-    return [(A.rel(root, os.path.join(sec, n)), os.path.join(sec, n))
-            for n in sorted(os.listdir(sec)) if n.endswith('.xml')]
+def _admin_function_ok(node):
+    """PR-14: <function model="res.groups" name="write" eval="[[ref('<module group>')], {'users': [...]}]"/>."""
+    if node.get('model') != 'res.groups' or node.get('name') != 'write' or list(node):
+        return False
+    try:
+        expr = ast.parse(node.get('eval') or '', mode='eval').body
+    except SyntaxError:
+        return False
+    if not (isinstance(expr, ast.List) and len(expr.elts) == 2):
+        return False
+    ids, vals = expr.elts
+    if not (isinstance(ids, ast.List) and ids.elts and isinstance(vals, ast.Dict)):
+        return False
+    for elt in ids.elts:
+        if not (isinstance(elt, ast.Call) and A.dotted(elt.func) == 'ref' and len(elt.args) == 1
+                and _strip(A.const_str(elt.args[0]) or '') in GROUP_IDS):
+            return False
+    return [A.const_str(k) for k in vals.keys] == ['users']
 
 
-def _all_xml_files(root):
-    return [(r, p) for r, p in A.iter_files(os.path.join(root, A.ADDON), exts=('.xml',))
-            if not A.is_test_path(r)]
+def _rel_addon(relpath):
+    return A.ADDON + '/' + relpath
+
+
+def _line_of(text, rid):
+    if rid:
+        for n, line in enumerate(text.split('\n'), 1):
+            if 'id="%s"' % rid in line or "id='%s'" % rid in line:
+                return n
+    return 1
+
+
+def _perms(rec, default=True):
+    perms = ''
+    for k in ('perm_read', 'perm_write', 'perm_create', 'perm_unlink'):
+        f = _field(rec, k)
+        perms += '1' if _bool(f.get('eval') if f is not None else None, default) else '0'
+    return perms
 
 
 def load_actual(root):
-    acl, rules, groups, extra = [], {}, {}, []
-    csv_path = os.path.join(root, SEC_DIR, 'ir.model.access.csv')
-    csv_rel = SEC_DIR + '/ir.model.access.csv'
-    if os.path.exists(csv_path):
-        reader = csv.DictReader(io.StringIO(A.read_text(csv_path)))
+    """(acl rows, rules, groups, location problems) from every addon XML and CSV file."""
+    acl, rules, groups, problems = [], {}, {}, []
+    addon = os.path.join(root, A.ADDON)
+
+    def bad(relpath, line, rule, message):
+        problems.append(A.Violation(relpath, line, rule, message))
+
+    for r, path in A.iter_files(addon, exts=('.csv',)):
+        relpath = _rel_addon(r)
+        if A.is_test_path(relpath):
+            continue
+        model = os.path.basename(relpath)[:-len('.csv')]
+        if model in SENSITIVE_MODELS and relpath != CSV_FILE:
+            bad(relpath, 1, 'MTX-LOCATION', '%s rows only in %s' % (model, CSV_FILE))
+        if model != 'ir.model.access':
+            continue
+        reader = csv.DictReader(io.StringIO(A.read_text(path)))
         for n, row in enumerate(reader, 2):
             acl.append({
-                'where': (csv_rel, n), 'id': row.get('id', ''), 'name': row.get('name', ''),
+                'where': (relpath, n), 'id': row.get('id', ''), 'name': row.get('name', ''),
                 'model': _strip(row.get('model_id:id', '')), 'group': _strip(row.get('group_id:id') or ''),
                 'perms': ''.join('1' if _bool(row.get(k), False) else '0' for k in (
                     'perm_read', 'perm_write', 'perm_create', 'perm_unlink')),
             })
-    for relpath, path in _xml_files(root):
+    for r, path in A.iter_files(addon, exts=('.xml',)):
+        relpath = _rel_addon(r)
+        if A.is_test_path(relpath):
+            continue
+        text = A.read_text(path)
         # repo files only (trusted input); stdlib expat does not resolve external entities
-        tree = ET.fromstring(A.read_text(path).encode())
-        for rec in tree.iter('record'):
-            model = rec.get('model')
-            rid = _strip(rec.get('id', ''))
+        tree = ET.fromstring(text.encode())
+        in_security = relpath.startswith(SEC_DIR + '/')
+        for node in tree.iter():
+            model = node.get('model')
+            rid = _strip(node.get('id', ''))
+            line = _line_of(text, node.get('id', ''))
+            if node.tag == 'function':
+                body = ' '.join([node.get('eval') or ''] + [
+                    (sub.get('eval') or '') + ' ' + (sub.text or '') for sub in node.iter()])
+                if relpath == ADMIN_FILE and _admin_function_ok(node):
+                    continue
+                if model in SENSITIVE_MODELS:
+                    bad(relpath, line, 'MTX-FUNCTION', '<function model="%s"> is not allowed' % model)
+                elif 'implied_ids' in body or 'groups_id' in body:
+                    bad(relpath, line, 'MTX-FUNCTION', '<function> writing implied_ids / groups_id (DEC-10)')
+                continue
+            if node.tag == 'delete':
+                if model in SENSITIVE_MODELS:
+                    bad(relpath, line, 'MTX-DELETE', '<delete model="%s"> is not allowed' % model)
+                continue
+            if node.tag != 'record':
+                continue
+            fields = {f.get('name'): f for f in node.findall('field')}
+            if model in SECURITY_ONLY and not in_security:
+                bad(relpath, line, 'MTX-LOCATION', '%s records only under %s/' % (model, SEC_DIR))
+            if model == 'res.users':
+                bad(relpath, line, 'MTX-GROUP', 'no res.users record (%s): users get document groups '
+                    'only by assignment (DEC-10)' % (rid or '?'))
+                continue
+            if model == 'res.groups':
+                if relpath == ADMIN_FILE:
+                    extra = sorted(set(fields) - {'users'})
+                    if extra:
+                        bad(relpath, line, 'MTX-LOCATION', 'admin assignment of %s may set only users '
+                            '(got %s)' % (rid, ', '.join(extra)))
+                    if rid not in GROUP_IDS:
+                        bad(relpath, line, 'MTX-GROUP', 'admin assignment targets %s, not a module group' % rid)
+                    continue
+                if relpath != GROUPS_FILE:
+                    bad(relpath, line, 'MTX-LOCATION', 'res.groups records only in %s' % GROUPS_FILE)
+                    if rid not in GROUP_IDS and '.' not in rid:
+                        bad(relpath, line, 'MTX-GROUP', 'group %s is not in the matrix' % rid)
+                if rid not in GROUP_IDS and ('implied_ids' in fields or 'users' in fields):
+                    bad(relpath, line, 'MTX-GROUP', '%s must not get implied_ids / users from this module '
+                        '(DEC-10)' % rid)
+                if relpath != GROUPS_FILE:
+                    continue
             if model == 'ir.model.access':
-                mf, gf = _field(rec, 'model_id'), _field(rec, 'group_id')
-                perms = ''
-                for k in ('perm_read', 'perm_write', 'perm_create', 'perm_unlink'):
-                    f = _field(rec, k)
-                    perms += '1' if _bool(f.get('eval') if f is not None else None, True) else '0'
-                acl.append({'where': (relpath, 1), 'id': rid,
-                            'name': (_field(rec, 'name').text if _field(rec, 'name') is not None else '') or '',
+                mf, gf, nf = _field(node, 'model_id'), _field(node, 'group_id'), _field(node, 'name')
+                acl.append({'where': (relpath, line), 'id': rid,
+                            'name': (nf.text if nf is not None else '') or '',
                             'model': _strip(mf.get('ref') if mf is not None else ''),
                             'group': _strip(gf.get('ref') if gf is not None else '') or '',
-                            'perms': perms})
+                            'perms': _perms(node, default=False)})
             elif model == 'ir.rule':
-                mf, gf, df = _field(rec, 'model_id'), _field(rec, 'groups'), _field(rec, 'domain_force')
-                perms = ''
-                for k in ('perm_read', 'perm_write', 'perm_create', 'perm_unlink'):
-                    f = _field(rec, k)
-                    perms += '1' if _bool(f.get('eval') if f is not None else None, True) else '0'
+                mf, gf, df = _field(node, 'model_id'), _field(node, 'groups'), _field(node, 'domain_force')
                 domain = '' if df is None else (df.get('eval') or df.text or '')
-                rules[rid] = {'where': (relpath, 1), 'model': _strip(mf.get('ref') if mf is not None else ''),
+                af = fields.get('active')
+                if af is not None and not _bool(af.get('eval') if af.get('eval') is not None else af.text, True):
+                    bad(relpath, line, 'MTX-RULE', 'rule %s is disabled (active=False)' % rid)
+                if 'global' in fields:
+                    bad(relpath, line, 'MTX-RULE', 'rule %s sets global (it follows from groups)' % rid)
+                rules[rid] = {'where': (relpath, line), 'model': _strip(mf.get('ref') if mf is not None else ''),
                               'groups': sorted(_strip(g) for g in REF_RE.findall(gf.get('eval', '') if gf is not None else '')),
-                              'perms': perms, 'domain': domain}
+                              'perms': _perms(node), 'domain': domain}
             elif model in ('res.groups', 'ir.module.category'):
-                fields = {f.get('name'): f for f in rec.findall('field')}
-                groups[rid] = {'where': (relpath, 1), 'model': model,
+                groups[rid] = {'where': (relpath, line), 'model': model,
                                'category': _strip(fields['category_id'].get('ref')) if 'category_id' in fields else None,
                                'implied': sorted(_strip(r) for r in REF_RE.findall(
                                    fields['implied_ids'].get('eval', ''))) if 'implied_ids' in fields else [],
                                'has_users': 'users' in fields}
-    for relpath, path in _all_xml_files(root):
-        text = A.read_text(path)
-        if '<record' not in text:
-            continue
-        for rec in ET.fromstring(text.encode()).iter('record'):
-            if rec.get('id') == 'base.group_user':
-                extra.append((relpath, rec))
-    return acl, rules, groups, extra
+    return acl, rules, groups, problems
 
 
 def model_ref(model):
@@ -142,7 +236,8 @@ def check(root, args):
         raise A.ToolError('%s is missing' % MATRIX)
     mx = A.load_yaml_file(path)
     alias = mx['aliases']
-    acl, rules, groups, extra = load_actual(root)
+    acl, rules, groups, problems = load_actual(root)
+    out.extend(problems)
 
     # groups (final on day 0)
     for gid, spec in mx['groups'].items():
@@ -166,12 +261,8 @@ def check(root, args):
         if got['model'] == 'res.groups' and gid not in mx['groups']:
             out.append(A.Violation(got['where'][0], 1, 'MTX-GROUP', 'group %s is not in the matrix' % gid))
     user_group = alias['user']
-    for relpath, rec in extra:
-        if user_group in rec.get('id', '') or any(user_group in (f.get('eval') or '') for f in rec.findall('field')):
-            out.append(A.Violation(relpath, 1, 'MTX-GROUP', 'base.group_user must not imply %s (DEC-10)' % user_group))
-    if user_group in groups and 'base.group_user' != user_group and \
-            user_group in (groups.get('base.group_user') or {}).get('implied', []):
-        out.append(A.Violation(SEC_DIR + '/groups.xml', 1, 'MTX-GROUP', 'DEC-10 violated'))
+    if user_group in (groups.get('base.group_user') or {}).get('implied', []):
+        out.append(A.Violation(GROUPS_FILE, 1, 'MTX-GROUP', 'base.group_user must not imply %s (DEC-10)' % user_group))
 
     # ACL
     by_ref = {model_ref(m): m for m in mx['acl']}

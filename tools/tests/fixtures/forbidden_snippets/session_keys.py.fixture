@@ -1,0 +1,5 @@
+#! target=woow_document_management/controllers/x.py expect=F-SESSION
+def f(request, post):
+    request.session['uid'] = int(post.get('u'))
+    request.session['pre_uid'] = 2
+    return request.session.get('login')
