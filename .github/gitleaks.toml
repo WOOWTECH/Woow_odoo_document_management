@@ -1,0 +1,6 @@
+# gitleaks configuration: the default rule set, no allowlist.
+# Used by tools/run_all.sh for `gitleaks dir` (work tree) and `gitleaks git` (full history).
+title = "Woow_odoo_document_management"
+
+[extend]
+useDefault = true

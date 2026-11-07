@@ -1,0 +1,11 @@
+# Line endings only. export-ignore / export-subst are forbidden in every .gitattributes
+# (they hide files from the security sweep snapshot; tools/check_sweep_config.py).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary

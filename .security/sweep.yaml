@@ -1,0 +1,93 @@
+# woow-security-sweep repo-level config for WOOWTECH/Woow_odoo_document_management.
+# Read only from origin/<scan branch>; any change under .security/ raises a high "security-config-changed"
+# finding that always goes to a human. The FIRST version is not flagged (first full run has config_changed=False),
+# so it is reviewed by a human in the repository's first PR (release gate G0).
+# This file REPLACES the odoo stack defaults (no merge): it restates them and may only be stricter.
+# Allowed top-level keys: version, scan, always_human, autofix, verify (enforced by tools/check_sweep_config.py).
+version: 1
+scan:
+  exclude:
+  - i18n/
+  - "**/__pycache__/"
+  # tests/ is deliberately NOT excluded (the stack default excludes it): fixtures must pass gitleaks and p/secrets.
+  tools:
+    semgrep:
+      rulesets: [p/python, p/secrets]
+      # no exclude_rules: excluding a rule needs a human decision recorded in the private target
+    gitleaks: {}
+always_human:
+  paths:
+  # stack defaults (restated, see header)
+  - .security/
+  - security/
+  - migrations/
+  - __manifest__.py
+  - "*/__manifest__.py"
+  # repo-specific
+  - "*/hooks.py"
+  - .gitattributes
+  - "*/.gitattributes"
+  - .gitmodules
+  - .github/
+  - tools/
+  - woow_document_management/models/ir_attachment.py
+  - woow_document_management/models/guard_mixin.py
+  - woow_document_management/models/mail_thread_guard.py
+  - woow_document_management/models/document_share.py
+  - woow_document_management/models/share_service.py
+  - woow_document_management/models/document_log.py
+  - woow_document_management/models/settings.py
+  - woow_document_management/models/quota.py
+  - woow_document_management/controllers/share.py
+  - woow_document_management/controllers/streaming.py
+  - woow_document_management/services/tokens.py
+  - woow_document_management/services/client_ip.py
+  - woow_document_management/services/folding.py
+  - woow_document_management/services/locks.py
+  - woow_document_management/static/src/share/
+  - woow_document_management/tests/EXPECTED_MIN.json
+  severities: [critical, high]
+  topics: [token, password, sudo, access_token, session, mail.template, ir.attachment]
+autofix:
+  enabled: false
+  max_prs_per_run: 0
+verify:
+  regression_tests:
+  - woow_document_management/tests/test_settings_bounds.py
+  - woow_document_management/tests/test_client_ip.py
+  - woow_document_management/tests/test_upload_policy.py
+  - woow_document_management/tests/test_naming.py
+  - woow_document_management/tests/test_quota.py
+  - woow_document_management/tests/test_locks.py
+  - woow_document_management/tests/test_core_models.py
+  - woow_document_management/tests/test_security_acl.py
+  - woow_document_management/tests/test_multicompany.py
+  - woow_document_management/tests/test_attachment_guard.py
+  - woow_document_management/tests/test_mail_thread_guard.py
+  - woow_document_management/tests/test_uninstall.py
+  - woow_document_management/tests/test_display_name_folding.py
+  - woow_document_management/tests/test_folding_service.py
+  - woow_document_management/tests/test_url_policy.py
+  - woow_document_management/tests/test_zip_builder.py
+  - woow_document_management/tests/test_internal_routes.py
+  - woow_document_management/tests/test_native_routes.py
+  - woow_document_management/tests/test_share_token.py
+  - woow_document_management/tests/test_share_routes.py
+  - woow_document_management/tests/test_mail_share.py
+  - woow_document_management/tests/test_trash_lifecycle.py
+  - woow_document_management/tests/test_audit_log.py
+  - woow_document_management/tests/test_cron.py
+  - woow_document_management/tests/test_portal_routes.py
+  - woow_document_management/tests/test_portal_upload.py
+  - woow_document_management/tests/test_attachment_overview.py
+  - woow_document_management/tests/test_add_attachment.py
+  - woow_document_management/tests/test_backend_views.py
+  - woow_document_management/tests/test_backend_wizards.py
+  - woow_document_management/tests/test_i18n_complete.py
+  - woow_document_management/tests/test_record_rules.py
+  - woow_document_management/tests/test_core_assumptions.py
+  - woow_document_management/tests/test_rpc_exposure.py
+  - woow_document_management/tests/test_escaping.py
+  - tools/tests/test_static_checks.py
+  # test_perf.py is tagged -standard and deliberately not listed. Every new tests/test_reg_<slug>.py from a fix is
+  # appended here (this touches .security/, so it always goes to a human - expected).
