@@ -1,0 +1,23 @@
+#! target=woow_document_management/controllers/x.py expect=F-HTTPEXC
+import werkzeug
+from werkzeug.exceptions import NotFound
+
+
+def a(request):
+    raise request.not_found()
+
+
+def b():
+    raise NotFound()
+
+
+def c():
+    raise werkzeug.exceptions.Forbidden()
+
+
+def d(abort):
+    abort(404)
+
+
+def e(request):
+    return request.not_found()

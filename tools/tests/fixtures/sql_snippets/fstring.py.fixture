@@ -1,0 +1,6 @@
+#! target=woow_document_management/models/quota.py expect=SQL-FORMAT
+def _usage_bytes(self, table):
+    self.env.cr.execute(f'SELECT * FROM {table}')  # sql-ok: Q2
+    self.env.cr.execute('SELECT * FROM %s' % table)  # sql-ok: Q2
+    self.env.cr.execute('SELECT * FROM {}'.format(table))  # sql-ok: Q2
+    self.env.cr.execute('SELECT * FROM ' + table)  # sql-ok: Q2

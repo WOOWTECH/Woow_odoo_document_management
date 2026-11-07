@@ -1,0 +1,10 @@
+#! target=woow_document_management/wizards/x.py expect=PUBM-API-MODEL
+from odoo import api, models
+
+
+class X(models.TransientModel):
+    _name = 'woow.document.move.wizard'
+
+    @api.model
+    def action_move(self):
+        self.check_access('write')

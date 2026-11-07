@@ -1,0 +1,1 @@
+<odoo><template id="t"><a href="/x" target="_blank" rel="noopener noreferrer"><t t-out="v"/></a></template></odoo>

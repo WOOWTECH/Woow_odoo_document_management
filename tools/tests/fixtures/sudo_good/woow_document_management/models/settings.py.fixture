@@ -1,0 +1,12 @@
+from odoo import models
+
+
+class WoowDocumentSettings(models.AbstractModel):
+    _name = 'woow.document.settings'
+
+    def _read_params(self, keys):
+        icp = self.env['ir.config_parameter'].sudo()  # sudo-ok: S3
+        return {k: icp.get_param(k) for k in keys}
+
+    def _drop(self):
+        return self.sudo(False), self.env(su=False)

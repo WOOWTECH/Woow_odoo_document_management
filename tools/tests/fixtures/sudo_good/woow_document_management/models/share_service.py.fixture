@@ -1,0 +1,22 @@
+from odoo import api, models
+
+
+class WoowDocumentShareService(models.Model):
+    _inherit = 'woow.document.share'
+
+    @api.model
+    def _resolve_request_access(self, token=None, share_id=None):
+        if token is not None:
+            share_sudo = self.sudo().search([('token_hash', '=', token)], limit=1)  # sudo-ok: S2
+        else:
+            return self.browse(), None
+        if not share_sudo:
+            return self.browse(), None
+        scope_env = share_sudo.with_user(share_sudo.create_uid).with_context(  # sudo-drop: S2
+            allowed_company_ids=[share_sudo.company_id.id]).env
+        return share_sudo, scope_env
+
+    def _maintenance_run(self):
+        if not self.env.su:
+            raise ValueError('cron only')
+        return None

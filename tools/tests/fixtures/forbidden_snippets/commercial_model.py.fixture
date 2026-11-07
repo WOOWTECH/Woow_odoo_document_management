@@ -1,0 +1,3 @@
+#! target=woow_document_management/models/x.py expect=F-COMMERCIAL
+def f(self):
+    return self.env.user.commercial_partner_id

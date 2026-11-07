@@ -1,0 +1,2 @@
+#! target=woow_document_management/views/x.xml expect=F-QWEB-RAW
+<odoo><template id="t"><div t-raw="value"/></template></odoo>

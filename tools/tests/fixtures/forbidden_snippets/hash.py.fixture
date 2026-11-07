@@ -1,0 +1,6 @@
+#! target=woow_document_management/services/x.py expect=F-HASH
+import hashlib
+
+
+def f(data):
+    return hashlib.md5(data).hexdigest()

@@ -1,0 +1,9 @@
+#! target=woow_document_management/models/document.py expect=SUDO-WITH-USER
+from odoo import models
+
+
+class WoowDocument(models.Model):
+    _name = 'woow.document'
+
+    def _as(self, user):
+        return self.with_user(user)

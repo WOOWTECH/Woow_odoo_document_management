@@ -1,0 +1,8 @@
+#! target=woow_document_management/models/x.py expect=F-MARKUP
+from markupsafe import Markup
+from odoo import fields
+
+
+def f(name):
+    body = fields.Html(sanitize=False)
+    return Markup(name), body

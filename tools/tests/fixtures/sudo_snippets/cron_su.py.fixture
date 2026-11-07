@@ -1,0 +1,10 @@
+#! target=woow_document_management/models/cron_jobs.py expect=SUDO-CRON-SU
+from odoo import api, models
+
+
+class WoowDocumentCron(models.Model):
+    _inherit = 'woow.document'
+
+    @api.model
+    def _cron_purge_trash(self):
+        return self.search([]).unlink()

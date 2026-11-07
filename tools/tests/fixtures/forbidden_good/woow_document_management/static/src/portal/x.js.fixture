@@ -1,0 +1,4 @@
+export function f(el, text) {
+    el.textContent = text;
+    window.open("/x", "_blank", "noopener,noreferrer");
+}

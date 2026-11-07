@@ -1,0 +1,9 @@
+#! target=woow_document_management/models/document.py expect=SUDO-NOT-ALLOWED
+from odoo import models
+
+
+class WoowDocument(models.Model):
+    _name = 'woow.document'
+
+    def _peek(self, ids):
+        return self.sudo().browse(ids)  # sudo-ok: S1

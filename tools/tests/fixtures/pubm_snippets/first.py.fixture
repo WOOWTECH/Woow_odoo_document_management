@@ -1,0 +1,10 @@
+#! target=woow_document_management/models/x.py expect=PUBM-FIRST
+from odoo import models
+
+
+class X(models.Model):
+    _inherit = 'woow.document'
+
+    def action_trash(self):
+        self.write({'active': False})
+        self.check_access('write')

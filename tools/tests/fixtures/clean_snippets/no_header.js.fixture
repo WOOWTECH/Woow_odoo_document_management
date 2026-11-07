@@ -1,0 +1,2 @@
+#! target=woow_document_management/static/src/b.js expect=CLEAN-HEADER
+export const B = 1;

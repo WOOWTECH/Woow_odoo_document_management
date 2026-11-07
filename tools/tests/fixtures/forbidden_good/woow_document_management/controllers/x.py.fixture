@@ -1,0 +1,13 @@
+import hashlib
+
+from . import streaming
+
+
+def f(self, request, share, kw):
+    request.session['woow_doc_grants'] = dict(request.session.get('woow_doc_grants') or {})
+    digest = hashlib.sha256(b'x').hexdigest()
+    target = request.redirect('/woow-docs/s/%d' % share.id, local=True)
+    number = int(kw.get('n') or 0)
+    if not share:
+        return streaming.uniform_404('share')
+    return digest, target, number

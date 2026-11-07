@@ -1,0 +1,7 @@
+#! target=woow_document_management/static/src/backend/x.js expect=F-JS-SINK
+export function f(el, html) {
+    el.innerHTML = html;
+    el.insertAdjacentHTML("beforeend", html);
+    window.open("/x");
+    return markup(html);
+}

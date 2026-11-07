@@ -1,0 +1,9 @@
+#! target=woow_document_management/models/x.py expect=PUBM-UNLISTED
+from odoo import models
+
+
+class X(models.Model):
+    _inherit = 'woow.document'
+
+    def do_something(self):
+        self.check_access('read')

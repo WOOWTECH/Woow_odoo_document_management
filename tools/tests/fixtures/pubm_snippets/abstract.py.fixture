@@ -1,0 +1,9 @@
+#! target=woow_document_management/models/x.py expect=PUBM-ABSTRACT
+from odoo import models
+
+
+class X(models.AbstractModel):
+    _name = 'woow.document.quota'
+
+    def check_now(self):
+        return 1

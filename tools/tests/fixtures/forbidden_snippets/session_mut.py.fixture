@@ -1,0 +1,4 @@
+#! target=woow_document_management/controllers/x.py expect=F-SESSION-MUT
+def f(request, k):
+    request.session['woow_doc_grants'][k] = {'exp': 1}
+    request.session['woow_doc_grants'].pop(k)

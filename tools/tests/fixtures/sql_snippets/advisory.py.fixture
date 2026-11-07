@@ -1,0 +1,3 @@
+#! target=woow_document_management/models/zip_actions.py expect=SQL-ADVISORY
+def f(cr):
+    return 'SELECT pg_try_advisory_xact_lock(1)'

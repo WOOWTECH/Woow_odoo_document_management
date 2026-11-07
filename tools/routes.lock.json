@@ -1,0 +1,213 @@
+[
+  {
+    "file": "woow_document_management/controllers/main.py",
+    "func": "woow_upload",
+    "routes": [
+      "/woow_document/upload"
+    ],
+    "methods": [
+      "POST"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/main.py",
+    "func": "woow_download",
+    "routes": [
+      "/woow_document/doc/<int:document_id>/download"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/main.py",
+    "func": "woow_preview",
+    "routes": [
+      "/woow_document/doc/<int:document_id>/preview"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/main.py",
+    "func": "woow_zip",
+    "routes": [
+      "/woow_document/zip"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/portal.py",
+    "func": "portal_my_docs",
+    "routes": [
+      "/my/docs",
+      "/my/docs/page/<int:page>"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": true
+  },
+  {
+    "file": "woow_document_management/controllers/portal.py",
+    "func": "portal_my_docs_folder",
+    "routes": [
+      "/my/docs/folder/<int:folder_id>",
+      "/my/docs/folder/<int:folder_id>/page/<int:page>"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": true
+  },
+  {
+    "file": "woow_document_management/controllers/portal.py",
+    "func": "portal_my_docs_file",
+    "routes": [
+      "/my/docs/file/<int:document_id>",
+      "/my/docs/file/<int:document_id>/download"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": true
+  },
+  {
+    "file": "woow_document_management/controllers/portal.py",
+    "func": "portal_my_docs_zip",
+    "routes": [
+      "/my/docs/folder/<int:folder_id>/zip"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": true
+  },
+  {
+    "file": "woow_document_management/controllers/portal.py",
+    "func": "portal_my_docs_upload",
+    "routes": [
+      "/my/docs/folder/<int:folder_id>/upload"
+    ],
+    "methods": [
+      "POST"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": true
+  },
+  {
+    "file": "woow_document_management/controllers/share.py",
+    "func": "share_landing",
+    "routes": [
+      "/woow-docs/s"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "public",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/share.py",
+    "func": "share_open",
+    "routes": [
+      "/woow-docs/s/open"
+    ],
+    "methods": [
+      "POST"
+    ],
+    "auth": "public",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/share.py",
+    "func": "share_page",
+    "routes": [
+      "/woow-docs/s/<int:share_id>"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "public",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/share.py",
+    "func": "share_unlock",
+    "routes": [
+      "/woow-docs/s/<int:share_id>/unlock"
+    ],
+    "methods": [
+      "POST"
+    ],
+    "auth": "public",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/share.py",
+    "func": "share_file",
+    "routes": [
+      "/woow-docs/s/<int:share_id>/file/<int:document_id>"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "public",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/share.py",
+    "func": "share_zip",
+    "routes": [
+      "/woow-docs/s/<int:share_id>/zip"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "public",
+    "type": "http",
+    "website": false
+  },
+  {
+    "file": "woow_document_management/controllers/share.py",
+    "func": "share_close",
+    "routes": [
+      "/woow-docs/s/<int:share_id>/close"
+    ],
+    "methods": [
+      "POST"
+    ],
+    "auth": "public",
+    "type": "http",
+    "website": false
+  }
+]

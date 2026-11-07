@@ -1,0 +1,35 @@
+# Raw SQL allowlist (architecture 6.4 with ER-24, ER-28, ER-47.4; read by tools/check_sql.py).
+# Every cr.execute( / SQL( call in non-test code must sit in one of these functions and carry
+# "# sql-ok: <id>" on the same line. Arguments are a literal string or an odoo.tools.SQL object
+# built from a literal; values only through %s parameters.
+# Any pg_*advisory* outside services/locks.py fails, and locks.py must not call builtin hash().
+version: 1
+entries:
+- id: Q1
+  file: woow_document_management/models/document_log.py
+  functions: [_log_event]
+  note: denied-event bucket upsert, verbatim ER-28 point 2 SQL
+- id: Q2
+  file: woow_document_management/models/quota.py
+  functions: [_usage_bytes]
+  note: deduplicated attachment bytes (arch 6.4 Q2)
+- id: Q3
+  file: woow_document_management/models/document_folder.py
+  functions: [init]
+  note: fixed-string DDL, folder name unique index
+- id: Q3
+  file: woow_document_management/models/document_log.py
+  functions: [init]
+  note: fixed-string DDL, denied bucket unique index (ER-28 point 1)
+- id: Q4
+  file: woow_document_management/services/locks.py
+  functions: [try_lock, lock, bounded_wait]
+  note: pg_try_advisory_xact_lock, pg_advisory_xact_lock, current_setting / set_config lock_timeout
+- id: Q5
+  file: woow_document_management/models/quota.py
+  functions: [_bytes_if_new]
+  note: checksum already stored (arch 6.4 Q5)
+- id: Q6
+  file: woow_document_management/models/ir_attachment.py
+  functions: ['*']   # any function of the guard file (the contract names the file only)
+  note: module field attachments among the written ids (arch 6.4 Q6)
