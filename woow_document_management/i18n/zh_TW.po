@@ -1,0 +1,9 @@
+# Traditional Chinese translation of woow_document_management (placeholder).
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 18.0\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Language: zh_TW\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
