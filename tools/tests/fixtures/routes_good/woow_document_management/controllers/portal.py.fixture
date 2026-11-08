@@ -1,0 +1,32 @@
+from odoo import http
+from odoo.addons.portal.controllers.portal import CustomerPortal
+
+from . import streaming
+
+
+class WoowDocumentPortal(CustomerPortal):
+    def _prepare_home_portal_values(self, counters):
+        return super()._prepare_home_portal_values(counters)
+
+    @http.route(['/my/docs', '/my/docs/page/<int:page>'], type='http', auth='user', website=True, methods=['GET'])
+    def portal_my_docs(self, page=1, **kw):
+        return streaming.uniform_404('page')
+
+    @http.route(['/my/docs/folder/<int:folder_id>', '/my/docs/folder/<int:folder_id>/page/<int:page>'],
+                type='http', auth='user', website=True, methods=['GET'])
+    def portal_my_docs_folder(self, folder_id, page=1, **kw):
+        return streaming.uniform_404('page')
+
+    @http.route(['/my/docs/file/<int:document_id>', '/my/docs/file/<int:document_id>/download'],
+                type='http', auth='user', website=True, methods=['GET'])
+    def portal_my_docs_file(self, document_id, **kw):
+        return streaming.uniform_404('page')
+
+    @http.route('/my/docs/folder/<int:folder_id>/zip', type='http', auth='user', website=True, methods=['GET'])
+    def portal_my_docs_zip(self, folder_id, **kw):
+        return streaming.uniform_404('page')
+
+    @http.route('/my/docs/folder/<int:folder_id>/upload', type='http', auth='user', website=True,
+                methods=['POST'], max_content_length=95 * 1024 * 1024)
+    def portal_my_docs_upload(self, folder_id, **post):
+        return streaming.uniform_404('page')

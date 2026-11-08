@@ -1,0 +1,28 @@
+# Python and editors
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+.coverage
+htmlcov/
+
+# Never commit (security_and_sweep 9; enforced by tools/check_sweep_config.py)
+.playwright-cli/
+playwright-report/
+test-results/
+*.log
+*.sql
+*.dump
+.env*
+odoo.conf
+*.pem
+*.key
+.claude/
+.omnigent*/
+runs/
+report.md
+tmp/

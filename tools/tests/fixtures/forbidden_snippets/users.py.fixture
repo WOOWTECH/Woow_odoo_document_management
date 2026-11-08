@@ -1,0 +1,4 @@
+#! target=woow_document_management/models/x.py expect=F-USERS
+def f(self, user):
+    self.env['res.users'].create({'login': 'synthetic'})
+    user.write({'groups_id': [(4, 1)]})

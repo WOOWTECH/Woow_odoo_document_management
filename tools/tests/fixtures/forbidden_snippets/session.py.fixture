@@ -1,0 +1,5 @@
+#! target=woow_document_management/controllers/x.py expect=F-SESSION
+def f(request):
+    request.session.uid = 2
+    request.session.authenticate('db', {'login': 'x'})
+    request.session.finalize(request.env)

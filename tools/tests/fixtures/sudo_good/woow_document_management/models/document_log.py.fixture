@@ -1,0 +1,9 @@
+from odoo import api, models
+
+
+class WoowDocumentLog(models.Model):
+    _name = 'woow.document.log'
+
+    @api.model
+    def _log_event(self, event, **kw):
+        return self.sudo().create({'event': event})  # sudo-ok: S1

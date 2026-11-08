@@ -1,0 +1,22 @@
+from odoo import http
+
+from . import streaming
+
+
+class WoowDocumentController(http.Controller):
+    @http.route('/woow_document/upload', type='http', auth='user', methods=['POST'],
+                max_content_length=95 * 1024 * 1024)
+    def woow_upload(self, **post):
+        return streaming.uniform_404('page')
+
+    @http.route('/woow_document/doc/<int:document_id>/download', type='http', auth='user', methods=['GET'])
+    def woow_download(self, document_id, **kw):
+        return streaming.uniform_404('page')
+
+    @http.route('/woow_document/doc/<int:document_id>/preview', type='http', auth='user', methods=['GET'])
+    def woow_preview(self, document_id, **kw):
+        return streaming.uniform_404('page')
+
+    @http.route('/woow_document/zip', type='http', auth='user', methods=['GET'])
+    def woow_zip(self, document_ids='', folder_ids='', **kw):
+        return streaming.uniform_404('page')

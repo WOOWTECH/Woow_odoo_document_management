@@ -1,0 +1,13 @@
+#! target=woow_document_management/controllers/x.py expect=F-REDIRECT
+import werkzeug
+from odoo.http import Response
+
+
+def f(request, post):
+    request.redirect_query(post.get('next'))
+    werkzeug.utils.redirect(post.get('next'))
+    Response('', status=302, headers={'Location': post.get('next')})
+    Response('', status=302, headers=[('Location', post.get('next'))])
+    response = Response('')
+    response.headers['Location'] = post.get('next')
+    return response

@@ -1,0 +1,3 @@
+#! target=woow_document_management/services/locks.py expect=SQL-LOCK-HASH
+def advisory_key(name):
+    return hash('woow_zip:' + name)

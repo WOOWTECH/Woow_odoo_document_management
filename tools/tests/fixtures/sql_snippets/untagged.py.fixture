@@ -1,0 +1,6 @@
+#! target=woow_document_management/models/quota.py expect=SQL-UNTAGGED
+class Q:
+    _name = 'woow.document.quota'
+
+    def _usage_bytes(self):
+        self.env.cr.execute('SELECT 1')

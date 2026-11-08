@@ -1,0 +1,2 @@
+#! target=woow_document_management/views/x.xml expect=F-BLANK
+<odoo><template id="t"><a href="/x" target="_blank">x</a></template></odoo>

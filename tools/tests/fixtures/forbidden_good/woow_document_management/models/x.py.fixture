@@ -1,0 +1,6 @@
+from odoo.exceptions import AccessError
+
+
+def f(template, rec):
+    template.send_mail(rec.id, force_send=False)
+    raise AccessError('no')

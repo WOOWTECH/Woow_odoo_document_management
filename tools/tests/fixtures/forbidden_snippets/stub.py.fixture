@@ -1,0 +1,3 @@
+#! target=woow_document_management/models/x.py expect=F-STUB
+def f():
+    raise NotImplementedError  # WOOW-STUB

@@ -1,0 +1,39 @@
+from odoo import api, models
+
+
+class WoowDocument(models.Model):
+    _name = 'woow.document'
+
+    def action_trash(self):
+        """Trash."""
+        self.check_access('write')
+        return True
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        return super().create(vals_list)
+
+    def copy(self, default=None):
+        raise ValueError('no copy')
+
+    def _private(self):
+        return 1
+
+
+class WoowDocumentFolder(models.Model):
+    _inherit = 'woow.document.folder'
+
+    def action_notify_members(self):
+        if not self._woow_has_rank(4):
+            raise ValueError('no')
+        return {}
+
+    def action_restore(self):
+        raise NotImplementedError  # WOOW-STUB
+
+
+class Settings(models.AbstractModel):
+    _name = 'woow.document.settings'
+
+    def _get_settings(self):
+        return {}

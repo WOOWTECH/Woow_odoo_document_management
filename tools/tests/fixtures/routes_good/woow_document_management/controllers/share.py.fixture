@@ -1,0 +1,44 @@
+from odoo import http
+from odoo.http import request
+
+from . import streaming
+
+
+class WoowDocShareController(http.Controller):
+    def _share_entry(self, **kw):
+        return streaming.uniform_404('share')
+
+    @http.route('/woow-docs/s', type='http', auth='public', methods=['GET'])
+    def share_landing(self, **kw):
+        """Landing page."""
+        return request.render('woow_document_management.share_landing', {'csrf': request.csrf_token()})
+
+    @http.route('/woow-docs/s/open', type='http', auth='public', methods=['POST'])
+    def share_open(self, **post):
+        access = self._share_entry(token=post.get('token') or post.get('link') or '')
+        return access
+
+    @http.route('/woow-docs/s/<int:share_id>', type='http', auth='public', methods=['GET'])
+    def share_page(self, share_id, **kw):
+        access = self._share_entry(share_id=share_id)
+        return access
+
+    @http.route('/woow-docs/s/<int:share_id>/unlock', type='http', auth='public', methods=['POST'])
+    def share_unlock(self, share_id, **post):
+        access = self._share_entry(share_id=share_id, require_unlocked=False)
+        return access
+
+    @http.route('/woow-docs/s/<int:share_id>/file/<int:document_id>', type='http', auth='public', methods=['GET'])
+    def share_file(self, share_id, document_id, **kw):
+        access = self._share_entry(share_id=share_id)
+        return access
+
+    @http.route('/woow-docs/s/<int:share_id>/zip', type='http', auth='public', methods=['GET'])
+    def share_zip(self, share_id, **kw):
+        access = self._share_entry(share_id=share_id)
+        return access
+
+    @http.route('/woow-docs/s/<int:share_id>/close', type='http', auth='public', methods=['POST'])
+    def share_close(self, share_id, **post):
+        self._share_entry(share_id=share_id, resolve=False)
+        return streaming.uniform_404('share')

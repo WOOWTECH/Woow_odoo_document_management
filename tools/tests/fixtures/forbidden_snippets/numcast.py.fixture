@@ -1,0 +1,3 @@
+#! target=woow_document_management/controllers/x.py expect=F-NUMCAST
+def f(kw):
+    return float(kw.get('n'))

@@ -1,0 +1,3 @@
+#! target=woow_document_management/models/x.py expect=F-TOKEN-API
+def f(att):
+    return att.generate_access_token()

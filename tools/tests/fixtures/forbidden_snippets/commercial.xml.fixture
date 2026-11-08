@@ -1,0 +1,2 @@
+#! target=woow_document_management/security/rules.xml expect=F-COMMERCIAL
+<odoo><record id="r" model="ir.rule"><field name="domain_force">[('partner_id', '=', user.commercial_partner_id.id)]</field></record></odoo>

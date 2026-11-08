@@ -1,0 +1,9 @@
+#! target=woow_document_management/models/x.py expect=PUBM-OVERRIDE
+from odoo import models
+
+
+class X(models.Model):
+    _inherit = 'woow.document'
+
+    def write(self, vals):
+        return True

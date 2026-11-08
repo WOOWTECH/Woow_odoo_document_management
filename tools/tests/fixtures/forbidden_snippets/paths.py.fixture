@@ -1,0 +1,9 @@
+#! target=woow_document_management/services/x.py expect=F-PATH
+import os
+import tempfile
+
+
+def f(name):
+    open(name)
+    os.path.join('/tmp', name)
+    tempfile.NamedTemporaryFile(prefix=name)

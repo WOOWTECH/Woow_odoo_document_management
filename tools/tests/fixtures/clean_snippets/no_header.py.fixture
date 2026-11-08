@@ -1,0 +1,2 @@
+#! target=woow_document_management/models/b.py expect=CLEAN-HEADER
+LABEL = 'x'

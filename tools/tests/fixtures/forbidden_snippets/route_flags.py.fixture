@@ -1,0 +1,8 @@
+#! target=woow_document_management/controllers/x.py expect=F-ROUTE
+from odoo import http
+
+
+class C(http.Controller):
+    @http.route('/x', auth='none', csrf=False, type='json')
+    def x(self):
+        return 1

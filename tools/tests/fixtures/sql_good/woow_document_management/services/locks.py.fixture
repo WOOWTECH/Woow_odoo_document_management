@@ -1,0 +1,13 @@
+from odoo.tools import SQL
+
+
+def try_lock(cr, name):
+    cr.execute('SELECT pg_try_advisory_xact_lock(%s)', [1])  # sql-ok: Q4
+    return cr.fetchone()[0]
+
+
+def lock(cr, name, timeout_ms=5000):
+    query = 'SELECT pg_advisory_xact_lock(%s)'
+    cr.execute("SELECT set_config('lock_timeout', %s, true)", ['5000ms'])  # sql-ok: Q4
+    cr.execute(query, [1])  # sql-ok: Q4
+    cr.execute(SQL('SELECT current_setting(%s)', 'lock_timeout'))  # sql-ok: Q4

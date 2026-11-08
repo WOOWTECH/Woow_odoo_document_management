@@ -1,0 +1,3 @@
+#! target=woow_document_management/models/x.py expect=F-MAIL-TEMPLATE
+def f(self):
+    self.env['mail.template'].create({'name': 'x'})

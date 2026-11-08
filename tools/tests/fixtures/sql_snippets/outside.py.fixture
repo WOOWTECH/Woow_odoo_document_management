@@ -1,0 +1,3 @@
+#! target=woow_document_management/models/document.py expect=SQL-NOT-ALLOWED
+def _x(self):
+    self.env.cr.execute('SELECT 1')  # sql-ok: Q1

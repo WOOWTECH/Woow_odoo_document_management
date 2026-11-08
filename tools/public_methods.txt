@@ -1,0 +1,46 @@
+# Public (RPC-callable) methods of the module (interface_contracts 4.9; read by check_public_methods.py).
+# One "model::method" per line. Lines starting with # are comments.
+#
+# [public]: the first statement (after the docstring) must call check_access(, _woow_has_rank(,
+# _woow_require_rank(, has_group( or _require_manager(.
+# [override]: overrides of core public methods (fnmatch patterns); they must call super() or raise.
+# AbstractModels have no other public method, and @api.model public methods are only allowed
+# in [override].
+
+[public]
+woow.document::action_trash
+woow.document::action_restore
+woow.document::action_purge
+woow.document::action_set_legal_hold
+woow.document::action_download_zip
+woow.document::action_open_share_wizard
+woow.document::action_open_move_wizard
+woow.document.folder::action_trash
+woow.document.folder::action_restore
+woow.document.folder::action_purge
+woow.document.folder::action_set_legal_hold
+woow.document.folder::action_download_zip
+woow.document.folder::action_open_share_wizard
+woow.document.folder::action_open_move_wizard
+woow.document.folder::action_notify_members
+woow.document.share::action_revoke
+woow.document.share::action_reissue
+woow.document.share.wizard::action_create_links
+woow.document.move.wizard::action_move
+woow.document.restore.wizard::action_restore_to
+woow.document.purge.wizard::action_confirm_purge
+woow.document.add.attachment.wizard::action_add
+woow.document.notify.wizard::action_send
+
+[override]
+*::create
+*::write
+*::unlink
+*::copy
+*::init
+woow.document::message_post
+woow.document::message_subscribe
+woow.document.folder::message_post
+woow.document.folder::message_subscribe
+res.config.settings::set_values
+woow.document.*.wizard::default_get

@@ -1,0 +1,4 @@
+# Phrases that must not appear in .po, .xml or .js files (ER-33 point 3). One phrase per line.
+# They are generic words named by the second-round review, not text of any other module.
+共享資料夾
+共享給我的資料夾與檔案

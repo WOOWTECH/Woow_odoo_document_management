@@ -1,0 +1,3 @@
+#! target=woow_document_management/controllers/share.py expect=SUDO-ENV-REUSE
+def leak(share_sudo):
+    return share_sudo.env['woow.document'].search([])

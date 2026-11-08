@@ -1,0 +1,6 @@
+from odoo.tests import TransactionCase
+
+
+class T(TransactionCase):
+    def test_x(self):
+        self.env['res.users'].sudo().search([])

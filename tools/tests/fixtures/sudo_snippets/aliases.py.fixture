@@ -1,0 +1,20 @@
+#! target=woow_document_management/models/document.py expect=SUDO-NOT-ALLOWED
+from odoo import SUPERUSER_ID, api, fields, models
+
+
+class WoowDocument(models.Model):
+    _name = 'woow.document'
+
+    x = fields.Char(compute='_c', compute_sudo=True)
+    y = fields.Char(related='x', related_sudo=True)
+
+    def _aliases(self, rec, request):
+        s = rec.sudo
+        a = self.env(su=True)
+        b = api.Environment(self.env.cr, SUPERUSER_ID, {})
+        c = getattr(rec, 'sudo')
+        d = rec.with_env(a)
+        e = self.env['ir.config_parameter']._get_param('k')
+        request.update_env(user=1)
+        g = self.env(user=1)
+        return s, a, b, c, d, e, g

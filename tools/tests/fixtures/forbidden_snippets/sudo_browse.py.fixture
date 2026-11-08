@@ -1,0 +1,3 @@
+#! target=woow_document_management/controllers/x.py expect=F-SUDO-BROWSE
+def f(self, request, kw):
+    return self.env['woow.document'].sudo().browse(int(kw['id']))

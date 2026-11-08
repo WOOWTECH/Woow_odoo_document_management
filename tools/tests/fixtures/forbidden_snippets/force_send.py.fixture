@@ -1,0 +1,3 @@
+#! target=woow_document_management/models/x.py expect=F-FORCE-SEND
+def f(template, rec):
+    template.send_mail(rec.id, force_send=True)
