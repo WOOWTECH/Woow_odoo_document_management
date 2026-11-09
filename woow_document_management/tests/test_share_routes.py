@@ -421,6 +421,35 @@ class TestShareHttp(HttpCase):
         revoked = self.url_open('/woow-docs/s/%d' % share.id)
         self.assertEqual(revoked.status_code, 404)
 
+    def test_partial_file_download_consumes_one_share_slot(self):
+        admin = self.env.ref('base.user_admin')
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Partial download fixture', 'owner_id': admin.id})
+        doc = self.env['woow.document'].sudo().create({
+            'name': 'partial.txt', 'folder_id': folder.id,
+            'datas': base64.b64encode(b'partial-content')})
+        share, code = self.env['woow.document.share'].with_user(admin)._issue({
+            'share_type': 'folder', 'folder_id': folder.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=1),
+            'max_downloads': 1})
+        landing = self.url_open('/woow-docs/s')
+        csrf = re.search(rb'name="csrf_token"[^>]*value="([^"]+)"', landing.content)
+        self.assertIsNotNone(csrf)
+        opened = self.url_open('/woow-docs/s/open', data={
+            'token': code, 'csrf_token': csrf.group(1).decode()},
+            allow_redirects=False)
+        self.assertEqual(opened.status_code, 303)
+
+        path = '/woow-docs/s/%d/file/%d' % (share.id, doc.id)
+        partial = self.url_open(path, headers={'Range': 'bytes=0-3'})
+        self.assertEqual(partial.status_code, 206)
+        self.assertEqual(partial.content, b'part')
+        self.assertEqual(self.env['woow.document.log'].sudo().search_count([
+            ('share_id', '=', share.id), ('event', '=', 'share_download'),
+            ('result', '=', 'ok')]), 1)
+        blocked = self.url_open(path)
+        self.assertEqual(blocked.status_code, 404)
+
     def test_password_unlock_and_zip_use_the_same_bounded_grant(self):
         admin = self.env.ref('base.user_admin')
         folder = self.env['woow.document.folder'].sudo().create({
