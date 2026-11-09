@@ -50,3 +50,28 @@ class TestAttachmentGuard(TransactionCase):
             attachment.with_user(admin).write({'access_token': 'never-public'})
         with self.assertRaises(AccessError):
             attachment.with_user(admin).write({'public': True})
+
+    def test_context_defaults_cannot_forge_document_field_or_public_link(self):
+        user = self.env['res.users'].sudo().create({
+            'name': 'Restricted attachment user', 'login': 'wdoc-attachment-defaults',
+            'groups_id': [(6, 0, [self.env.ref('base.group_user').id])],
+        })
+        folder = self.env['woow.document.folder'].sudo().create({'name': 'Restricted folder'})
+        attachments = self.env['ir.attachment'].with_user(user)
+        for defaults in (
+            {'default_res_field': 'image_128'},
+            {'default_public': True},
+            {'default_access_token': 'untrusted'},
+        ):
+            with self.subTest(defaults=defaults), self.assertRaises(AccessError):
+                attachments.with_context(default_res_model='woow.document.folder',
+                                         default_res_id=folder.id, **defaults).create({
+                                             'name': 'blocked.txt', 'raw': b'blocked',
+                                             'type': 'binary', 'mimetype': 'text/plain',
+                                         })
+        with self.assertRaises(AccessError):
+            attachments.with_context(default_res_model='woow.document.folder',
+                                     default_res_id=folder.id).create({
+                                         'name': 'blocked.txt', 'raw': b'blocked',
+                                         'type': 'binary', 'mimetype': 'text/plain',
+                                     })

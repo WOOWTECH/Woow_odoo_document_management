@@ -41,8 +41,10 @@ def _save_grant(share, grant):
 class WoowDocShareController(http.Controller):
 
     def _denied(self, ip, share_id=None, event='share_access'):
-        count = request.env['woow.document.log']._log_event(
+        log = request.env['woow.document.log']
+        log._log_event(
             event, result='denied', channel='share', share_id=share_id, ip=ip)
+        count = log._count_denied_across_shares(event, ip)
         if count > request.env['woow.document.settings']._get_settings().denied_rate_per_min:
             request.env['woow.document.log']._log_event(
                 'rate_limited', result='denied', channel='share', share_id=share_id, ip=ip)
@@ -213,7 +215,8 @@ class WoowDocShareController(http.Controller):
                 company_id=share.company_id.id, ip=access.ip,
                 detail={'zip': 1, 'files': stats.files, 'bytes': stats.bytes})
 
-        return streaming.zip_response(docs, channel='share', share_id=share.id,
+        return streaming.zip_response(docs, root_folder=share.folder_id if share.share_type == 'folder' else None,
+                                      channel='share', share_id=share.id,
                                       ip_hash=access.ip_hash, before_build=before_build,
                                       before_stream=before_stream)
 

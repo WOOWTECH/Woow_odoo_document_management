@@ -173,6 +173,71 @@ class TestShareScope(TransactionCase):
 @tagged('woow_docmgmt_share_http')
 class TestShareHttp(HttpCase):
 
+    def test_denied_rate_limit_is_shared_by_unknown_and_valid_link_ids(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.denied_rate_per_min', '3')
+        self.env['woow.document.log'].sudo().search([
+            ('event', '=', 'share_access'), ('result', '=', 'denied')]).unlink()
+        admin = self.env.ref('base.user_admin')
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Rate limit fixture', 'owner_id': admin.id})
+        share, _code = self.env['woow.document.share'].with_user(admin)._issue({
+            'share_type': 'folder', 'folder_id': folder.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        unknown = share.id + 1000000
+        for _ in range(3):
+            self.assertEqual(self.url_open('/woow-docs/s/%d' % unknown).status_code, 404)
+        # A valid ID without a session grant must use the same IP counter.
+        self.assertEqual(self.url_open('/woow-docs/s/%d' % share.id).status_code, 429)
+
+    def test_folder_share_zip_hides_ancestor_folder_name(self):
+        admin = self.env.ref('base.user_admin')
+        ancestor = self.env['woow.document.folder'].sudo().create({
+            'name': 'Private ancestor marker', 'owner_id': admin.id})
+        root = self.env['woow.document.folder'].sudo().create({
+            'name': 'Shared root', 'parent_id': ancestor.id, 'owner_id': admin.id})
+        self.env['woow.document'].sudo().create({
+            'name': 'shared.txt', 'folder_id': root.id,
+            'datas': base64.b64encode(b'content')})
+        share, code = self.env['woow.document.share'].with_user(admin)._issue({
+            'share_type': 'folder', 'folder_id': root.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        landing = self.url_open('/woow-docs/s')
+        csrf = re.search(rb'name="csrf_token"[^>]*value="([^"]+)"', landing.content)
+        self.assertIsNotNone(csrf)
+        opened = self.url_open('/woow-docs/s/open', data={
+            'token': code, 'csrf_token': csrf.group(1).decode()},
+            allow_redirects=False)
+        self.assertEqual(opened.status_code, 303)
+        response = self.url_open('/woow-docs/s/%d/zip' % share.id)
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            self.assertEqual(archive.namelist(), ['Shared root/shared.txt'])
+            self.assertEqual(archive.read('Shared root/shared.txt'), b'content')
+
+    def test_document_list_share_zip_has_no_folder_path(self):
+        admin = self.env.ref('base.user_admin')
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Unshared ancestor marker', 'owner_id': admin.id})
+        doc = self.env['woow.document'].sudo().create({
+            'name': 'shared.txt', 'folder_id': folder.id,
+            'datas': base64.b64encode(b'content')})
+        share, code = self.env['woow.document.share'].with_user(admin)._issue({
+            'share_type': 'documents', 'document_ids': [(6, 0, [doc.id])],
+            'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        landing = self.url_open('/woow-docs/s')
+        csrf = re.search(rb'name="csrf_token"[^>]*value="([^"]+)"', landing.content)
+        self.assertIsNotNone(csrf)
+        opened = self.url_open('/woow-docs/s/open', data={
+            'token': code, 'csrf_token': csrf.group(1).decode()},
+            allow_redirects=False)
+        self.assertEqual(opened.status_code, 303)
+        response = self.url_open('/woow-docs/s/%d/zip' % share.id)
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            self.assertEqual(archive.namelist(), ['shared.txt'])
+            self.assertEqual(archive.read('shared.txt'), b'content')
+
     def test_concurrent_zip_downloads_respect_one_use_limit(self):
         """T-SHARE-32: two separate sessions race for one remaining ZIP download."""
         admin = self.env.ref('base.user_admin')

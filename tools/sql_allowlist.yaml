@@ -53,6 +53,10 @@ entries:
   file: woow_document_management/models/document_log.py
   functions: [_count_share_unlock_failures]
   note: creator-scoped aggregate of denied share unlock attempts without exposing restricted IP hashes
+- id: Q13
+  file: woow_document_management/models/document_log.py
+  functions: [_count_denied_across_shares]
+  note: per-IP denied-event aggregate across share ids, preventing a share existence oracle
 - id: Q10
   file: woow_document_management/models/quota.py
   functions: [_check]

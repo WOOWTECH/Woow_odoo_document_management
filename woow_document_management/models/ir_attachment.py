@@ -15,12 +15,23 @@ class IrAttachment(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        if not self.env.su and any(
-                vals.get('res_model') in WOOW_MODELS and (
-                    vals.get('res_field') or vals.get('public') or 'access_token' in vals)
-                for vals in vals_list):
-            raise AccessError(_('Document attachments must be created through the document.'))
-        return super().create(vals_list)
+        # Core checks only explicit res_model/res_id before ORM defaults are applied.
+        # Resolve the same defaults now, so contextual values cannot bypass either
+        # the document guard or core's write check on the target record.
+        keys = ('res_model', 'res_id', 'res_field', 'public', 'access_token')
+        defaults = self.default_get(list(keys))
+        checked = []
+        for incoming in vals_list:
+            effective = {key: incoming.get(key, defaults.get(key)) for key in keys}
+            if not self.env.su and effective['res_model'] in WOOW_MODELS and (
+                    effective['res_field'] or effective['public'] or effective['access_token']):
+                raise AccessError(_('Document attachments must be created through the document.'))
+            vals = dict(incoming)
+            for key in ('res_model', 'res_id'):
+                if key not in vals and key in defaults:
+                    vals[key] = defaults[key]
+            checked.append(vals)
+        return super().create(checked)
 
     def write(self, vals):
         if not self.env.su and any(key in vals for key in GUARDED_WRITE_KEYS):

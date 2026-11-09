@@ -187,8 +187,11 @@ def zip_response(documents, *, folders=None, root_folder=None, channel, share_id
         for doc in docs:
             path_ids = tuple(int(part) for part in (doc.folder_id.parent_path or '').split('/')
                              if part.isdigit())
-            parts = folding.zip_segments(root_folder.id if root_folder else None,
-                                         path_ids, readable)
+            # A document-list share has no common root: flatten it rather than
+            # exposing ancestor folder names outside the granted documents.
+            parts = (() if channel == 'share' and not root_folder else
+                     folding.zip_segments(root_folder.id if root_folder else None,
+                                          path_ids, readable))
             if root_folder and not parts:
                 continue
             name = sanitize_segment(doc.name, _('Document'))

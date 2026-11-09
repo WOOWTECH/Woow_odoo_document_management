@@ -229,6 +229,22 @@ class TestFolderCreation(TransactionCase):
 @tagged('woow_docmgmt_core')
 class TestDocumentCreation(TransactionCase):
 
+    def test_move_does_not_store_source_folder_in_chatter_tracking(self):
+        admin = self.env.ref('base.user_admin')
+        source = self.env['woow.document.folder'].sudo().create({
+            'name': 'Private source marker', 'owner_id': admin.id})
+        target = self.env['woow.document.folder'].sudo().create({
+            'name': 'Shared target', 'owner_id': admin.id})
+        doc = self.env['woow.document'].sudo().create({
+            'name': 'moved.txt', 'folder_id': source.id,
+            'datas': base64.b64encode(b'content')})
+        doc.with_user(admin).write({'folder_id': target.id})
+        tracked = doc.sudo().message_ids.mapped('tracking_value_ids')
+        self.assertFalse(any(value.field_id.name == 'folder_id' for value in tracked))
+        self.assertNotIn(source.name, ' '.join(
+            value.old_value_char or '' for value in tracked))
+
+
     def setUp(self):
         super().setUp()
         self.folder = self.env['woow.document.folder'].sudo().create({'name': 'Upload root'})

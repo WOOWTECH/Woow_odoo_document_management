@@ -55,6 +55,20 @@ class WoowDocumentLog(models.Model):
         return int(rows[0].get('count') or 0) if rows else 0
 
     @api.model
+    def _count_denied_across_shares(self, event, ip):
+        """Rate-limit one IP across all share IDs without revealing link existence."""
+        if event not in ('share_access', 'share_unlock_failed') or not isinstance(ip, str):
+            raise ValueError('Invalid denied counter request.')
+        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, ip)
+        self.flush_model(['count', 'bucket_minute', 'ip_hash', 'event', 'result'])
+        self.env.cr.execute(  # sql-ok: Q13
+            """SELECT COALESCE(SUM(count), 0) FROM woow_document_log
+               WHERE event = %s AND result = 'denied' AND ip_hash = %s
+                 AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
+            (event, digest))
+        return int(self.env.cr.fetchone()[0])
+
+    @api.model
     def _count_share_unlock_failures(self, share_id, *, since, ip_hash=None):
         """Return a count for a share visible to its creator without exposing IP hashes.
 
