@@ -1,4 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <data noupdate="1">
+    <record id="mail_template_woow_document_share_link" model="mail.template">
+      <field name="name">Document share link</field>
+      <field name="model_id" ref="model_woow_document_share"/>
+      <field name="subject">A document link was shared with you</field>
+      <field name="body_html" type="html">
+        <div>
+          <p>A document link is available:</p>
+          <p><a t-att-href="ctx.get('woow_share_url')"><t t-out="ctx.get('woow_share_url')"/></a></p>
+          <p t-if="ctx.get('woow_share_note')"><t t-out="ctx.get('woow_share_note')"/></p>
+          <p>This link has an expiry date. Contact the sender if it has expired.</p>
+        </div>
+      </field>
+    </record>
+    <record id="mail_template_woow_document_member_notice" model="mail.template">
+      <field name="name">Document folder notice</field>
+      <field name="model_id" ref="model_woow_document_folder"/>
+      <field name="subject">A document folder was shared with you</field>
+      <field name="body_html" type="html">
+        <div>
+          <p>A document folder is available:</p>
+          <p><a t-att-href="ctx.get('woow_notice_url')"><t t-out="ctx.get('woow_notice_url')"/></a></p>
+          <p t-if="ctx.get('woow_notice_note')"><t t-out="ctx.get('woow_notice_note')"/></p>
+        </div>
+      </field>
+    </record>
+  </data>
+</odoo>

@@ -1,15 +1,12 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""Real client IP (IF-IP, owned by settings-ip).
-
-Pure Python, does not import odoo.models. Day-0 stub: only the peer address is trusted;
-``truncate_ip`` and ``hmac_ip`` are final pure functions (interface_contracts 21.8 item 4).
-"""
+"""Real client IP from a configured and trusted proxy chain (IF-IP)."""
 from __future__ import annotations
 
 import hashlib
 import hmac
 import ipaddress
+import re
 from collections.abc import Mapping
 
 HEADERS: tuple[str, ...] = ('', 'CF-Connecting-IP', 'X-Real-IP', 'X-Forwarded-For')
@@ -17,18 +14,58 @@ HEADERS: tuple[str, ...] = ('', 'CF-Connecting-IP', 'X-Real-IP', 'X-Forwarded-Fo
 
 def parse_trusted_proxies(raw: str) -> tuple:
     """Comma or whitespace separated CIDRs; any invalid item -> () (only the peer is trusted)."""
-    return ()  # WOOW-STUB
+    parts = re.split(r'[,\s]+', (raw or '').strip())
+    if not parts or parts == ['']:
+        return ()
+    try:
+        return tuple(ipaddress.ip_network(part, strict=False) for part in parts)
+    except ValueError:
+        return ()
+
+
+def _address(value):
+    try:
+        return ipaddress.ip_address(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _trusted(address, networks):
+    return any(address in network for network in networks)
 
 
 def client_ip(environ: Mapping[str, str], trusted: tuple, header: str) -> str:
-    """Client IP (arch section 15). Day-0 stub: the peer REMOTE_ADDR only."""
-    return environ.get('REMOTE_ADDR') or ''  # WOOW-STUB
+    """Use forwarding headers only when the immediate peer is trusted."""
+    peer = _address(environ.get('REMOTE_ADDR', ''))
+    if peer is None:
+        return ''
+    fallback = str(peer)
+    if header not in HEADERS or not header or not _trusted(peer, trusted):
+        return fallback
+    key = 'HTTP_' + header.upper().replace('-', '_')
+    value = environ.get(key, '')
+    if header != 'X-Forwarded-For':
+        address = _address(value)
+        return str(address) if address is not None else fallback
+    parts = [part.strip() for part in str(value).split(',')]
+    addresses = [_address(part) for part in parts]
+    if not parts or any(address is None for address in addresses):
+        return fallback
+    for address in reversed(addresses):
+        if not _trusted(address, trusted):
+            return str(address)
+    return fallback
 
 
 def request_client_ip(httprequest, settings) -> str:
     """Client IP of an HTTP request, using the environ before ProxyFix (CA-14)."""
-    environ = httprequest.environ.get('werkzeug.proxy_fix.orig') or httprequest.environ
-    return environ.get('REMOTE_ADDR') or ''  # WOOW-STUB
+    environ = httprequest.environ
+    original = environ.get('werkzeug.proxy_fix.orig')
+    if isinstance(original, Mapping) and original.get('REMOTE_ADDR'):
+        # ProxyFix's orig mapping contains the socket peer but omits headers.
+        # Keep the request headers while restoring only that trusted boundary.
+        environ = {**environ, 'REMOTE_ADDR': original['REMOTE_ADDR']}
+    return client_ip(environ, settings.trusted_proxies, settings.client_ip_header)
 
 
 def truncate_ip(ip: str) -> str:

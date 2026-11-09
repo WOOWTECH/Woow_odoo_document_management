@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <record id="view_woow_document_purge_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.purge.wizard.form</field>
+    <field name="model">woow.document.purge.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Delete permanently">
+        <group>
+          <field name="document_ids" widget="many2many_tags" readonly="1"/>
+          <field name="folder_ids" widget="many2many_tags" readonly="1"/>
+          <field name="confirm"/>
+        </group>
+        <footer>
+          <button name="action_confirm_purge" string="Delete permanently" type="object"
+                  class="btn-danger" invisible="not confirm"/>
+          <button string="Cancel" special="cancel" class="btn-secondary"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>

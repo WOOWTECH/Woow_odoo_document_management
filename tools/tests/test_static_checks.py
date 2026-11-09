@@ -198,6 +198,21 @@ class TestCheckSudo(ToolCase):
         violations = [v for v in self.run_tool('sudo') if v.rule == 'SUDO-S2-SHAPE']
         self.assertEqual(len(violations), 3, [str(v) for v in violations])
 
+    def test_s2_conditional_lookup_allows_only_token_hash_or_id(self):
+        self.tree('sudo_good')
+        source = '''class ShareService:
+    _inherit = 'woow.document.share'
+    def _resolve_request_access(self, token=None, share_id=None):
+        share_sudo = self.sudo().search([('token_hash', '=', token)] if token else [('id', '=', share_id)], limit=1)  # sudo-ok: S2
+        scope_env = share_sudo.with_user(share_sudo.create_uid).with_context(allowed_company_ids=[share_sudo.company_id.id]).env  # sudo-drop: S2
+        return share_sudo, scope_env
+'''
+        self.put(W + 'models/share_service.py', source)
+        self.assertClean('sudo', g1=True)
+        self.put(W + 'models/share_service.py', source.replace(
+            "('id', '=', share_id)", "('create_uid', '=', share_id)"))
+        self.assertRule('sudo', 'SUDO-S2-SHAPE')
+
     def test_share_sudo_env_reuse_rejected(self):
         """T-STAT-19: <name>_sudo.env is rejected anywhere."""
         self.tree('sudo_good')
@@ -1010,12 +1025,13 @@ class TestRepo(unittest.TestCase):
         """IF-SKEL 2.3: tests/__init__.py imports the 35 regression test files and test_perf."""
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         expected = sorted(os.path.basename(p)[:-3] for p in cfg['verify']['regression_tests']
-                          if p.startswith(W)) + ['test_perf']
+                          if p.startswith(W)) + ['test_perf', 'test_core_assumptions_http',
+                                                  'test_core_assumptions_access']
         tree = ast.parse(_read(os.path.join(REPO, W + 'tests/__init__.py')))
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 36)
+        self.assertEqual(len(imported), 38)
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""

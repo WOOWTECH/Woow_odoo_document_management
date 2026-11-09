@@ -1,9 +1,6 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""Share link schema (IF-SHARE-SCHEMA, owned by core-models-acl).
-
-Day-0 stub, fail closed: non-superuser create/write are refused.
-"""
+"""Share link schema and immutable scope/secret guards."""
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError
 
@@ -40,23 +37,37 @@ class WoowDocumentShare(models.Model):
     sent_at = fields.Datetime()
     replaced_share_id = fields.Many2one('woow.document.share', ondelete='set null')
 
+    def init(self):
+        super().init()
+        self.env.cr.execute(  # sql-ok: Q3
+            'CREATE UNIQUE INDEX IF NOT EXISTS woow_document_share_token_hash_uniq '
+            'ON woow_document_share (token_hash)')
+
     @api.depends('password_hash')
     def _compute_has_password(self):
-        """Day-0 stub: True, so links always ask for a password (fail closed)."""
-        for share in self:  # WOOW-STUB
-            share.has_password = True
+        for share in self:
+            share.has_password = bool(share.password_hash)
 
     @api.model_create_multi
     def create(self, vals_list):
         """Secret fields only with the sentinel context; _check_create_rights per record."""
-        if not self.env.su:
-            raise AccessError(_('This action is not available yet.'))  # WOOW-STUB
+        trusted = self.env.context.get(SECRET_CTX_KEY) is _SECRET_SENTINEL
+        for vals in vals_list:
+            if not self.env.su and not trusted and {'token_hash', 'password_hash'} & vals.keys():
+                raise AccessError(_('Share secrets can only be set by the share wizard.'))
+            self._check_create_rights(vals)
         return super().create(vals_list)
 
     def write(self, vals):
         """Non-superusers may only rename or shorten expire_at."""
         if not self.env.su:
-            raise AccessError(_('This action is not available yet.'))  # WOOW-STUB
+            if set(vals) - {'name', 'expire_at'}:
+                raise AccessError(_('This share field cannot be changed.'))
+            if 'expire_at' in vals:
+                new_expiry = fields.Datetime.to_datetime(vals['expire_at'])
+                if not new_expiry or any(
+                        new_expiry > share.expire_at for share in self):
+                    raise AccessError(_('A share expiry can only be shortened.'))
         return super().write(vals)
 
     def _check_create_rights(self, vals):
@@ -65,4 +76,9 @@ class WoowDocumentShare(models.Model):
 
     def _woow_mark_revoked(self):
         """Mark the link revoked (caller already ran check_access('write'))."""
-        raise NotImplementedError  # WOOW-STUB
+        for share in self:
+            if not share.revoked_at:
+                super(WoowDocumentShare, share).write({
+                    'revoked_at': fields.Datetime.now(),
+                    'revoked_by_id': self.env.uid, 'state': 'revoked',
+                })

@@ -21,6 +21,14 @@ entries:
   file: woow_document_management/models/document_log.py
   functions: [init]
   note: fixed-string DDL, denied bucket unique index (ER-28 point 1)
+- id: Q3
+  file: woow_document_management/models/document_tag.py
+  functions: [init]
+  note: fixed-string DDL, active tag name and company unique index
+- id: Q3
+  file: woow_document_management/models/document_share.py
+  functions: [init]
+  note: fixed-string DDL, share token hash unique index
 - id: Q4
   file: woow_document_management/services/locks.py
   functions: [try_lock, lock, bounded_wait]
@@ -33,3 +41,27 @@ entries:
   file: woow_document_management/models/ir_attachment.py
   functions: ['*']   # any function of the guard file (the contract names the file only)
   note: module field attachments among the written ids (arch 6.4 Q6)
+- id: Q7
+  file: woow_document_management/models/folder_access.py
+  functions: [_check_member]
+  note: count all folder grants under access transaction lock, regardless of record rules
+- id: Q8
+  file: woow_document_management/models/folder_access.py
+  functions: [_lock_folders]
+  note: force serializable row-version conflict under repeatable read before grant insert
+- id: Q9
+  file: woow_document_management/models/document_log.py
+  functions: [_count_share_unlock_failures]
+  note: creator-scoped aggregate of denied share unlock attempts without exposing restricted IP hashes
+- id: Q10
+  file: woow_document_management/models/quota.py
+  functions: [_check]
+  note: quota setting row version barrier after advisory lock under repeatable read
+- id: Q11
+  file: woow_document_management/models/share_service.py
+  functions: [_woow_send_link]
+  note: sender row version barrier before hourly share mail count under repeatable read
+- id: Q12
+  file: woow_document_management/models/share_service.py
+  functions: [_download_slot_available]
+  note: share row version barrier before file and ZIP download count under repeatable read

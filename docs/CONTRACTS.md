@@ -1573,19 +1573,22 @@ share_sudo = self.sudo().search([('token_hash', '=', h)], limit=1)   # sudo-ok: 
 def zip_response(documents, *, folders=None, root_folder=None,
                  channel: Literal['backend', 'portal', 'share'],
                  share_id: int | None = None, ip_hash: str | None = None,
+                 before_build: 'Callable[[], Response | None] | None' = None,
                  before_stream: 'Callable[[ZipStats], Response | None] | None' = None) -> Response:
     """…（原文保留）…
-    順序：取 zip 鎖（zip:s 或 zip:u）→ 取 slot → 用 stored file_size 檢查上限並算出預估的 ZipStats(files, bytes, links)
-    → 如果有 before_stream，就呼叫 before_stream(stats)：回傳 Response 時，關閉暫存檔並原樣 return 那個 Response（不讀任何 bytes）；
-      回傳 None 才繼續 → build_zip → 串流。
-    channel == 'share' 時，before_stream 必填（沒有就 AssertionError）。"""
+    順序：取 zip 鎖（zip:s 或 zip:u）→ 取 slot → 檢查候選文件筆數及讀取權限
+    → before_build() 在任何檔案讀取、壓縮與暫存檔建立之前取得 share 鎖並檢查下載次數；
+      回傳 Response 時直接拒絕，None 才繼續 → 用 stored file_size 檢查上限並 build_zip
+    → before_stream(actual_stats) 記錄成功下載事件 → 串流。
+    channel == 'share' 時兩個 callback 都必填（沒有就 AssertionError）；
+    share 鎖持有到交易結束，故建檔期間沒有另一個請求可超額。"""
 ```
 
 §10.3 `share_zip` docstring，換成：
-> `zip_response(docs, channel='share', share_id=…, ip_hash=…, before_stream=cb)`。cb(stats) 依序做：`lock(cr, 'share:<id>')`（rank 2，在 zip 鎖之後）→ 在 scope_env 計算 share_download 的 ok 筆數，和 max_downloads 比對，超過就 return uniform_404('share') → 記 `share_download`，detail 是 `{"zip": 1, "files": stats.files, "bytes": stats.bytes}` → return None。LockBusy → return service_busy()。取鎖順序：zip:s → slot → share（IC-R11）。
+> `zip_response(docs, channel='share', share_id=…, ip_hash=…, before_build=preflight, before_stream=record)`。preflight() 依序做：`lock(cr, 'share:<id>')`（rank 2，在 zip 鎖之後）→ 在 scope_env 計算 share_download 的 ok 筆數，和 max_downloads 比對，超過就 return uniform_404('share')；record(actual_stats) 在建檔成功後記 `share_download`，detail 是 `{"zip": 1, "files": stats.files, "bytes": stats.bytes}`。LockBusy 由 zip_response 轉成 service_busy()。取鎖順序：zip:s → slot → share（IC-R11）。
 
 §19 #29 解法末尾加：
-> 由 `zip_response(before_stream=…)` 實作（L4 提供掛鉤，L5 提供 callback）。
+> 由 `zip_response(before_build=…, before_stream=…)` 實作（L4 提供掛鉤，L5 提供 callback）。
 
 ## B5：單一擁有權
 §3 最後一列「controllers（L4、L5、L7）」的 stub 行為，換成：

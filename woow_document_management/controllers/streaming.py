@@ -8,7 +8,24 @@ MAX_UPLOAD_BODY, max_upload_body and apply_common_headers are final.
 """
 from __future__ import annotations
 
+import base64
+import io
 import json
+import tempfile
+from contextlib import closing
+
+from odoo import _
+from odoo.exceptions import AccessError, MissingError, UserError, ValidationError
+from odoo.http import request
+from werkzeug.wsgi import wrap_file
+
+from ..models.upload_policy import WoowUploadRejected
+from ..services import folding
+from ..services.constants import ZIP_SPOOL_MAX_BYTES
+from ..services.locks import LockBusy, lock, try_lock
+from ..services.naming import sanitize_segment
+from ..services.zip_builder import (ZipEntry, ZipLimitExceeded, build_zip,
+                                    filestore_stream, limits_from_settings)
 
 from odoo.http import Response
 
@@ -45,44 +62,185 @@ def _fixed(body: bytes, status: int, kind: str):
 
 def uniform_404(kind):
     """Uniform 404 (I-07): same status and body bytes for every failure of one kind."""
-    return _fixed(b'<!DOCTYPE html><title>404</title>', 404,
-                  'share' if kind == 'share' else 'page')  # WOOW-STUB
+    if kind not in ('share', 'page'):
+        raise ValueError('invalid response kind')
+    body = request.env['ir.ui.view']._render_template(
+        'woow_document_management.uniform_404_' + kind, {})
+    return _fixed(body.encode('utf-8') if isinstance(body, str) else body, 404, kind)
 
 
 def too_many_requests():
     """429 after repeated failures (M-66)."""
-    return _fixed(b'<!DOCTYPE html><title>429</title>', 429, 'page')  # WOOW-STUB
+    body = request.env['ir.ui.view']._render_template(
+        'woow_document_management.too_many_requests_page', {})
+    return _fixed(body.encode('utf-8') if isinstance(body, str) else body, 429, 'page')
 
 
 def service_busy():
     """503 when a lock could not be taken in time (M-45)."""
-    return _fixed(b'<!DOCTYPE html><title>503</title>', 503, 'page')  # WOOW-STUB
+    body = request.env['ir.ui.view']._render_template(
+        'woow_document_management.service_busy_page', {})
+    return _fixed(body.encode('utf-8') if isinstance(body, str) else body, 503, 'page')
 
 
 def limit_page(message_id, status, **params):
     """ZIP limit or busy page (M-41..M-44)."""
-    return _fixed(b'<!DOCTYPE html><title>%d</title>' % int(status), int(status),
-                  'page')  # WOOW-STUB
+    if message_id not in ('M-41', 'M-42', 'M-43', 'M-44') or status not in (400, 429, 503):
+        raise ValueError('invalid limit page')
+    body = request.env['ir.ui.view']._render_template(
+        'woow_document_management.zip_limit_page', {'status': status})
+    return _fixed(body.encode('utf-8') if isinstance(body, str) else body, status, 'page')
 
 
 def json_response(payload, status=200):
     """application/json with no-store and nosniff."""
     response = Response(json.dumps(payload), status=status,
                         content_type='application/json; charset=utf-8')
-    return apply_common_headers(response, 'json')  # WOOW-STUB
+    return apply_common_headers(response, 'json')
 
 
 def serve(doc, *, inline, channel, event, share_id=None):
     """Stream one document (caller already checked access in the right env)."""
-    raise NotImplementedError  # WOOW-STUB
+    try:
+        if len(doc) != 1 or doc.document_type != 'binary' or not doc.active or doc.folder_in_trash:
+            return uniform_404('share' if channel == 'share' else 'page')
+        policy = doc.env['woow.document.upload.policy']
+        mimetype = policy._served_mimetype(doc)
+        stream = doc.env['ir.binary']._get_stream_from(
+            doc, 'datas', filename=doc.name, mimetype=mimetype)
+        stream.download_name = stream.download_name.replace('\r', '_').replace('\n', '_')
+        response = stream.get_response(
+            as_attachment=not (inline and channel != 'share' and policy._inline_allowed(mimetype)),
+            content_security_policy="default-src 'none'; sandbox")
+        apply_common_headers(response, 'file')
+        if channel == 'share':
+            response.headers['Referrer-Policy'] = 'no-referrer'
+            response.headers['X-Robots-Tag'] = 'noindex, nofollow'
+        if event:
+            doc.env['woow.document.log']._log_event(
+                event, channel=channel, document_id=doc.id, folder_id=doc.folder_id.id,
+                share_id=share_id, company_id=doc.company_id.id)
+        return response
+    except (AccessError, MissingError):
+        return uniform_404('share' if channel == 'share' else 'page')
 
 
 def create_batch(folder, uploads, *, channel):
     """Create all uploaded files in one savepoint; any failure rolls the whole batch back."""
-    raise NotImplementedError  # WOOW-STUB
+    try:
+        limit = folder.env['woow.document.settings']._get_settings().max_files_per_upload
+        if not uploads or len(uploads) > limit:
+            return json_response({'ok': False, 'message': _('Invalid number of files.'),
+                                  'errors': []}, 400)
+        vals = []
+        for upload in uploads:
+            vals.append({'name': upload.filename, 'folder_id': folder.id,
+                         'datas': base64.b64encode(upload.read()).decode('ascii')})
+        with folder.env.cr.savepoint():
+            documents = folder.env['woow.document'].create(vals)
+        return json_response({'ok': True, 'document_ids': documents.ids})
+    except LockBusy:
+        return service_busy()
+    except (AccessError, MissingError):
+        return uniform_404('page')
+    except WoowUploadRejected as exc:
+        return json_response({'ok': False, 'message': str(exc),
+                              'errors': [{'index': 0, 'code': exc.code, 'message': str(exc)}]}, 400)
+    except (ValidationError, UserError) as exc:
+        return json_response({'ok': False, 'message': str(exc),
+                              'errors': [{'index': 0, 'code': 'invalid', 'message': str(exc)}]}, 400)
 
 
 def zip_response(documents, *, folders=None, root_folder=None, channel, share_id=None,
-                 ip_hash=None, before_stream=None):
-    """Build and stream a ZIP file under the zip locks (before_stream hook for share links)."""
-    raise NotImplementedError  # WOOW-STUB
+                 ip_hash=None, before_build=None, before_stream=None):
+    """Build and stream a ZIP under zip locks; share preflight runs before file reads."""
+    env = documents.env
+    archive = None
+    try:
+        if channel == 'share':
+            if not share_id or not ip_hash or len(ip_hash) < 16:
+                return uniform_404('share')
+            lock(env.cr, 'zip:s:%d:%s' % (share_id, ip_hash[:16]))
+        else:
+            lock(env.cr, 'zip:u:%d' % env.uid)
+        settings = env['woow.document.settings']._get_settings()
+        slot = next((slot for slot in range(1, settings.zip_concurrency + 1)
+                     if try_lock(env.cr, 'zip:slot:%d' % slot)), None)
+        if slot is None:
+            return limit_page('M-43', 429)
+        if len(documents) > settings.zip_max_files:
+            return limit_page('M-41', 400)
+        documents.check_access('read')
+        if channel == 'share' and (before_build is None or before_stream is None):
+            raise AssertionError('share ZIP callbacks required')
+        if before_build:
+            rejected = before_build()
+            if rejected is not None:
+                return rejected
+        docs = documents.filtered(lambda doc: doc.active and not doc.folder_in_trash)
+        all_folders = env['woow.document.folder'].search([
+            ('id', 'in', [int(part) for doc in docs for part in
+                          (doc.folder_id.parent_path or '').split('/') if part.isdigit()])])
+        readable = {folder.id: sanitize_segment(folder.name, _('Folder')) for folder in all_folders}
+        entries = []
+        links = []
+        for doc in docs:
+            path_ids = tuple(int(part) for part in (doc.folder_id.parent_path or '').split('/')
+                             if part.isdigit())
+            parts = folding.zip_segments(root_folder.id if root_folder else None,
+                                         path_ids, readable)
+            if root_folder and not parts:
+                continue
+            name = sanitize_segment(doc.name, _('Document'))
+            if doc.document_type == 'url':
+                links.append(doc.url)
+                continue
+            if doc.document_type != 'binary':
+                continue
+            stream = env['ir.binary']._get_stream_from(
+                doc, 'datas', filename=doc.name,
+                mimetype=env['woow.document.upload.policy']._served_mimetype(doc))
+            if stream.type == 'path':
+                open_stream = lambda path=stream.path: filestore_stream(path)
+            elif stream.type == 'data':
+                open_stream = lambda data=stream.data: io.BytesIO(data)
+            else:
+                return uniform_404('share' if channel == 'share' else 'page')
+            entries.append(ZipEntry((*parts, name), open_stream, int(doc.file_size),
+                                    not (doc.mimetype or '').startswith(('image/', 'application/zip',
+                                                                 'application/pdf'))))
+        archive = tempfile.SpooledTemporaryFile(max_size=ZIP_SPOOL_MAX_BYTES)
+        stats = build_zip(entries, limits_from_settings(settings), archive, links)
+        if before_stream:
+            rejected = before_stream(stats)
+            if rejected is not None:
+                return rejected
+        if channel != 'share':
+            env['woow.document.log']._log_event(
+                'zip', channel=channel,
+                company_id=env.company.id,
+                detail={'files': stats.files, 'bytes': stats.bytes})
+        archive.seek(0, 2)
+        length = archive.tell()
+        archive.seek(0)
+        response = Response(wrap_file(request.httprequest.environ, archive), status=200,
+                            content_type='application/zip', direct_passthrough=True)
+        response.headers['Content-Length'] = str(length)
+        response.headers['Content-Disposition'] = 'attachment; filename="documents.zip"'
+        response.call_on_close(archive.close)
+        archive = None
+        apply_common_headers(response, 'file')
+        if channel == 'share':
+            response.headers['Referrer-Policy'] = 'no-referrer'
+            response.headers['X-Robots-Tag'] = 'noindex, nofollow'
+        return response
+    except LockBusy:
+        return service_busy()
+    except ZipLimitExceeded as exc:
+        return limit_page('M-44' if exc.code == 'deadline' else 'M-41',
+                          503 if exc.code == 'deadline' else 400)
+    except (AccessError, MissingError):
+        return uniform_404('share' if channel == 'share' else 'page')
+    finally:
+        if archive is not None:
+            archive.close()

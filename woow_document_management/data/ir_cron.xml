@@ -1,4 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <data noupdate="1">
+    <record id="ir_cron_woow_document_purge_trash" model="ir.cron">
+      <field name="name">Documents: Purge old trash</field>
+      <field name="model_id" ref="model_woow_document"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_purge_trash()</field>
+      <field name="user_id" ref="base.user_root"/>
+      <field name="interval_number">1</field>
+      <field name="interval_type">days</field>
+    </record>
+    <record id="ir_cron_woow_document_share_maintenance" model="ir.cron">
+      <field name="name">Documents: Expire and clean share links</field>
+      <field name="model_id" ref="model_woow_document"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_share_maintenance()</field>
+      <field name="user_id" ref="base.user_root"/>
+      <field name="interval_number">1</field>
+      <field name="interval_type">hours</field>
+    </record>
+    <record id="ir_cron_woow_document_quota" model="ir.cron">
+      <field name="name">Documents: Check storage quota</field>
+      <field name="model_id" ref="model_woow_document"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_quota()</field>
+      <field name="user_id" ref="base.user_root"/>
+      <field name="interval_number">1</field>
+      <field name="interval_type">days</field>
+    </record>
+    <record id="ir_cron_woow_document_log_retention" model="ir.cron">
+      <field name="name">Documents: Clear expired audit logs</field>
+      <field name="model_id" ref="model_woow_document"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_log_retention()</field>
+      <field name="user_id" ref="base.user_root"/>
+      <field name="interval_number">1</field>
+      <field name="interval_type">weeks</field>
+    </record>
+  </data>
+</odoo>

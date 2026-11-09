@@ -1,4 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <record id="view_woow_document_add_attachment_wizard" model="ir.ui.view">
+    <field name="name">woow.document.add.attachment.wizard.form</field>
+    <field name="model">woow.document.add.attachment.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Add to Documents">
+        <group><field name="folder_id" required="1"/></group>
+        <footer>
+          <button name="action_add" type="object" string="Add" class="btn-primary"/>
+          <button string="Cancel" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+  <record id="action_woow_document_add_attachment_wizard" model="ir.actions.act_window">
+    <field name="name">Add to Documents</field>
+    <field name="res_model">woow.document.add.attachment.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_woow_document_add_attachment_wizard"/>
+    <field name="target">new</field>
+    <field name="binding_model_id" ref="base.model_ir_attachment"/>
+    <field name="binding_view_types">list</field>
+    <field name="groups_id" eval="[(4, ref('group_woow_document_user')), (4, ref('group_woow_document_attachment_overview'))]"/>
+  </record>
+</odoo>

@@ -1,4 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+    <template id="uniform_404_page" name="Document unavailable">
+        <html><head><title>Document unavailable</title></head><body><h1>Document unavailable</h1></body></html>
+    </template>
+    <template id="uniform_404_share" name="Share unavailable">
+        <html><head><title>Link unavailable</title></head><body><h1>Link unavailable</h1></body></html>
+    </template>
+    <template id="too_many_requests_page" name="Too many requests">
+        <html><head><title>Try again later</title></head><body><h1>Try again later</h1></body></html>
+    </template>
+    <template id="service_busy_page" name="Service busy">
+        <html><head><title>Service busy</title></head><body><h1>Service busy</h1></body></html>
+    </template>
+    <template id="zip_limit_page" name="ZIP limit reached">
+        <html><head><title>ZIP unavailable</title></head><body><h1>ZIP unavailable</h1></body></html>
+    </template>
+</odoo>

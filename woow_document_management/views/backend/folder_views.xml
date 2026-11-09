@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <record id="view_woow_document_folder_list" model="ir.ui.view"><field name="name">woow.document.folder.list</field><field name="model">woow.document.folder</field><field name="arch" type="xml"><list delete="0"><field name="name"/><field name="parent_id"/><field name="owner_id"/><field name="company_id"/></list></field></record>
+  <record id="view_woow_document_folder_form" model="ir.ui.view"><field name="name">woow.document.folder.form</field><field name="model">woow.document.folder</field><field name="arch" type="xml"><form string="Folder" delete="0"><header><button name="action_open_move_wizard" string="Move" type="object"/><button name="action_notify_members" string="Notify members" type="object" invisible="woow_user_rank != 4"/></header><sheet><group><field name="name"/><field name="parent_id"/><field name="owner_id"/><field name="description"/><field name="tag_ids"/><field name="inherit_access"/><field name="access_ids"/></group></sheet><field name="woow_user_rank" invisible="1"/><field name="woow_has_portal_members" invisible="1"/><div class="alert alert-warning" role="alert" invisible="not woow_has_portal_members">This folder has portal members. Messages you send are emailed to every follower, including people outside the company. Use Log note for internal discussion.</div><chatter/></form></field></record>
+  <record id="view_woow_document_folder_search" model="ir.ui.view"><field name="name">woow.document.folder.search</field><field name="model">woow.document.folder</field><field name="arch" type="xml"><search><field name="name"/></search></field></record>
+  <record id="action_woow_document_folder" model="ir.actions.act_window"><field name="name">Folders</field><field name="res_model">woow.document.folder</field><field name="view_mode">list,form</field><field name="domain">[('in_trash', '=', False)]</field></record>
+</odoo>
