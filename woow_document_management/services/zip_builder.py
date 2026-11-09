@@ -1,17 +1,21 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""ZIP building (IF-ZIP, owned by internal-routes-zip).
-
-Pure Python. Day-0 stub: data classes, the exception and ``limits_from_settings`` are final;
-``build_zip`` is a stub.
-"""
+"""Bounded, streaming ZIP construction for files the caller has authorized."""
 from __future__ import annotations
 
 import dataclasses
+import os
+import time
+import zipfile
 from collections.abc import Callable, Sequence
+from contextlib import closing
+from pathlib import Path
 from typing import BinaryIO
 
+from odoo.tools import config
+
 from .constants import MIB, ZIP_DEADLINE_S
+from .naming import dedupe
 
 
 @dataclasses.dataclass(frozen=True)
@@ -49,6 +53,16 @@ class ZipLimitExceeded(Exception):
         self.code = code
 
 
+def filestore_stream(path: str) -> BinaryIO:
+    """Open only an Odoo filestore file, refusing links and paths outside that tree."""
+    root = (Path(config['data_dir']) / 'filestore').resolve(strict=True)
+    candidate = Path(path).resolve(strict=True)
+    if not candidate.is_relative_to(root):
+        raise ValueError('file is outside the filestore')
+    descriptor = os.open(candidate, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    return os.fdopen(descriptor, 'rb')
+
+
 def limits_from_settings(settings) -> ZipLimits:
     """ZipLimits from a WoowDocSettings instance."""
     return ZipLimits(
@@ -61,4 +75,56 @@ def limits_from_settings(settings) -> ZipLimits:
 def build_zip(entries: Sequence[ZipEntry], limits: ZipLimits, fileobj: BinaryIO,
               links: Sequence[str] = ()) -> ZipStats:
     """Write the archive into ``fileobj`` after checking every limit before reading bytes."""
-    raise NotImplementedError  # WOOW-STUB
+    links_payload = ('\n'.join(links) + '\n').encode('utf-8') if links else b''
+    if any('\r' in link or '\n' in link for link in links):
+        raise ValueError('invalid link')
+    file_count = len(entries) + bool(links)
+    announced_bytes = sum(entry.size for entry in entries) + len(links_payload)
+    if file_count > limits.max_files:
+        raise ZipLimitExceeded('files')
+    if any(not entry.path_segments or len(entry.path_segments) > limits.max_depth or
+           any(not part or part in ('.', '..') or '/' in part or '\\' in part
+               for part in entry.path_segments) for entry in entries):
+        raise ZipLimitExceeded('depth')
+    if any(entry.size < 0 for entry in entries) or announced_bytes > limits.max_bytes:
+        raise ZipLimitExceeded('bytes')
+    if links and limits.max_depth < 1:
+        raise ZipLimitExceeded('depth')
+
+    deadline = time.monotonic() + limits.deadline_s
+    seen: dict[tuple[str, ...], list[str]] = {}
+    if links:
+        seen[()] = ['_links.txt']
+    actual_bytes = len(links_payload)
+    with zipfile.ZipFile(fileobj, mode='w', allowZip64=True,
+                         compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        for entry in entries:
+            if time.monotonic() > deadline:
+                raise ZipLimitExceeded('deadline')
+            parent, leaf = entry.path_segments[:-1], entry.path_segments[-1]
+            prior = seen.setdefault(parent, [])
+            unique_leaf = dedupe([*prior, leaf])[-1]
+            prior.append(unique_leaf)
+            arcname = '/'.join((*parent, unique_leaf))
+            info = zipfile.ZipInfo(arcname)
+            info.compress_type = (zipfile.ZIP_DEFLATED if entry.compressible
+                                  else zipfile.ZIP_STORED)
+            with closing(entry.open_stream()) as source, archive.open(
+                    info, mode='w', force_zip64=True) as target:
+                read_bytes = 0
+                while True:
+                    if time.monotonic() > deadline:
+                        raise ZipLimitExceeded('deadline')
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    read_bytes += len(chunk)
+                    actual_bytes += len(chunk)
+                    if read_bytes > entry.size or actual_bytes > limits.max_bytes:
+                        raise ZipLimitExceeded('bytes')
+                    target.write(chunk)
+        if links:
+            if time.monotonic() > deadline:
+                raise ZipLimitExceeded('deadline')
+            archive.writestr('_links.txt', links_payload)
+    return ZipStats(files=file_count, bytes=actual_bytes, links=len(links))

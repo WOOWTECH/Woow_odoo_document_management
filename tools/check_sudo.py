@@ -116,14 +116,24 @@ def _check_s2_shape(src, func, out):
                   and isinstance(outer, ast.Call) and outer.func is search)
             if ok:
                 limit = A.kw(outer, 'limit')
-                ok = (len(outer.args) == 1 and isinstance(outer.args[0], ast.List)
-                      and len(outer.args[0].elts) == 1 and isinstance(limit, ast.Constant)
+                ok = (len(outer.args) == 1 and isinstance(limit, ast.Constant)
                       and limit.value == 1 and len(outer.keywords) == 1)
             if ok:
-                cond = outer.args[0].elts[0]
-                ok = (isinstance(cond, ast.Tuple) and len(cond.elts) == 3
-                      and A.const_str(cond.elts[0]) in ('token_hash', 'id')
-                      and A.const_str(cond.elts[1]) == '=')
+                domain = outer.args[0]
+                def fixed_field(node):
+                    if not isinstance(node, ast.List) or len(node.elts) != 1:
+                        return None
+                    cond = node.elts[0]
+                    if not isinstance(cond, ast.Tuple) or len(cond.elts) != 3 \
+                            or A.const_str(cond.elts[1]) != '=':
+                        return None
+                    field = A.const_str(cond.elts[0])
+                    return field if field in ('token_hash', 'id') else None
+                if isinstance(domain, ast.IfExp):
+                    # Exactly two fixed equality probes may share one S2-a call.
+                    ok = {fixed_field(domain.body), fixed_field(domain.orelse)} == {'token_hash', 'id'}
+                else:
+                    ok = fixed_field(domain) is not None
             if not ok:
                 out.append(A.Violation(path, node.lineno, 'SUDO-S2-SHAPE',
                                        "S2-a must be self.sudo().search([('token_hash'|'id', '=', v)], limit=1)"))

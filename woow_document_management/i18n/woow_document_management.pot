@@ -1,8 +1,2539 @@
-# Translation template of woow_document_management (generated later).
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* woow_document_management
+#
 msgid ""
 msgstr ""
-"Project-Id-Version: Odoo Server 18.0\n"
+"Project-Id-Version: Woow Document Management 18.0.1.0.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-08 00:59+0000\n"
+"PO-Revision-Date: 2026-11-08 01:03+0000\n"
+"Last-Translator: \n"
+"Language-Team: WoowTech\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
-"Plural-Forms: \n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
+msgid "%(added)s added; %(rejected)s rejected. %(reasons)s"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid ".%(ext)s files aren't accepted here."
+msgstr ""
+
+#. module: woow_document_management
+#: model:mail.template,body_html:woow_document_management.mail_template_woow_document_member_notice
+msgid ""
+"<div>\n"
+"          <p>A document folder is available:</p>\n"
+"          <p><a t-att-href=\"ctx.get('woow_notice_url')\"><t t-out=\"ctx.get('woow_notice_url')\"/></a></p>\n"
+"          <p t-if=\"ctx.get('woow_notice_note')\"><t t-out=\"ctx.get('woow_notice_note')\"/></p>\n"
+"        </div>\n"
+"      "
+msgstr ""
+
+#. module: woow_document_management
+#: model:mail.template,body_html:woow_document_management.mail_template_woow_document_share_link
+msgid ""
+"<div>\n"
+"          <p>A document link is available:</p>\n"
+"          <p><a t-att-href=\"ctx.get('woow_share_url')\"><t t-out=\"ctx.get('woow_share_url')\"/></a></p>\n"
+"          <p t-if=\"ctx.get('woow_share_note')\"><t t-out=\"ctx.get('woow_share_note')\"/></p>\n"
+"          <p>This link has an expiry date. Contact the sender if it has expired.</p>\n"
+"        </div>\n"
+"      "
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+msgid "<span> / </span>"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/trash_actions.py:0
+msgid "A document administrator must trash this folder."
+msgstr ""
+
+#. module: woow_document_management
+#: model:mail.template,subject:woow_document_management.mail_template_woow_document_member_notice
+msgid "A document folder was shared with you"
+msgstr ""
+
+#. module: woow_document_management
+#: model:mail.template,subject:woow_document_management.mail_template_woow_document_share_link
+msgid "A document link was shared with you"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "A document on legal hold cannot be deleted."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "A document share email could not be delivered"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "A file cannot also be a link."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "A folder cannot be moved below itself."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/folder_access.py:0
+msgid "A folder cannot have more than 500 members."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "A folder name is required."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "A link cannot also contain a file."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/folder_access.py:0
+msgid "A member cannot be granted more access than on the parent folder."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "A password is required for share links."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/notify_wizard.py:0
+msgid "A selected member is no longer authorized."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_share.py:0
+msgid "A share expiry can only be shortened."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "A source can only be set by the attachment wizard."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__access_ids
+msgid "Access"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.module.category,description:woow_document_management.module_category_woow_document
+msgid "Access to folders, documents and share links."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Access, audit and retention"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_needaction
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_needaction
+msgid "Action Needed"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__active
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__active
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__active
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__state__active
+msgid "Active"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_ids
+msgid "Activities"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_exception_decoration
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_exception_decoration
+msgid "Activity Exception Decoration"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_state
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_state
+msgid "Activity State"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_type_icon
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_type_icon
+msgid "Activity Type Icon"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_add_attachment_wizard
+msgid "Add"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_add_attachment_wizard
+msgid "Add attachments to a folder"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_add_attachment_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_add_attachment_wizard
+msgid "Add to Documents"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__all_members
+msgid "All Members"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_tag_create_policy__users
+msgid "All document users"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Allow HTTP document links"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Allow document users to create root folders"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_ir_attachment
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__attachment_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__attachment_ids
+msgid "Attachment"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_attachment_count
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_attachment_count
+msgid "Attachment Count"
+msgstr ""
+
+#. module: woow_document_management
+#: model:res.groups,name:woow_document_management.group_woow_document_attachment_overview
+msgid "Attachment Overview"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_attachment_overview
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_attachment_overview
+msgid "Attachment overview"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
+msgid "Attachments imported"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Audit IP display"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_log
+msgid "Audit log"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Audit retention (days)"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_file
+msgid "Back to documents"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__backend
+msgid "Backend"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_home_woow_docs
+msgid "Browse folders and files shared with you"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__bucket_minute
+msgid "Bucket Minute"
+msgstr ""
+
+#. module: woow_document_management
+#: model:res.groups,comment:woow_document_management.group_woow_document_attachment_overview
+msgid "Can open the overview of attachments stored on other records."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_add_attachment_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_move_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_notify_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_purge_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_restore_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_wizard_form
+msgid "Cancel"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "Cannot move a document between companies."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Cannot move a folder between companies."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Cannot move a folder into the trash."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/move_wizard.py:0
+msgid "Cannot move items between companies."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "Changing the document type is not supported."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__channel
+msgid "Channel"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__checksum
+msgid "Checksum/SHA1"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__child_ids
+msgid "Child"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/folder_access.py:0
+msgid "Choose a contact with an active portal account."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/folder_access.py:0
+msgid "Choose a document user."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/restore_wizard.py:0
+msgid "Choose an available folder."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/folder_access.py:0
+msgid "Choose an internal group."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Client IP header"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__cf-connecting-ip
+msgid "Cloudflare address"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__color
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__color
+msgid "Color"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__company_id
+msgid "Company"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__complete_name
+msgid "Complete Name"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Concurrent ZIP jobs"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_res_config_settings
+msgid "Config Settings"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_config
+msgid "Configuration"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/notify_wizard.py:0
+msgid "Configure a public HTTPS address for document notices."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "Configure a public HTTPS address for share links."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__confirm
+msgid "Confirm"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/purge_wizard.py:0
+msgid "Confirm permanent deletion of the selected items."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/share_result/share_result.xml:0
+msgid "Copy"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/share_result/share_result.xml:0
+msgid "Copy these links now. They will not be shown again."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__count
+msgid "Count"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_wizard_form
+msgid "Create links"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_share_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_wizard_form
+msgid "Create share links"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__create_uid
+msgid "Created by"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__create_date
+msgid "Created on"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__cron
+msgid "Cron"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__datas
+msgid "Datas"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Default link lifetime (days)"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_purge_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_purge_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_trash_document_list
+msgid "Delete permanently"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_trash_documents
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_deleted_files
+msgid "Deleted files"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__purge
+msgid "Deleted permanently"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__result__denied
+msgid "Denied"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__description
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__description
+msgid "Description"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__detail
+msgid "Detail"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__display_name
+msgid "Display Name"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/controllers/streaming.py:0
+#: model:ir.model,name:woow_document_management.model_woow_document
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__document_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__document_ids
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form
+msgid "Document"
+msgstr ""
+
+#. module: woow_document_management
+#: model:res.groups,name:woow_document_management.group_woow_document_manager
+msgid "Document Administrator"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__document_count
+msgid "Document Count"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__document_properties_definition
+msgid "Document Properties Definition"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__document_type
+msgid "Document Type"
+msgstr ""
+
+#. module: woow_document_management
+#: model:res.groups,name:woow_document_management.group_woow_document_user
+msgid "Document User"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_tag_create_policy__managers
+msgid "Document administrators"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_share_link_policy__managers_only
+msgid "Document administrators only"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/ir_attachment.py:0
+msgid "Document attachment access cannot be changed directly."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/ir_attachment.py:0
+msgid "Document attachments must be created through the document."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_log
+msgid "Document audit log"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/ir_attachment.py:0
+msgid "Document field attachments cannot be reassigned."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/ir_attachment.py:0
+msgid "Document file attachments cannot be changed directly."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_folder
+msgid "Document folder"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_folder_access
+msgid "Document folder member"
+msgstr ""
+
+#. module: woow_document_management
+#: model:mail.template,name:woow_document_management.mail_template_woow_document_member_notice
+msgid "Document folder notice"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_guard_mixin
+msgid "Document management guard"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_settings
+msgid "Document management settings reader"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_config_settings
+msgid "Document settings"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_share
+#: model:mail.template,name:woow_document_management.mail_template_woow_document_share_link
+msgid "Document share link"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/quota.py:0
+msgid "Document storage capacity warning"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/quota.py:0
+msgid "Document storage is %(pct)s%% full."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid ""
+"Document storage on this site is %(pct)s%% full, so new files can't be "
+"added. Ask your administrator to free up space or raise the limit."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_quota
+msgid "Document storage quota"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_tag
+msgid "Document tag"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.uniform_404_page
+msgid "Document unavailable"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_upload_policy
+msgid "Document upload policy"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_document
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__share_type__documents
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share_wizard__share_type__documents
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_document
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_root
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_home_woow_docs
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Documents"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.module.category,name:woow_document_management.module_category_woow_document
+msgid "Documents (WoowTech)"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_quota_ir_actions_server
+msgid "Documents: Check storage quota"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_log_retention_ir_actions_server
+msgid "Documents: Clear expired audit logs"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_share_maintenance_ir_actions_server
+msgid "Documents: Expire and clean share links"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_purge_trash_ir_actions_server
+msgid "Documents: Purge old trash"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_file
+msgid "Download"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__download_count
+msgid "Download Count"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+msgid "Download ZIP"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__download
+msgid "Downloaded"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__zip
+msgid "Downloaded as ZIP"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_download
+msgid "Downloaded through a share link"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/guard_mixin.py:0
+msgid "Duplicating this record is not supported."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__edit
+msgid "Edit"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_edit_group_ids
+msgid "Eff Edit Group"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_edit_user_ids
+msgid "Eff Edit User"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_manage_group_ids
+msgid "Eff Manage Group"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_manage_user_ids
+msgid "Eff Manage User"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_read_group_ids
+msgid "Eff Read Group"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_read_partner_ids
+msgid "Eff Read Partner"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_read_user_ids
+msgid "Eff Read User"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_upload_group_ids
+msgid "Eff Upload Group"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_upload_partner_ids
+msgid "Eff Upload Partner"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_upload_user_ids
+msgid "Eff Upload User"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__effective_access_lines
+msgid "Effective Access Lines"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__effective_restored_at
+msgid "Effective Restored At"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "Enter valid email addresses."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__event
+msgid "Event"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/notify_wizard.py:0
+msgid "Every selected member needs an email address."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__expire_at
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__expire_at
+msgid "Expire At"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__state__expired
+msgid "Expired"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Failed requests per minute"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__document_type__binary
+msgid "File"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__file_size
+msgid "File Size"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "File metadata is set by the server."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__replace
+msgid "File replaced"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Files per request"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
+msgid "Files shared with me"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/controllers/streaming.py:0
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__folder_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__folder_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__folder_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__folder_id
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__share_type__folder
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share_wizard__share_type__folder
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form
+msgid "Folder"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_share_link_policy__folder_managers
+msgid "Folder managers"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+msgid "Folder path"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/notify_wizard.py:0
+msgid "Folder unavailable."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_folder
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_folder
+msgid "Folders"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_follower_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_follower_ids
+msgid "Followers"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_partner_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_partner_ids
+msgid "Followers (Partners)"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__activity_type_icon
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__activity_type_icon
+msgid "Font awesome icon e.g. fa-tasks"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__x-forwarded-for
+msgid "Forwarded chain"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__group_id
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__subject_type__group
+msgid "Group"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__has_message
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__has_message
+msgid "Has Message"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__has_password
+msgid "Has Password"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__has_restricted_descendant
+msgid "Has Restricted Descendant"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Highest supported value is 95 MB."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__id
+msgid "ID"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_exception_icon
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_exception_icon
+msgid "Icon"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__activity_exception_icon
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__activity_exception_icon
+msgid "Icon to indicate an exception activity."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__message_needaction
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_needaction
+msgid "If checked, new messages require your attention."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__message_has_error
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__message_has_sms_error
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_has_error
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_has_sms_error
+msgid "If checked, some messages have a delivery error."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__image_128
+msgid "Image 128"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__folder_in_trash
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__in_trash
+msgid "In Trash"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__include_subfolders
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__include_subfolders
+msgid "Include Subfolders"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Include names in email subjects"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__inherit_access
+msgid "Inherit Access"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Inherited from parent folder"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Internal file limit (MiB)"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/res_config_settings.py:0
+msgid "Invalid document setting: %s"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/controllers/streaming.py:0
+msgid "Invalid number of files."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__ip_display
+msgid "Ip Display"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__ip_hash
+msgid "Ip Hash"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_is_follower
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_is_follower
+msgid "Is Follower"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_log_ip_mode__hash
+msgid "Keyed hash only"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid "Larger than the %(limit)s MB limit."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__write_uid
+msgid "Last Updated by"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__write_date
+msgid "Last Updated on"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__legal_hold
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__legal_hold
+msgid "Legal Hold"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__legal_hold
+msgid "Legal hold changed"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__level
+msgid "Level"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__document_type__url
+msgid "Link"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.uniform_404_share
+msgid "Link unavailable"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_log_form
+msgid "Log"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_log
+msgid "Logs"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__manage
+msgid "Manage"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__max_downloads
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__max_downloads
+msgid "Max Downloads"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Maximum link lifetime (days)"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__access_change
+msgid "Members changed"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_error
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_has_error
+msgid "Message Delivery error"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_ids
+msgid "Messages"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__mimetype
+msgid "Mimetype"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_move_wizard_form
+msgid "Move"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_move_wizard
+msgid "Move documents and folders"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_move_wizard_form
+msgid "Move items"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__move
+msgid "Moved"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__trash
+msgid "Moved to trash"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__my_activity_date_deadline
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__my_activity_date_deadline
+msgid "My Activity Deadline"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__name
+msgid "Name"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+msgid "Next"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_date_deadline
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_date_deadline
+msgid "Next Activity Deadline"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_summary
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_summary
+msgid "Next Activity Summary"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_type_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_type_id
+msgid "Next Activity Type"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "No access"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
+msgid "No attachments were imported: %(reasons)s"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
+msgid "No folders are available."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_log_ip_mode__none
+msgid "Not shown"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__note
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__note
+msgid "Note"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_notify_wizard
+msgid "Notify folder members"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/backend_actions.py:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_notify_wizard_form
+msgid "Notify members"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_needaction_counter
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_needaction_counter
+msgid "Number of Actions"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_error_counter
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_has_error_counter
+msgid "Number of errors"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__message_needaction_counter
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_needaction_counter
+msgid "Number of messages requiring action"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__message_has_error_counter
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_has_error_counter
+msgid "Number of messages with delivery error"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__result__ok
+msgid "Ok"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_wizard_form
+msgid "One email address per line; leave blank for a manual link"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/move_wizard.py:0
+msgid "One or more selected items are unavailable."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/guard_mixin.py:0
+msgid "Only document administrators can do this."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Only document administrators may create a root folder."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_tag.py:0
+msgid "Only document administrators may create tags."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "Only internal users can do this."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/move_wizard.py:0
+msgid "Only internal users may move documents."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/res_config_settings.py:0
+msgid "Only system administrators can change these settings."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.share_landing
+msgid "Open"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.share_landing
+msgid "Open a document link"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_file
+msgid "Open link"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Optional extensions"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__owner_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__owner_id
+msgid "Owner"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+msgid "Pages"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__parent_id
+msgid "Parent"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__parent_path
+msgid "Parent Path"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__partner_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__partner_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__partner_id
+msgid "Partner"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__password
+msgid "Password"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__password_hash
+msgid "Password Hash"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.share_landing
+msgid "Paste the complete link or its code"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__
+msgid "Peer address"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__portal
+msgid "Portal"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__subject_type__partner
+msgid "Portal contact"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_folder_access_portal_max_upload
+msgid "Portal contacts may only view or upload."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Portal file limit (MiB)"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "Portal users cannot modify documents."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Portal users cannot modify folders."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__view
+msgid "Previewed"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+msgid "Previous"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__properties
+msgid "Properties"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Public link base URL"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Quota block percent"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Quota warning percent"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__recipient_email
+msgid "Recipient Email"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__recipient_emails
+msgid "Recipient Emails"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_form
+msgid "Replace link"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__replaced_share_id
+msgid "Replaced Share"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Require a share password"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_user_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_user_id
+msgid "Responsible User"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_restore_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_trash_document_list
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_trash_folder_list
+msgid "Restore"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_restore_wizard_form
+msgid "Restore items"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_restore_wizard
+msgid "Restore to another folder"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__restore
+msgid "Restored"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__restored_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__restored_date
+msgid "Restored Date"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Restricted folder"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__result
+msgid "Result"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__x-real-ip
+msgid "Reverse proxy address"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_form
+msgid "Revoke"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__state__revoked
+msgid "Revoked"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__revoked_at
+msgid "Revoked At"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__revoked_by_id
+msgid "Revoked By"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__rpc
+msgid "Rpc"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_sms_error
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_has_sms_error
+msgid "SMS Delivery error"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Save member changes before disabling inherited access."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Save the new parent before disabling inherited access."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/cron_jobs.py:0
+#: code:addons/woow_document_management/models/quota.py:0
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "Scheduled actions only."
+msgstr ""
+
+#. module: woow_document_management
+#: model:res.groups,comment:woow_document_management.group_woow_document_manager
+msgid ""
+"Sees every folder, manages tags, the trash, legal holds and the audit log."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "Select a share scope."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/move_wizard.py:0
+msgid "Select at least one item to move."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "Select at most 20 distinct recipients."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/notify_wizard.py:0
+msgid "Select between 1 and 100 current members."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "Select between 1 and 500 documents."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "Select documents explicitly."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_folder_access_subject_exactly_one
+msgid "Select exactly one member of the chosen type."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/restore_wizard.py:0
+msgid "Select items to restore."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "Select one folder."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__recipient_ids
+msgid "Selected members"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_notify_wizard_form
+msgid "Send"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__sent_at
+msgid "Sent At"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__sequence
+msgid "Sequence"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.service_busy_page
+msgid "Service busy"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid ""
+"Set a new password through the share wizard before replacing this link."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/notify_wizard.py:0
+msgid "Set a sender email address before notifying members."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "Set a sender email address before sharing documents."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_settings
+msgid "Settings"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__settings_change
+msgid "Settings changed"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__share_id
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__share
+msgid "Share"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__share_type
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__share_type
+msgid "Share Type"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "Share documents"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "Share folder"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_form
+msgid "Share link"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_create
+msgid "Share link created"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_expire
+msgid "Share link expired"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_open
+msgid "Share link opened"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_revoke
+msgid "Share link revoked"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_send
+msgid "Share link sent"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/share_result/share_result.xml:0
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_share
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_share
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_list
+msgid "Share links"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_access
+msgid "Share page viewed"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_share.py:0
+msgid "Share secrets can only be set by the share wizard."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Share session (minutes)"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__shared_partner_ids
+msgid "Shared Partner"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__shared_user_ids
+msgid "Shared User"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.share_page
+msgid "Shared documents"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Sharing"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_log_ip_mode__truncate
+msgid "Shortened address"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/hooks.py:0
+msgid ""
+"Some items are under legal hold. Release every legal hold before "
+"uninstalling."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/purge_wizard.py:0
+msgid "Some selected items could not be deleted."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_display
+msgid "Source Display"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_res_id
+msgid "Source Res"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_res_model
+msgid "Source Res Model"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__state
+msgid "State"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__activity_state
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__activity_state
+msgid ""
+"Status based on activities\n"
+"Overdue: Due date is already passed\n"
+"Today: Activity date is today\n"
+"Planned: Future activities."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Storage quota (MiB, 0 disables)"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__subfolder_count
+msgid "Subfolder Count"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__subject_type
+msgid "Subject Type"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__subtree_legal_hold
+msgid "Subtree Legal Hold"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__subtree_restored_at
+msgid "Subtree Restored At"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__tag_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__tag_ids
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_tag_form
+msgid "Tag"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_tag
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_tag
+msgid "Tags"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__target_folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__target_folder_id
+msgid "Target Folder"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
+msgid "The attachment selection is unavailable."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "The documents are unavailable."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "The download limit is invalid."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid ""
+"The failed share email was removed after 24 hours. Create a new link if the "
+"recipient still needs access."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid "The file was not accepted."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid "The file's content doesn't match its .%(ext)s extension."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "The folder is unavailable."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "The hourly share email limit has been reached."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "The link address is invalid."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "The link address must use HTTPS."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "The share company is unavailable."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "The share expiry is outside the allowed period."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
+msgid "The source has no file content."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+#: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
+#: code:addons/woow_document_management/wizards/move_wizard.py:0
+#: code:addons/woow_document_management/wizards/restore_wizard.py:0
+msgid "The target folder is unavailable."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "This document field is not available to portal users."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/trash_actions.py:0
+msgid "This folder cannot be deleted."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/trash_actions.py:0
+msgid "This folder contains a protected document."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "This folder field cannot be changed directly."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form
+msgid ""
+"This folder has portal members. Messages you send are emailed to every "
+"follower, including people outside the company. Use Log note for internal "
+"discussion."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+msgid "This folder is empty."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_share.py:0
+msgid "This share field cannot be changed."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/hooks.py:0
+msgid ""
+"This site still has documents. Download what you need, then enter the "
+"confirmation code in Documents settings before uninstalling."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__token_hash
+msgid "Token Hash"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__token_hint
+msgid "Token Hint"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__rate_limited
+msgid "Too many failed attempts"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_trash
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_trash
+msgid "Trash"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Trash retention (days)"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__trashed_by_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__trashed_by_id
+msgid "Trashed By"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__trashed_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__trashed_date
+msgid "Trashed Date"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Trusted proxy CIDRs"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.too_many_requests_page
+msgid "Try again later"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__activity_exception_decoration
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__activity_exception_decoration
+msgid "Type of the exception activity on record."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Uninstall confirmation"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "Unknown document type."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.share_password
+msgid "Unlock"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.share_password
+msgid "Unlock a document link"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Unlock attempts"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Unlock cooldown (minutes)"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__upload
+#: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+msgid "Upload"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__upload
+msgid "Uploaded"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__uploaded_by_partner_id
+msgid "Uploaded By Partner"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Uploads and storage"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid ""
+"Uploads are temporarily unavailable because file types can't be verified on "
+"this server. Please contact the office."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__url
+msgid "Url"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__user_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__user_id
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__subject_type__user
+msgid "User"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__user_agent
+msgid "User Agent"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__read
+msgid "View"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__website_message_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__website_message_ids
+msgid "Website Messages"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__website_message_ids
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__website_message_ids
+msgid "Website communication history"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Who may create links"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "Who may create tags"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_allow_http_links
+msgid "Woow Doc Allow Http Links"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_allow_root_create
+msgid "Woow Doc Allow Root Create"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_client_ip_header
+msgid "Woow Doc Client Ip Header"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_denied_rate_per_min
+msgid "Woow Doc Denied Rate Per Min"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_extra_extensions
+msgid "Woow Doc Extra Extensions"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_internal_max_upload_mb
+msgid "Woow Doc Internal Max Upload Mb"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_log_ip_mode
+msgid "Woow Doc Log Ip Mode"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_log_retention_days
+msgid "Woow Doc Log Retention Days"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_mail_subject_include_name
+msgid "Woow Doc Mail Subject Include Name"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_max_files_per_upload
+msgid "Woow Doc Max Files Per Upload"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_portal_max_upload_mb
+msgid "Woow Doc Portal Max Upload Mb"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_quota_block_pct
+msgid "Woow Doc Quota Block Pct"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_quota_mb
+msgid "Woow Doc Quota Mb"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_quota_warn_pct
+msgid "Woow Doc Quota Warn Pct"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_default_days
+msgid "Woow Doc Share Default Days"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_link_base_url
+msgid "Woow Doc Share Link Base Url"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_link_policy
+msgid "Woow Doc Share Link Policy"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_max_days
+msgid "Woow Doc Share Max Days"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_require_password
+msgid "Woow Doc Share Require Password"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_session_minutes
+msgid "Woow Doc Share Session Minutes"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_unlock_cooldown_min
+msgid "Woow Doc Share Unlock Cooldown Min"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_unlock_max_fail
+msgid "Woow Doc Share Unlock Max Fail"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_tag_create_policy
+msgid "Woow Doc Tag Create Policy"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_trash_retention_days
+msgid "Woow Doc Trash Retention Days"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_trusted_proxies
+msgid "Woow Doc Trusted Proxies"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_uninstall_confirm
+msgid "Woow Doc Uninstall Confirm"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_zip_concurrency
+msgid "Woow Doc Zip Concurrency"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_zip_max_depth
+msgid "Woow Doc Zip Max Depth"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_zip_max_files
+msgid "Woow Doc Zip Max Files"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_zip_max_mb
+msgid "Woow Doc Zip Max Mb"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__woow_has_portal_members
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__woow_has_portal_members
+msgid "Woow Has Portal Members"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__woow_user_can_write
+msgid "Woow User Can Write"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__woow_user_rank
+msgid "Woow User Rank"
+msgstr ""
+
+#. module: woow_document_management
+#: model:res.groups,comment:woow_document_management.group_woow_document_user
+msgid "Works in the folders where they are members."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_unlock_failed
+msgid "Wrong share password"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "You cannot assign a different owner."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_share.py:0
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "You cannot create share links."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
+msgid "You cannot import attachments."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "You cannot upload to this folder."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "You do not have enough rights on this folder."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "ZIP maximum files"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "ZIP maximum folder depth"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "ZIP maximum size (MiB)"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.zip_limit_page
+msgid "ZIP unavailable"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "https://example.invalid"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid "mp4, heic"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.module.module,shortdesc:base.module_woow_document_management
+msgid "Woow Document Management"
+msgstr ""

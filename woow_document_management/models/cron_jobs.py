@@ -1,11 +1,15 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""Scheduled actions (IF-CRON, owned by trash-audit-cron). Day-0 stub.
+"""Bounded scheduled maintenance.
 
 Every ``_cron_*`` starts by checking ``self.env.su``.
 """
+from datetime import timedelta
+
 from odoo import _, api, models
+from odoo import fields
 from odoo.exceptions import AccessError
+from ..services.constants import LOG_RETENTION_BATCH, PURGE_BATCH
 
 
 class WoowDocumentCron(models.Model):
@@ -16,25 +20,58 @@ class WoowDocumentCron(models.Model):
         """Daily: purge trash older than trash_retention_days, in batches."""
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
-        raise NotImplementedError  # WOOW-STUB
+        retention = self.env['woow.document.settings']._get_settings().trash_retention_days
+        if not retention:
+            return
+        cutoff = fields.Datetime.to_datetime(fields.Datetime.now()) - timedelta(days=retention)
+        domain = [('active', '=', False), ('trashed_date', '<', cutoff)]
+        folder_domain = domain + [('subtree_legal_hold', '=', False)]
+        document_domain = domain + [('legal_hold', '=', False)]
+        folders = self.env['woow.document.folder'].with_context(active_test=False).search(
+            folder_domain, limit=PURGE_BATCH)
+        documents = self.with_context(active_test=False).search(
+            document_domain, limit=max(0, PURGE_BATCH - len(folders)))
+        done = 0
+        for folder in folders:
+            completed, _failed = folder._woow_purge()
+            done += completed
+        for doc in documents.exists():
+            completed, _failed = doc._woow_purge()
+            done += completed
+        remaining = (self.env['woow.document.folder'].with_context(active_test=False).search_count(
+            folder_domain) + self.with_context(active_test=False).search_count(document_domain))
+        self.env['ir.cron']._notify_progress(done=done, remaining=remaining)
 
     @api.model
     def _cron_share_maintenance(self):
         """Hourly: share link maintenance."""
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
-        raise NotImplementedError  # WOOW-STUB
+        self.env['woow.document.share']._maintenance_run()
+        failed_cutoff = fields.Datetime.to_datetime(fields.Datetime.now()) - timedelta(hours=24)
+        remaining = self.env['mail.mail'].search_count([
+            ('model', '=', 'woow.document.share'), ('state', '=', 'exception'),
+            ('auto_delete', '=', True), ('is_notification', '=', False),
+            ('create_date', '<=', failed_cutoff)])
+        self.env['ir.cron']._notify_progress(done=0, remaining=remaining)
 
     @api.model
     def _cron_log_retention(self):
         """Weekly: delete audit rows older than log_retention_days, in batches."""
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
-        raise NotImplementedError  # WOOW-STUB
+        days = self.env['woow.document.settings']._get_settings().log_retention_days
+        cutoff = fields.Datetime.to_datetime(fields.Datetime.now()) - timedelta(days=days)
+        domain = [('create_date', '<', cutoff)]
+        rows = self.env['woow.document.log'].search(domain, limit=LOG_RETENTION_BATCH)
+        done = len(rows)
+        rows.unlink()
+        self.env['ir.cron']._notify_progress(
+            done=done, remaining=self.env['woow.document.log'].search_count(domain))
 
     @api.model
     def _cron_quota(self):
         """Daily: quota warning."""
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
-        raise NotImplementedError  # WOOW-STUB
+        self.env['woow.document.quota']._cron_check_warn()

@@ -34,6 +34,8 @@ from . import test_backend_wizards
 from . import test_i18n_complete
 from . import test_record_rules
 from . import test_core_assumptions
+from . import test_core_assumptions_http
+from . import test_core_assumptions_access
 from . import test_rpc_exposure
 from . import test_escaping
 from . import test_perf

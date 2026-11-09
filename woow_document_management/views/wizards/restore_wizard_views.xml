@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <record id="view_woow_document_restore_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.restore.wizard.form</field>
+    <field name="model">woow.document.restore.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Restore items">
+        <group>
+          <field name="document_ids" widget="many2many_tags" readonly="1"/>
+          <field name="folder_ids" widget="many2many_tags" readonly="1"/>
+          <field name="target_folder_id" required="1"/>
+        </group>
+        <footer>
+          <button name="action_restore_to" string="Restore" type="object" class="btn-primary"/>
+          <button string="Cancel" special="cancel" class="btn-secondary"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>

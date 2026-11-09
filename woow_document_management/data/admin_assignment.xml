@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo noupdate="1">
+    <function model="res.groups" name="write"
+              eval="[[ref('woow_document_management.group_woow_document_manager')], {'users': [(4, ref('base.user_admin'))]}]"/>
+</odoo>

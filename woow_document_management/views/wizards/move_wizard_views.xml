@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <record id="view_woow_document_move_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.move.wizard.form</field><field name="model">woow.document.move.wizard</field>
+    <field name="arch" type="xml"><form string="Move items"><group><field name="document_ids" readonly="1" widget="many2many_tags"/><field name="folder_ids" readonly="1" widget="many2many_tags"/><field name="target_folder_id" domain="[('in_trash', '=', False)]"/></group><footer><button name="action_move" string="Move" type="object" class="btn-primary"/><button string="Cancel" special="cancel"/></footer></form></field>
+  </record>
+</odoo>

@@ -1,4 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+    <record id="res_config_settings_view_form_woow_document" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.woow.document</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app name="woow_document_management" string="Documents" groups="base.group_system">
+                    <block title="Sharing">
+                        <setting string="Who may create links"><field name="woow_doc_share_link_policy"/></setting>
+                        <setting string="Require a share password"><field name="woow_doc_share_require_password"/></setting>
+                        <setting string="Default link lifetime (days)"><field name="woow_doc_share_default_days"/></setting>
+                        <setting string="Maximum link lifetime (days)"><field name="woow_doc_share_max_days"/></setting>
+                        <setting string="Share session (minutes)"><field name="woow_doc_share_session_minutes"/></setting>
+                        <setting string="Unlock attempts"><field name="woow_doc_share_unlock_max_fail"/></setting>
+                        <setting string="Unlock cooldown (minutes)"><field name="woow_doc_share_unlock_cooldown_min"/></setting>
+                        <setting string="Failed requests per minute"><field name="woow_doc_denied_rate_per_min"/></setting>
+                        <setting string="Public link base URL"><field name="woow_doc_share_link_base_url" placeholder="https://example.invalid"/></setting>
+                    </block>
+                    <block title="Uploads and storage">
+                        <setting string="Portal file limit (MiB)"><field name="woow_doc_portal_max_upload_mb"/></setting>
+                        <setting string="Internal file limit (MiB)" help="Highest supported value is 95 MB."><field name="woow_doc_internal_max_upload_mb"/></setting>
+                        <setting string="Files per request"><field name="woow_doc_max_files_per_upload"/></setting>
+                        <setting string="Optional extensions"><field name="woow_doc_extra_extensions" placeholder="mp4, heic"/></setting>
+                        <setting string="ZIP maximum files"><field name="woow_doc_zip_max_files"/></setting>
+                        <setting string="ZIP maximum size (MiB)"><field name="woow_doc_zip_max_mb"/></setting>
+                        <setting string="ZIP maximum folder depth"><field name="woow_doc_zip_max_depth"/></setting>
+                        <setting string="Concurrent ZIP jobs"><field name="woow_doc_zip_concurrency"/></setting>
+                        <setting string="Storage quota (MiB, 0 disables)"><field name="woow_doc_quota_mb"/></setting>
+                        <setting string="Quota warning percent"><field name="woow_doc_quota_warn_pct"/></setting>
+                        <setting string="Quota block percent"><field name="woow_doc_quota_block_pct"/></setting>
+                    </block>
+                    <block title="Access, audit and retention">
+                        <setting string="Allow document users to create root folders"><field name="woow_doc_allow_root_create"/></setting>
+                        <setting string="Who may create tags"><field name="woow_doc_tag_create_policy"/></setting>
+                        <setting string="Trash retention (days)"><field name="woow_doc_trash_retention_days"/></setting>
+                        <setting string="Audit retention (days)"><field name="woow_doc_log_retention_days"/></setting>
+                        <setting string="Audit IP display"><field name="woow_doc_log_ip_mode"/></setting>
+                        <setting string="Trusted proxy CIDRs"><field name="woow_doc_trusted_proxies"/></setting>
+                        <setting string="Client IP header"><field name="woow_doc_client_ip_header"/></setting>
+                        <setting string="Allow HTTP document links"><field name="woow_doc_allow_http_links"/></setting>
+                        <setting string="Include names in email subjects"><field name="woow_doc_mail_subject_include_name"/></setting>
+                        <setting string="Uninstall confirmation"><field name="woow_doc_uninstall_confirm"/></setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_woow_document_config_settings" model="ir.actions.act_window">
+        <field name="name">Document settings</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'woow_document_management'}</field>
+    </record>
+</odoo>

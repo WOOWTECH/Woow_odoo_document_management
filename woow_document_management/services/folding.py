@@ -19,31 +19,54 @@ def parse_parent_path(parent_path: str) -> tuple[int, ...]:
 
 def fold(path_ids: Sequence[int], readable: Mapping[int, str]) -> list:
     """Readable nodes keep their name; consecutive unreadable nodes collapse into one ellipsis."""
-    return [(None, ELLIPSIS)]  # WOOW-STUB
+    crumbs = []
+    hidden = False
+    for folder_id in path_ids:
+        if folder_id not in readable:
+            if not hidden:
+                crumbs.append((None, ELLIPSIS))
+                hidden = True
+        else:
+            crumbs.append((folder_id, readable[folder_id]))
+            hidden = False
+    return crumbs
 
 
 def display_name(path_ids: Sequence[int], readable: Mapping[int, str],
                  restricted_label: str, sep: str = ' / ') -> str:
     """Folded display name; the restricted label when the node itself is unreadable."""
-    return restricted_label  # WOOW-STUB
+    if not path_ids or path_ids[-1] not in readable:
+        return restricted_label
+    return sep.join(label for _, label in fold(path_ids, readable))
 
 
 def breadcrumb(path_ids: Sequence[int], readable: Mapping[int, str]) -> list:
     """Breadcrumb crumbs, folded like ``fold``."""
-    return [(None, ELLIPSIS)]  # WOOW-STUB
+    return fold(path_ids, readable)
 
 
 def roots(candidates: Mapping[int, tuple[int, ...]]) -> list[int]:
     """Readable folder ids without any readable ancestor."""
-    return []  # WOOW-STUB
+    readable = set(candidates)
+    return [folder_id for folder_id, ancestors in candidates.items()
+            if not (readable - {folder_id}).intersection(ancestors)]
 
 
 def children_of(folder_id: int, candidates: Mapping[int, tuple[int, ...]]) -> list[int]:
     """Readable folder ids whose nearest readable ancestor is ``folder_id``."""
-    return []  # WOOW-STUB
+    readable = set(candidates)
+    return [candidate_id for candidate_id, ancestors in candidates.items()
+            if candidate_id != folder_id and folder_id in ancestors
+            and next((ancestor for ancestor in reversed(ancestors)
+                      if ancestor != candidate_id and ancestor in readable), None) == folder_id]
 
 
 def zip_segments(root_id: int | None, path_ids: Sequence[int],
                  readable: Mapping[int, str]) -> tuple[str, ...]:
     """ZIP path made of readable names only; unreadable levels are skipped (I-08)."""
-    return ()  # WOOW-STUB
+    path = tuple(path_ids)
+    if root_id is not None:
+        if root_id not in path:
+            return ()
+        path = path[path.index(root_id):]
+    return tuple(readable[folder_id] for folder_id in path if folder_id in readable)

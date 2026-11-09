@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <record id="view_woow_document_attachment_overview_list" model="ir.ui.view">
+    <field name="name">ir.attachment.woow.overview.list</field><field name="model">ir.attachment</field>
+    <field name="arch" type="xml"><list create="0" edit="0" delete="0"><field name="name"/><field name="res_model"/><field name="res_id"/><field name="mimetype"/><field name="file_size"/><field name="create_uid"/><field name="create_date"/></list></field>
+  </record>
+  <record id="action_woow_document_attachment_overview" model="ir.actions.act_window">
+    <field name="name">Attachment overview</field><field name="res_model">ir.attachment</field><field name="view_mode">list</field>
+    <field name="view_id" ref="view_woow_document_attachment_overview_list"/>
+    <field name="domain">[('res_model', 'not in', ['woow.document', 'woow.document.folder'])]</field>
+    <field name="groups_id" eval="[(4, ref('group_woow_document_attachment_overview'))]"/>
+  </record>
+</odoo>

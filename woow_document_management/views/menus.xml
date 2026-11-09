@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <menuitem id="menu_woow_document_root" name="Documents" groups="group_woow_document_user,group_woow_document_attachment_overview" sequence="40"/>
+  <menuitem id="menu_woow_document_folder" name="Folders" parent="menu_woow_document_root" action="action_woow_document_folder" groups="group_woow_document_user" sequence="10"/>
+  <menuitem id="menu_woow_document_document" name="Documents" parent="menu_woow_document_root" action="action_woow_document_document" groups="group_woow_document_user" sequence="20"/>
+  <menuitem id="menu_woow_document_share" name="Share links" parent="menu_woow_document_root" action="action_woow_document_share" groups="group_woow_document_user" sequence="30"/>
+  <menuitem id="menu_woow_document_trash" name="Trash" parent="menu_woow_document_root" action="action_woow_document_trash" groups="group_woow_document_user" sequence="40"/>
+  <menuitem id="menu_woow_document_deleted_files" name="Deleted files" parent="menu_woow_document_root" action="action_woow_document_trash_documents" groups="group_woow_document_user" sequence="41"/>
+  <menuitem id="menu_woow_document_attachment_overview" name="Attachment overview" parent="menu_woow_document_root" action="action_woow_document_attachment_overview" groups="group_woow_document_attachment_overview" sequence="50"/>
+  <menuitem id="menu_woow_document_config" name="Configuration" parent="menu_woow_document_root" groups="group_woow_document_manager" sequence="90"/>
+  <menuitem id="menu_woow_document_tag" name="Tags" parent="menu_woow_document_config" action="action_woow_document_tag" groups="group_woow_document_manager" sequence="10"/>
+  <menuitem id="menu_woow_document_log" name="Audit log" parent="menu_woow_document_config" action="action_woow_document_log" groups="group_woow_document_manager" sequence="20"/>
+  <menuitem id="menu_woow_document_settings" name="Settings" parent="menu_woow_document_config" action="action_woow_document_config_settings" groups="base.group_system" sequence="30"/>
+</odoo>

@@ -1,4 +1,258 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright 2026 WoowTech
-     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<!-- Copyright 2026 WoowTech; License LGPL-3.0 or later. -->
+<odoo>
+    <record id="rule_woow_document_folder_company" model="ir.rule">
+        <field name="name">R-F0 rule_woow_document_folder_company</field>
+        <field name="model_id" ref="model_woow_document_folder" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_folder_user_read" model="ir.rule">
+        <field name="name">R-F1 rule_woow_document_folder_user_read</field>
+        <field name="model_id" ref="model_woow_document_folder" />
+        <field name="domain_force">['|', '&amp;', ('in_trash', '=', False), '|', ('eff_read_user_ids', 'in', [user.id]), ('eff_read_group_ids', 'in', user.groups_id.ids), '|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_folder_user_write" model="ir.rule">
+        <field name="name">R-F2 rule_woow_document_folder_user_write</field>
+        <field name="model_id" ref="model_woow_document_folder" />
+        <field name="domain_force">['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_folder_user_create" model="ir.rule">
+        <field name="name">R-F3 rule_woow_document_folder_user_create</field>
+        <field name="model_id" ref="model_woow_document_folder" />
+        <field name="domain_force">['|', ('parent_id', '=', False), ('parent_id', 'any', ['&amp;', ('in_trash', '=', False), '|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_folder_manager" model="ir.rule">
+        <field name="name">R-F4 rule_woow_document_folder_manager</field>
+        <field name="model_id" ref="model_woow_document_folder" />
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_manager'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_folder_portal_read" model="ir.rule">
+        <field name="name">R-F5 rule_woow_document_folder_portal_read</field>
+        <field name="model_id" ref="model_woow_document_folder" />
+        <field name="domain_force">[('in_trash', '=', False), ('eff_read_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_portal'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_folder_portal_write" model="ir.rule">
+        <field name="name">R-F6 rule_woow_document_folder_portal_write</field>
+        <field name="model_id" ref="model_woow_document_folder" />
+        <field name="domain_force">[('in_trash', '=', False), ('eff_upload_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_portal'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_folder_access_company" model="ir.rule">
+        <field name="name">R-A0 rule_woow_document_folder_access_company</field>
+        <field name="model_id" ref="model_woow_document_folder_access" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_folder_access_user_read" model="ir.rule">
+        <field name="name">R-A1 rule_woow_document_folder_access_user_read</field>
+        <field name="model_id" ref="model_woow_document_folder_access" />
+        <field name="domain_force">[('folder_id', 'any', ['|', '&amp;', ('in_trash', '=', False), '|', ('eff_read_user_ids', 'in', [user.id]), ('eff_read_group_ids', 'in', user.groups_id.ids), '|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_folder_access_user_manage" model="ir.rule">
+        <field name="name">R-A2 rule_woow_document_folder_access_user_manage</field>
+        <field name="model_id" ref="model_woow_document_folder_access" />
+        <field name="domain_force">[('folder_id', 'any', ['|', ('eff_manage_user_ids', 'in', [user.id]), ('eff_manage_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_folder_access_manager" model="ir.rule">
+        <field name="name">R-A3 rule_woow_document_folder_access_manager</field>
+        <field name="model_id" ref="model_woow_document_folder_access" />
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_manager'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_company" model="ir.rule">
+        <field name="name">R-D0 rule_woow_document_company</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_user_read" model="ir.rule">
+        <field name="name">R-D1 rule_woow_document_user_read</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">['&amp;', ('folder_in_trash', '=', False), '|', '&amp;', ('active', '=', True), '|', '|', ('folder_id', 'any', ['|', ('eff_read_user_ids', 'in', [user.id]), ('eff_read_group_ids', 'in', user.groups_id.ids)]), ('shared_user_ids', 'in', [user.id]), '&amp;', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)]), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&amp;', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_user_write" model="ir.rule">
+        <field name="name">R-D2 rule_woow_document_user_write</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">['&amp;', ('folder_in_trash', '=', False), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&amp;', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_user_create" model="ir.rule">
+        <field name="name">R-D3 rule_woow_document_user_create</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">[('folder_id', 'any', ['&amp;', ('in_trash', '=', False), '|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_manager" model="ir.rule">
+        <field name="name">R-D4 rule_woow_document_manager</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_manager'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_portal_read" model="ir.rule">
+        <field name="name">R-D5 rule_woow_document_portal_read</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">[('active', '=', True), ('folder_in_trash', '=', False), '|', ('folder_id', 'any', [('eff_read_partner_ids', 'in', [user.partner_id.id])]), ('shared_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_portal'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_portal_create" model="ir.rule">
+        <field name="name">R-D6 rule_woow_document_portal_create</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">[('folder_id', 'any', [('in_trash', '=', False), ('eff_upload_partner_ids', 'in', [user.partner_id.id])])]</field>
+        <field name="groups" eval="[(4, ref('base.group_portal'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_tag_company" model="ir.rule">
+        <field name="name">R-T0 rule_woow_document_tag_company</field>
+        <field name="model_id" ref="model_woow_document_tag" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_tag_user_read" model="ir.rule">
+        <field name="name">R-T1 rule_woow_document_tag_user_read</field>
+        <field name="model_id" ref="model_woow_document_tag" />
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_share_company" model="ir.rule">
+        <field name="name">R-S0 rule_woow_document_share_company</field>
+        <field name="model_id" ref="model_woow_document_share" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_share_user_own" model="ir.rule">
+        <field name="name">R-S1 rule_woow_document_share_user_own</field>
+        <field name="model_id" ref="model_woow_document_share" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_share_manager" model="ir.rule">
+        <field name="name">R-S2 rule_woow_document_share_manager</field>
+        <field name="model_id" ref="model_woow_document_share" />
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_manager'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_log_company" model="ir.rule">
+        <field name="name">R-L0 rule_woow_document_log_company</field>
+        <field name="model_id" ref="model_woow_document_log" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_log_user_read" model="ir.rule">
+        <field name="name">R-L1 rule_woow_document_log_user_read</field>
+        <field name="model_id" ref="model_woow_document_log" />
+        <field name="domain_force">['|', ('user_id', '=', user.id), ('share_id.create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_log_manager" model="ir.rule">
+        <field name="name">R-L2 rule_woow_document_log_manager</field>
+        <field name="model_id" ref="model_woow_document_log" />
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_manager'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+</odoo>

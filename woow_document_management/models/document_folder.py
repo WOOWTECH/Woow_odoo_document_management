@@ -6,28 +6,40 @@ Day-0 stub: fields follow arch section 3.1 and 3.3; every computed permission is
 rank probe is False and names are folded (fail closed).
 """
 from odoo import _, api, fields, models
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 
 from ..services.constants import TREE_QUERY_LIMIT
-from ..services.folding import ELLIPSIS
+from ..services import folding
 
 _MANAGER = 'woow_document_management.group_woow_document_manager'
-_EFF_DEPENDS = (
+_LEVEL_RANK = {'read': 1, 'upload': 2, 'edit': 3, 'manage': 4}
+_EFFECTIVE_FIELDS = {
+    'user': (('eff_read_user_ids', 1), ('eff_upload_user_ids', 2),
+             ('eff_edit_user_ids', 3), ('eff_manage_user_ids', 4)),
+    'group': (('eff_read_group_ids', 1), ('eff_upload_group_ids', 2),
+              ('eff_edit_group_ids', 3), ('eff_manage_group_ids', 4)),
+    'partner': (('eff_read_partner_ids', 1), ('eff_upload_partner_ids', 2)),
+}
+_SUBJECT_FIELD = {'user': 'user_id', 'group': 'group_id', 'partner': 'partner_id'}
+_SUBJECT_MODEL = {'user': 'res.users', 'group': 'res.groups', 'partner': 'res.partner'}
+_SERVER_ONLY_FIELDS = frozenset({
+    'parent_path', 'complete_name', 'in_trash', 'subtree_restored_at',
+    'has_restricted_descendant', 'subtree_legal_hold', 'woow_user_rank',
+    'woow_has_portal_members', 'document_count', 'subfolder_count',
+    'effective_access_lines', 'child_ids', 'document_ids',
+})
+_EFF_LOCAL_DEPENDS = (
     'inherit_access', 'owner_id', 'parent_id',
-    'parent_id.eff_read_user_ids', 'parent_id.eff_upload_user_ids',
-    'parent_id.eff_edit_user_ids', 'parent_id.eff_manage_user_ids',
-    'parent_id.eff_read_group_ids', 'parent_id.eff_upload_group_ids',
-    'parent_id.eff_edit_group_ids', 'parent_id.eff_manage_group_ids',
-    'parent_id.eff_read_partner_ids', 'parent_id.eff_upload_partner_ids',
     'access_ids.level', 'access_ids.subject_type', 'access_ids.user_id',
     'access_ids.group_id', 'access_ids.partner_id',
 )
 
 
-def _eff(comodel, relation, column):
+def _eff(comodel, relation, column, field_name):
     return fields.Many2many(
         comodel, relation, 'folder_id', column, compute='_compute_effective', store=True,
-        recursive=True, groups='base.group_user')
+        recursive=True, groups='base.group_user',
+        depends=(*_EFF_LOCAL_DEPENDS, f'parent_id.{field_name}'))
 
 
 class WoowDocumentFolder(models.Model):
@@ -61,22 +73,23 @@ class WoowDocumentFolder(models.Model):
                                  groups='base.group_user')
     inherit_access = fields.Boolean(default=True, tracking=True, groups='base.group_user')
 
-    eff_read_user_ids = _eff('res.users', 'woow_doc_folder_eff_r_user_rel', 'user_id')
-    eff_upload_user_ids = _eff('res.users', 'woow_doc_folder_eff_u_user_rel', 'user_id')
-    eff_edit_user_ids = _eff('res.users', 'woow_doc_folder_eff_e_user_rel', 'user_id')
-    eff_manage_user_ids = _eff('res.users', 'woow_doc_folder_eff_m_user_rel', 'user_id')
-    eff_read_group_ids = _eff('res.groups', 'woow_doc_folder_eff_r_group_rel', 'group_id')
-    eff_upload_group_ids = _eff('res.groups', 'woow_doc_folder_eff_u_group_rel', 'group_id')
-    eff_edit_group_ids = _eff('res.groups', 'woow_doc_folder_eff_e_group_rel', 'group_id')
-    eff_manage_group_ids = _eff('res.groups', 'woow_doc_folder_eff_m_group_rel', 'group_id')
-    eff_read_partner_ids = _eff('res.partner', 'woow_doc_folder_eff_r_partner_rel', 'partner_id')
-    eff_upload_partner_ids = _eff('res.partner', 'woow_doc_folder_eff_u_partner_rel', 'partner_id')
+    eff_read_user_ids = _eff('res.users', 'woow_doc_folder_eff_r_user_rel', 'user_id', 'eff_read_user_ids')
+    eff_upload_user_ids = _eff('res.users', 'woow_doc_folder_eff_u_user_rel', 'user_id', 'eff_upload_user_ids')
+    eff_edit_user_ids = _eff('res.users', 'woow_doc_folder_eff_e_user_rel', 'user_id', 'eff_edit_user_ids')
+    eff_manage_user_ids = _eff('res.users', 'woow_doc_folder_eff_m_user_rel', 'user_id', 'eff_manage_user_ids')
+    eff_read_group_ids = _eff('res.groups', 'woow_doc_folder_eff_r_group_rel', 'group_id', 'eff_read_group_ids')
+    eff_upload_group_ids = _eff('res.groups', 'woow_doc_folder_eff_u_group_rel', 'group_id', 'eff_upload_group_ids')
+    eff_edit_group_ids = _eff('res.groups', 'woow_doc_folder_eff_e_group_rel', 'group_id', 'eff_edit_group_ids')
+    eff_manage_group_ids = _eff('res.groups', 'woow_doc_folder_eff_m_group_rel', 'group_id', 'eff_manage_group_ids')
+    eff_read_partner_ids = _eff('res.partner', 'woow_doc_folder_eff_r_partner_rel', 'partner_id', 'eff_read_partner_ids')
+    eff_upload_partner_ids = _eff('res.partner', 'woow_doc_folder_eff_u_partner_rel', 'partner_id', 'eff_upload_partner_ids')
 
     document_properties_definition = fields.PropertiesDefinition(groups='base.group_user')
     document_ids = fields.One2many('woow.document', 'folder_id')
-    document_count = fields.Integer(compute='_compute_counts')
-    subfolder_count = fields.Integer(compute='_compute_counts')
-    effective_access_lines = fields.Json(compute='_compute_effective_access_lines')
+    document_count = fields.Integer(compute='_compute_counts', readonly=True)
+    subfolder_count = fields.Integer(compute='_compute_counts', readonly=True)
+    effective_access_lines = fields.Json(compute='_compute_effective_access_lines',
+                                         groups='base.group_user', readonly=True)
 
     active = fields.Boolean(default=True)
     in_trash = fields.Boolean(compute='_compute_in_trash', store=True, recursive=True, index=True)
@@ -94,97 +107,352 @@ class WoowDocumentFolder(models.Model):
     woow_user_rank = fields.Integer(compute='_compute_woow_user_rank')
     woow_has_portal_members = fields.Boolean(compute='_compute_woow_has_portal_members')
 
-    @api.depends(*_EFF_DEPENDS)
+    def init(self):
+        super().init()
+        self.env.cr.execute(  # sql-ok: Q3
+            """CREATE UNIQUE INDEX IF NOT EXISTS woow_document_folder_name_uniq
+               ON woow_document_folder ((COALESCE(parent_id, 0)),
+                                         (COALESCE(company_id, 0)), lower(name))
+               WHERE active""")
+
     def _compute_effective(self):
-        """Effective permission sets. Day-0 stub: empty (fail closed)."""
-        for folder in self:  # WOOW-STUB
-            folder.eff_read_user_ids = folder.eff_upload_user_ids = False
-            folder.eff_edit_user_ids = folder.eff_manage_user_ids = False
-            folder.eff_read_group_ids = folder.eff_upload_group_ids = False
-            folder.eff_edit_group_ids = folder.eff_manage_group_ids = False
-            folder.eff_read_partner_ids = folder.eff_upload_partner_ids = False
+        """Merge inherited and local grants; owner has manage and portal is capped at upload."""
+        for folder in self:
+            ranks = {subject: {} for subject in _EFFECTIVE_FIELDS}
+            if folder.inherit_access and folder.parent_id:
+                for subject, thresholds in _EFFECTIVE_FIELDS.items():
+                    for field_name, threshold in thresholds:
+                        for principal in folder.parent_id[field_name]:
+                            ranks[subject][principal.id] = max(
+                                ranks[subject].get(principal.id, 0), threshold)
+            for line in folder.access_ids:
+                subject = line.subject_type
+                if subject not in ranks:
+                    continue
+                principal = line[_SUBJECT_FIELD[subject]]
+                if not principal:
+                    continue
+                level = _LEVEL_RANK.get(line.level, 0)
+                if subject == 'partner':
+                    level = min(level, 2)
+                ranks[subject][principal.id] = max(ranks[subject].get(principal.id, 0), level)
+            if folder.owner_id:
+                ranks['user'][folder.owner_id.id] = 4
+            for subject, thresholds in _EFFECTIVE_FIELDS.items():
+                model = self.env[_SUBJECT_MODEL[subject]]
+                for field_name, threshold in thresholds:
+                    folder[field_name] = model.browse([
+                        principal_id for principal_id, rank in ranks[subject].items()
+                        if rank >= threshold])
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Apply the site root policy and parent edit grant before creating folders."""
+        manager = self.env.su or self.env.user.has_group(_MANAGER)
+        allow_root = self.env['woow.document.settings']._get_settings().allow_root_create
+        default_parent = self.default_get(['parent_id']).get('parent_id')
+        for vals in vals_list:
+            if 'name' in vals:
+                vals['name'] = (vals['name'] or '').strip()
+                if not vals['name']:
+                    raise UserError(_('A folder name is required.'))
+            if not self.env.su and (_SERVER_ONLY_FIELDS.intersection(vals) or
+                                    any(key.startswith('eff_') for key in vals)):
+                raise AccessError(_('This folder field cannot be changed directly.'))
+            parent_id = vals.get('parent_id', default_parent)
+            if not parent_id:
+                if not manager and not allow_root:
+                    raise AccessError(_('Only document administrators may create a root folder.'))
+            elif not manager:
+                parent = self.browse(parent_id)
+                parent._woow_require_rank(3)
+                if parent.in_trash:
+                    raise AccessError(_('You do not have enough rights on this folder.'))
+        return super(WoowDocumentFolder, self.with_context(
+            mail_create_nosubscribe=True, mail_create_nolog=True)).create(vals_list)
+
+    def write(self, vals):
+        """Preserve effective access as explicit grants when inheritance is disabled."""
+        if 'name' in vals:
+            vals = dict(vals, name=(vals['name'] or '').strip())
+            if not vals['name']:
+                raise UserError(_('A folder name is required.'))
+        if vals and not self.env.su:
+            if not self.env.user._is_internal():
+                raise AccessError(_('Portal users cannot modify folders.'))
+            if {'active', 'trashed_date', 'trashed_by_id', 'restored_date'}.intersection(vals):
+                raise UserError(_('Use the document trash actions to change folder state.'))
+            if _SERVER_ONLY_FIELDS.intersection(vals) or any(
+                    key.startswith('eff_') for key in vals):
+                raise AccessError(_('This folder field cannot be changed directly.'))
+            privileged = {'parent_id', 'inherit_access', 'owner_id', 'company_id',
+                          'access_ids', 'active', 'trashed_date', 'trashed_by_id',
+                          'restored_date', 'legal_hold'}
+            self._woow_require_rank(4 if privileged.intersection(vals) else 3)
+        if vals.get('inherit_access') is False and 'access_ids' in vals:
+            raise UserError(_('Save member changes before disabling inherited access.'))
+        if vals.get('inherit_access') is False and 'parent_id' in vals:
+            raise UserError(_('Save the new parent before disabling inherited access.'))
+        if 'parent_id' in vals:
+            new_parent = self.browse(vals['parent_id']) if vals['parent_id'] else self.browse()
+            for folder in self:
+                if new_parent and not self.env.su:
+                    new_parent._woow_require_rank(3)
+                if new_parent and new_parent.in_trash:
+                    raise UserError(_('Cannot move a folder into the trash.'))
+                if new_parent and folder.company_id != new_parent.company_id:
+                    raise UserError(_('Cannot move a folder between companies.'))
+                if new_parent and (new_parent.id == folder.id or
+                                   f'{folder.id}/' in (new_parent.parent_path or '')):
+                    raise UserError(_('A folder cannot be moved below itself.'))
+                folder.access_ids._check_parent_ceiling(new_parent)
+        access_model = self.env['woow.document.folder.access']
+        if vals.get('inherit_access') is False:
+            for folder in self.filtered('inherit_access'):
+                folder.access_ids._check_parent_ceiling(folder.parent_id)
+                ranks = {}
+                for subject, thresholds in _EFFECTIVE_FIELDS.items():
+                    for field_name, threshold in thresholds:
+                        for principal in folder[field_name]:
+                            key = (subject, principal.id)
+                            ranks[key] = max(ranks.get(key, 0), threshold)
+                if folder.owner_id:
+                    ranks.pop(('user', folder.owner_id.id), None)
+                existing = {(line.subject_type, line[_SUBJECT_FIELD[line.subject_type]].id): line
+                            for line in folder.access_ids if line.subject_type in _SUBJECT_FIELD}
+                for (subject, principal_id), rank in ranks.items():
+                    line = existing.get((subject, principal_id))
+                    level = next(name for name, value in _LEVEL_RANK.items() if value == rank)
+                    if line:
+                        if _LEVEL_RANK[line.level] < rank:
+                            line.write({'level': level})
+                    else:
+                        access_model.create({
+                            'folder_id': folder.id, 'subject_type': subject,
+                            _SUBJECT_FIELD[subject]: principal_id, 'level': level,
+                        })
+        hold_before = {folder.id: folder.legal_hold for folder in self} if 'legal_hold' in vals else {}
+        result = super().write(vals)
+        if hold_before:
+            for folder in self:
+                if hold_before[folder.id] != folder.legal_hold:
+                    self.env['woow.document.log']._log_event(
+                        'legal_hold', channel=self._woow_log_channel(),
+                        folder_id=folder.id, company_id=folder.company_id.id,
+                        detail={'hold': bool(folder.legal_hold)})
+        return result
+
+    def unlink(self):
+        """Permanent deletion must follow trash and legal-hold checks."""
+        self._require_manager()
+        self.check_access('unlink')
+        if not self.env.su and any(not folder.in_trash for folder in self):
+            raise UserError(_('Move a folder to the trash before deleting it permanently.'))
+        if any(folder.subtree_legal_hold for folder in self):
+            raise UserError(_('A folder under legal hold cannot be deleted.'))
+        for folder in self:
+            self.env['woow.document.log']._log_event(
+                'purge', channel=self._woow_log_channel(),
+                folder_id=folder.id, company_id=folder.company_id.id)
+        return super().unlink()
 
     @api.depends('name', 'parent_id.complete_name')
     def _compute_complete_name(self):
-        for folder in self:  # WOOW-STUB
-            folder.complete_name = False
+        for folder in self:
+            folder.complete_name = ('%s / %s' % (folder.parent_id.complete_name, folder.name)
+                                    if folder.parent_id else folder.name)
 
     @api.depends('active', 'parent_id.in_trash')
     def _compute_in_trash(self):
-        """Day-0 stub: every folder counts as trashed (fail closed)."""
-        for folder in self:  # WOOW-STUB
-            folder.in_trash = True
+        """A folder is unavailable when it or an ancestor is in the trash."""
+        for folder in self:
+            folder.in_trash = not folder.active or bool(folder.parent_id.in_trash)
 
     @api.depends('restored_date', 'parent_id.subtree_restored_at')
     def _compute_subtree_restored_at(self):
-        for folder in self:  # WOOW-STUB
-            folder.subtree_restored_at = False
+        for folder in self:
+            dates = [value for value in (
+                folder.restored_date, folder.parent_id.subtree_restored_at) if value]
+            folder.subtree_restored_at = max(dates) if dates else False
 
     @api.depends('inherit_access', 'child_ids.inherit_access', 'child_ids.has_restricted_descendant')
     def _compute_has_restricted_descendant(self):
-        """Day-0 stub: True, so only administrators may trash a subtree (fail closed)."""
-        for folder in self:  # WOOW-STUB
-            folder.has_restricted_descendant = True
+        for folder in self:
+            folder.has_restricted_descendant = (not folder.inherit_access or any(
+                child.has_restricted_descendant for child in folder.child_ids))
 
     @api.depends('legal_hold', 'child_ids.subtree_legal_hold')
     def _compute_subtree_legal_hold(self):
-        """Day-0 stub: True, so nothing is purged (fail closed)."""
-        for folder in self:  # WOOW-STUB
-            folder.subtree_legal_hold = True
+        """A hold anywhere below a folder prevents subtree purge."""
+        for folder in self:
+            folder.subtree_legal_hold = bool(folder.legal_hold or any(
+                child.subtree_legal_hold for child in folder.child_ids))
 
     @api.depends_context('uid')
     def _compute_display_name(self):
-        """Folded name (I-08). Day-0 stub: always the restricted label."""
+        """Only names found by the caller's record rules appear in the path."""
+        paths = {folder.id: folding.parse_parent_path(folder.parent_path) for folder in self}
+        ids = sorted({node for path in paths.values() for node in path})
+        visible = self.sudo(False).search([('id', 'in', ids)]) if ids else self.browse()
+        names = {folder.id: folder.name for folder in visible}
         label = _('Restricted folder')
-        for folder in self:  # WOOW-STUB
-            folder.display_name = label
+        for folder in self:
+            folder.display_name = folding.display_name(paths[folder.id], names, label)
 
+    @api.depends('document_ids', 'document_ids.active', 'child_ids',
+                 'access_ids', 'eff_read_user_ids', 'eff_read_group_ids')
+    @api.depends_context('uid', 'allowed_company_ids')
     def _compute_counts(self):
-        for folder in self:  # WOOW-STUB
-            folder.document_count = 0
-            folder.subfolder_count = 0
+        ids = self.sudo(False).search([('id', 'in', self.ids)]).ids
+        documents = self.env['woow.document'].sudo(False)._read_group(
+            [('folder_id', 'in', ids)], ['folder_id'], ['__count']) if ids else []
+        children = self.sudo(False)._read_group(
+            [('parent_id', 'in', ids)], ['parent_id'], ['__count']) if ids else []
+        doc_counts = {folder.id: count for folder, count in documents}
+        child_counts = {folder.id: count for folder, count in children}
+        for folder in self:
+            folder.document_count = doc_counts.get(folder.id, 0)
+            folder.subfolder_count = child_counts.get(folder.id, 0)
 
+    @api.depends_context('uid', 'allowed_company_ids')
     def _compute_effective_access_lines(self):
-        for folder in self:  # WOOW-STUB
+        """Show grants from readable sources only to a folder's managers."""
+        folders = self.sudo(False)
+        readable = set(folders.search([('id', 'in', self.ids)]).ids)
+        for folder in folders:
             folder.effective_access_lines = []
+            if folder.id not in readable or not folder._woow_has_rank(4):
+                continue
+
+            path = folding.parse_parent_path(folder.parent_path)
+            if not path:
+                path = (folder.id,)
+            visible = folders.search([('id', 'in', list(path))])
+            visible_by_id = {source.id: source for source in visible}
+            # A hidden ancestor may itself be an inheritance boundary. Never
+            # attribute grants from above it to the current folder.
+            hidden_source = False
+            for index in range(len(path) - 1, -1, -1):
+                source = visible_by_id.get(path[index])
+                if not source:
+                    path = path[index + 1:]
+                    hidden_source = True
+                    break
+                if source and not source.inherit_access:
+                    path = path[index:]
+                    break
+            grants = {}
+            for source_id in path:
+                source = visible_by_id.get(source_id)
+                if not source:
+                    continue
+                for line in self.env['woow.document.folder.access'].sudo(False).search(
+                        [('folder_id', '=', source_id)]):
+                    subject = line.subject_type
+                    if subject not in _SUBJECT_FIELD:
+                        continue
+                    principal = line[_SUBJECT_FIELD[subject]]
+                    if not principal:
+                        continue
+                    rank = min(_LEVEL_RANK[line.level], 2) if subject == 'partner' else _LEVEL_RANK[line.level]
+                    key = (subject, principal.id)
+                    if rank >= grants.get(key, {}).get('rank', 0):
+                        grants[key] = {'subject_type': subject, 'principal_id': principal.id,
+                                       'level': line.level, 'rank': rank,
+                                       'source_folder_id': source_id,
+                                       'source_folder_name': source.name}
+                if source.owner_id:
+                    key = ('user', source.owner_id.id)
+                    grants[key] = {'subject_type': 'user', 'principal_id': source.owner_id.id,
+                                   'level': 'manage', 'rank': 4,
+                                   'source_folder_id': source_id,
+                                   'source_folder_name': source.name}
+
+            # A principal may be hidden by its own model's ACL or record rules.
+            visible_principals = {}
+            for subject, model_name in _SUBJECT_MODEL.items():
+                ids = [key[1] for key in grants if key[0] == subject]
+                model = self.env[model_name].sudo(False)
+                if model.check_access_rights('read', raise_exception=False):
+                    visible_principals[subject] = {
+                        principal.id: principal.name for principal in model.search([('id', 'in', ids)])}
+                else:
+                    visible_principals[subject] = {}
+            lines = []
+            for key, grant in sorted(grants.items()):
+                name = visible_principals[key[0]].get(key[1])
+                if name:
+                    lines.append({**grant, 'principal_name': name})
+            if hidden_source:
+                lines.append({'source': 'inherited', 'source_folder_name':
+                              _('Inherited from parent folder')})
+            folder.effective_access_lines = lines
 
     @api.depends_context('uid')
     def _compute_woow_user_rank(self):
-        """0..4 for the current user. Day-0 stub: 0."""
-        for folder in self:  # WOOW-STUB
-            folder.woow_user_rank = 0
+        """Rank in the caller's company and record-rule scope."""
+        for folder in self:
+            folder.woow_user_rank = next(
+                (rank for rank in (4, 3, 2, 1) if folder._woow_has_rank(rank)), 0)
 
     def _compute_woow_has_portal_members(self):
-        for folder in self:  # WOOW-STUB
-            folder.woow_has_portal_members = False
+        for folder in self:
+            folder.woow_has_portal_members = bool(folder.eff_read_partner_ids)
 
     @api.model
     def _woow_rank_domain(self, n):
-        """E(n) of arch section 4.4. Day-0 stub: matches nothing."""
-        return [(0, '=', 1)]  # WOOW-STUB
+        """Effective user or group grant at the requested rank."""
+        level = {1: 'read', 2: 'upload', 3: 'edit', 4: 'manage'}.get(n)
+        if level is None:
+            raise ValueError('rank must be between 1 and 4')
+        return ['|', (f'eff_{level}_user_ids', 'in', [self.env.uid]),
+                (f'eff_{level}_group_ids', 'in', self.env.user.groups_id.ids)]
 
     def _woow_has_rank(self, n):
-        """True when the current user has rank >= n on this folder. Day-0 stub: False."""
-        return False  # WOOW-STUB
+        """Check the live rule and effective grant without elevating privileges."""
+        self.ensure_one()
+        if self.env.su:
+            return bool(self.exists())
+        if not self.env.user._is_internal():
+            return False
+        domain = [('id', '=', self.id)]
+        if not self.env.user.has_group(_MANAGER):
+            domain += self._woow_rank_domain(n)
+        return bool(self.search_count(domain))
 
     def _woow_require_rank(self, n):
         """AccessError unless every folder in self passes _woow_has_rank(n)."""
-        if not self.env.su:
-            raise AccessError(_('You do not have enough rights on this folder.'))  # WOOW-STUB
+        if any(not folder._woow_has_rank(n) for folder in self):
+            raise AccessError(_('You do not have enough rights on this folder.'))
 
     def _woow_portal_can_upload(self):
-        """Portal upload probe (rule R-F6). Day-0 stub: False."""
-        return False  # WOOW-STUB
+        """Probe the portal write rule without using write as a mutation."""
+        self.ensure_one()
+        if self.env.user._is_internal():
+            return False
+        return bool(self._filtered_access('write'))
 
     def _woow_breadcrumb(self):
-        """Folded breadcrumb of the folder. Day-0 stub: one ellipsis."""
-        return [(None, ELLIPSIS)]  # WOOW-STUB
+        """Return readable path elements with hidden runs collapsed."""
+        self.ensure_one()
+        path = folding.parse_parent_path(self.parent_path)
+        visible = self.sudo(False).search([('id', 'in', list(path))])
+        names = {folder.id: folder.name for folder in visible}
+        return folding.breadcrumb(path, names)
 
     @api.model
     def _woow_portal_roots(self, limit=TREE_QUERY_LIMIT):
-        """Readable root folders for the portal. Day-0 stub: none."""
-        return self.browse()  # WOOW-STUB
+        """First readable folders in each visible tree."""
+        candidates = self.search([], limit=min(max(int(limit), 0), TREE_QUERY_LIMIT))
+        paths = {folder.id: folding.parse_parent_path(folder.parent_path)
+                 for folder in candidates}
+        return candidates.browse(folding.roots(paths))
 
     def _woow_portal_children(self, limit=TREE_QUERY_LIMIT):
-        """Readable child folders for the portal. Day-0 stub: none."""
-        return self.browse()  # WOOW-STUB
+        """Nearest readable descendants, skipping hidden intermediate folders."""
+        self.ensure_one()
+        self.check_access('read')
+        candidates = self.search([], limit=min(max(int(limit), 0), TREE_QUERY_LIMIT))
+        paths = {folder.id: folding.parse_parent_path(folder.parent_path)
+                 for folder in candidates}
+        return candidates.browse(folding.children_of(self.id, paths))

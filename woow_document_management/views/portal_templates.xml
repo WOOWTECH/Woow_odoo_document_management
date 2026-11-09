@@ -1,4 +1,95 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
-<odoo/>
+<odoo>
+  <template id="portal_my_home_woow_docs" inherit_id="portal.portal_my_home"
+            name="Documents on the portal">
+    <xpath expr="//div[@id='portal_common_category']" position="inside">
+      <t t-call="portal.portal_docs_entry">
+        <t t-set="title">Documents</t>
+        <t t-set="text">Browse folders and files shared with you</t>
+        <t t-set="url" t-value="'/my/docs'"/>
+        <t t-set="placeholder_count" t-value="'woow_document_count'"/>
+      </t>
+    </xpath>
+  </template>
+
+  <template id="portal_my_docs" name="My documents">
+    <t t-call="portal.portal_layout">
+      <div class="container py-4">
+        <h1>Documents</h1>
+        <ul class="list-unstyled">
+          <li t-foreach="folders" t-as="folder" t-key="folder.id">
+            <a t-att-href="'/my/docs/folder/%d' % folder.id" t-out="folder.name"/>
+          </li>
+        </ul>
+        <p t-if="not folders">No folders are available.</p>
+        <section t-if="direct_docs">
+          <h2>Files shared with me</h2>
+          <ul class="list-unstyled">
+            <li t-foreach="direct_docs" t-as="doc" t-key="doc.id">
+              <a t-att-href="'/my/docs/file/%d' % doc.id" t-out="doc.name"/>
+            </li>
+          </ul>
+        </section>
+        <nav aria-label="Pages">
+          <a t-if="page &gt; 1" t-att-href="'/my/docs/page/%d' % (page - 1)">Previous</a>
+          <a t-if="has_more" t-att-href="'/my/docs/page/%d' % (page + 1)">Next</a>
+        </nav>
+      </div>
+    </t>
+  </template>
+
+  <template id="portal_my_docs_folder" name="Document folder">
+    <t t-call="portal.portal_layout">
+      <div class="container py-4">
+        <nav aria-label="Folder path">
+          <a href="/my/docs">Documents</a>
+          <t t-foreach="crumbs" t-as="crumb" t-key="crumb_index">
+            <span> / </span>
+            <a t-if="crumb[0]" t-att-href="'/my/docs/folder/%d' % crumb[0]"
+               t-out="crumb[1]"/>
+            <span t-else="" t-out="crumb[1]"/>
+          </t>
+        </nav>
+        <h1 t-out="folder.name"/>
+        <ul class="list-unstyled">
+          <li t-foreach="items" t-as="item" t-key="item[0] + str(item[1].id)">
+            <a t-if="item[0] == 'folder'"
+               t-att-href="'/my/docs/folder/%d' % item[1].id" t-out="item[1].name"/>
+            <a t-else="" t-att-href="'/my/docs/file/%d' % item[1].id"
+               t-out="item[1].name"/>
+          </li>
+        </ul>
+        <p t-if="not items">This folder is empty.</p>
+        <a t-att-href="'/my/docs/folder/%d/zip' % folder.id">Download ZIP</a>
+        <form t-if="can_upload" t-att-action="'/my/docs/folder/%d/upload' % folder.id"
+              method="post" enctype="multipart/form-data" data-woow-doc-upload="1">
+          <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+          <input type="file" name="files" multiple="multiple" required="required"/>
+          <button type="submit">Upload</button>
+          <p data-woow-upload-result="1" role="status"/>
+        </form>
+        <nav aria-label="Pages">
+          <a t-if="page &gt; 1" t-att-href="'/my/docs/folder/%d/page/%d' % (folder.id, page - 1)">Previous</a>
+          <a t-if="has_more" t-att-href="'/my/docs/folder/%d/page/%d' % (folder.id, page + 1)">Next</a>
+        </nav>
+      </div>
+    </t>
+  </template>
+
+  <template id="portal_my_docs_file" name="Document details">
+    <t t-call="portal.portal_layout">
+      <div class="container py-4">
+        <a t-att-href="back_url">Back to documents</a>
+        <h1 t-out="doc.name"/>
+        <p t-if="doc.document_type == 'binary'">
+          <a t-att-href="'/my/docs/file/%d/download' % doc.id">Download</a>
+        </p>
+        <p t-else="">
+          <a t-att-href="doc.url" target="_blank" rel="noopener noreferrer">Open link</a>
+        </p>
+      </div>
+    </t>
+  </template>
+</odoo>

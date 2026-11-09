@@ -56,9 +56,9 @@ COMPRESSED_MIMES: frozenset[str] = frozenset({
 
 def acceptable_mimes(ext: str) -> frozenset[str]:
     """MIME types accepted for an extension (empty set when the extension is unknown)."""
-    raise NotImplementedError  # WOOW-STUB
+    return EXT_TO_MIMES.get(str(ext).lower().lstrip('.'), frozenset())
 
 
 def is_compressed(mimetype: str) -> bool:
     """True when the type is already compressed (stored without deflate in ZIP files)."""
-    raise NotImplementedError  # WOOW-STUB
+    return str(mimetype).split(';', 1)[0].strip().lower() in COMPRESSED_MIMES
