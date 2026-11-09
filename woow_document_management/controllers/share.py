@@ -147,7 +147,10 @@ class WoowDocShareController(http.Controller):
             if not share._download_slot_available(access.scope_env):
                 return streaming.uniform_404('share')
             response = streaming.serve(docs, inline=False, channel='share', event=None)
-            if response.status_code == 200:
+            # A byte-range response transfers file content too. Count it before
+            # releasing the share lock so one-use links cannot be replayed with
+            # Range requests; 304/416 responses do not transfer content.
+            if response.status_code in (200, 206):
                 access.scope_env['woow.document.log']._log_event(
                     'share_download', channel='share', share_id=share.id,
                     company_id=share.company_id.id, ip=access.ip,
