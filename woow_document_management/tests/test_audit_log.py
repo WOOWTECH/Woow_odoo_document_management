@@ -74,3 +74,18 @@ class TestAuditLog(TransactionCase):
                                              channel='share'), expected)
         log._log_event('upload', channel='backend')
         self.assertEqual(log._sum_count(domain), 3)
+
+    def test_share_denied_limit_counts_all_share_ids_for_one_ip(self):
+        log = self.env['woow.document.log']
+        ip = '203.0.113.42'
+        folder = self.env['woow.document.folder'].sudo().create({'name': 'Denied counter root'})
+        share = self.env['woow.document.share'].sudo().create({
+            'share_type': 'folder', 'folder_id': folder.id,
+            'company_id': self.env.company.id, 'token_hash': 'a' * 64,
+            'expire_at': '2030-01-01 00:00:00',
+        })
+        log._log_event('share_access', result='denied', channel='share', ip=ip)
+        log._log_event('share_access', result='denied', channel='share',
+                       share_id=share.id, ip=ip)
+        self.assertEqual(log._count_denied_across_shares('share_access', ip), 2)
+        self.assertEqual(log._count_denied_across_shares('share_access', '203.0.113.43'), 0)

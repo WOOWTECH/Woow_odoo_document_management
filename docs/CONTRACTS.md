@@ -1922,4 +1922,5 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-07 | L0 ci-sweep | §21.8 第 2 點的註記（待 L2／L3 決定）：同一批上傳的前幾個檔案在 `_check` 時尚未寫入，`_usage_bytes` 看不到；建議 `document.create` 逐筆 validate → create → flush，或 `_check` 加 pending_bytes 參數。 |
 | 2026-11-07 | L0 ci-sweep | §21.8 第 3 點的註記：`static/tests/tours/share/**` 歸 L5、`static/tests/tours/test_suites/**` 歸 L11、其他 tours 歸 L8，以 §1.3 為準。 |
 | 2026-11-07 | L0 ci-sweep | static tools 的實作約定：`tools/sql_allowlist.yaml` 的 Q6 允許守衛檔（`models/ir_attachment.py`）內任何函式（契約只寫到檔案）；HD-07 的註記寫在 portal 那一列 ACL 的 `id` 或 `name` 欄（CSV 沒有註解語法）；`tools/security_matrix.yaml` 的 rule domain 以「解析後的 Python 運算式」比對，空白和引號不影響；`quota._cron_check_warn` 的 stub 在 su 檢查之後丟 NotImplementedError（§3 原文寫「丟 AccessError」，非 su 呼叫仍是 AccessError）。 |
+| 2026-11-09 | G4 hardening | 附件建立前先合併 `default_get` 對應的目標與存取欄位，再執行模組 guard 與 Odoo core 權限檢查。分享 ZIP 的 folder 範圍以分享根目錄為起點，文件清單分享使用平鋪檔名；相同名稱由 ZIP builder 去重。拒絕事件保留各 share 的稽核歸屬，限流計數 Q13 則跨 share ID 以 IP 摘要聚合。文件搬移只留模組稽核事件，不將 `folder_id` 寫入 chatter tracking。 |
 

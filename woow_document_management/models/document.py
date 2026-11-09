@@ -37,7 +37,7 @@ class WoowDocument(models.Model):
     checksum = fields.Char(related='attachment_id.checksum', store=True, index=True,
                            groups='base.group_user')
     folder_id = fields.Many2one('woow.document.folder', required=True, index=True,
-                                check_company=True, tracking=True, ondelete='restrict')
+                                check_company=True, ondelete='restrict')
     company_id = fields.Many2one(related='folder_id.company_id', store=True, index=True)
     folder_in_trash = fields.Boolean(related='folder_id.in_trash', store=True, index=True)
     effective_restored_at = fields.Datetime(compute='_compute_effective_restored_at', store=True,
