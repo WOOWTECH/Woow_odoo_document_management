@@ -135,14 +135,8 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
                  else settings.portal_max_upload_mb)
         if len(data) > limit * MIB:
             raise WoowUploadRejected('size', limit=limit)
-        try:
-            safe_name = sanitize_filename(name)
-        except ValueError as exc:
-            raise WoowUploadRejected('filename') from exc
-        ext = safe_name.rpartition('.')[2].lower()
-        allowed = DEFAULT_EXTENSIONS | (set(settings.extra_extensions) & OPTIONAL_EXTENSIONS)
-        if ext in BLOCKED_EXTENSIONS or ext not in allowed:
-            raise WoowUploadRejected('extension', ext=ext)
+        safe_name = self._safe_name(name)
+        ext = self._check_extension(safe_name, settings)
         if channel == 'portal' and odoo_mimetypes.magic is None:
             raise WoowUploadRejected('no_libmagic')
         if data.startswith(b'PK\x03\x04'):
@@ -177,6 +171,37 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
         checksum = self.env['ir.attachment']._compute_checksum(data)
         self.env['woow.document.quota']._check(checksum, len(data))
         return ValidatedFile(safe_name, mimetype, len(data), checksum)
+
+    def _validate_rename(self, name, document_type, mimetype) -> str:
+        """Name rules shared with uploads, for a rename that brings no new content.
+
+        Links only get ``sanitize_filename``. Files also need an extension that is listed,
+        not blocked, and consistent with the stored (sniffed) MIME type; replacing the
+        content goes through ``_validate`` instead.
+        """
+        safe_name = self._safe_name(name)
+        if document_type != 'binary':
+            return safe_name
+        ext = self._check_extension(safe_name, self.env['woow.document.settings']._get_settings())
+        stored = str(mimetype or '').split(';', 1)[0].strip().lower()
+        if stored not in acceptable_mimes(ext):
+            raise WoowUploadRejected('mime', ext=ext)
+        return safe_name
+
+    def _safe_name(self, name) -> str:
+        """``sanitize_filename`` with its ValueError mapped to the ``filename`` reject code."""
+        try:
+            return sanitize_filename(name)
+        except ValueError as exc:
+            raise WoowUploadRejected('filename') from exc
+
+    def _check_extension(self, safe_name, settings) -> str:
+        """Return the lower-case extension; blocked or unlisted ones are rejected."""
+        ext = safe_name.rpartition('.')[2].lower()
+        allowed = DEFAULT_EXTENSIONS | (set(settings.extra_extensions) & OPTIONAL_EXTENSIONS)
+        if ext in BLOCKED_EXTENSIONS or ext not in allowed:
+            raise WoowUploadRejected('extension', ext=ext)
+        return ext
 
     def _served_mimetype(self, doc) -> str:
         """Stored sniffed type (text/* + '; charset=utf-8'); unknown -> application/octet-stream."""

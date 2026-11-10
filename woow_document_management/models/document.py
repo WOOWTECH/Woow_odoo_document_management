@@ -240,6 +240,11 @@ class WoowDocument(models.Model):
                     checked = self.env['woow.document.upload.policy']._validate(
                         update.get('name', doc.name), data)
                     update['name'], update['mimetype'] = checked.name, checked.mimetype
+                elif 'name' in update and update['name'] != doc.name:
+                    # A rename follows the upload name policy against the stored type.
+                    # Writing other fields, or the unchanged name, leaves legacy names alone.
+                    update['name'] = self.env['woow.document.upload.policy']._validate_rename(
+                        update['name'], doc.document_type, doc.mimetype)
                 if 'url' in update:
                     if doc.document_type != 'url':
                         raise UserError(_('A file cannot also be a link.'))

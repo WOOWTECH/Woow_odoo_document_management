@@ -2,6 +2,7 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Server-side upload validation, including content and suffix mismatch."""
 
+import base64
 import io
 import zipfile
 from types import SimpleNamespace
@@ -13,6 +14,95 @@ from odoo.tests import TransactionCase, tagged
 
 from ..models import upload_policy
 from ..models.upload_policy import WoowUploadRejected
+
+
+@tagged('woow_docmgmt_files')
+class TestRenamePolicy(TransactionCase):
+    """7f649b10612c: renaming a document follows the upload filename policy."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = self.env.ref('base.user_admin')
+        self.folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Rename folder', 'owner_id': self.admin.id})
+        stream = io.BytesIO()
+        Image.new('RGB', (2, 2), 'red').save(stream, format='PNG')
+        self.png = base64.b64encode(stream.getvalue())
+        documents = self.env['woow.document'].sudo()
+        self.image = documents.create({
+            'name': 'picture.png', 'folder_id': self.folder.id, 'datas': self.png})
+        self.text = documents.create({
+            'name': 'notes.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(b'hello')})
+        self.other = documents.create({
+            'name': 'other.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(b'world')})
+        self.link = documents.create({
+            'name': 'Site', 'folder_id': self.folder.id, 'document_type': 'url',
+            'url': 'https://example.test/page'})
+
+    def test_rename_rejects_blocked_unlisted_and_mismatched_extensions(self):
+        image = self.image.with_user(self.admin)
+        for name, code in (('page.html', 'extension'), ('picture.jpg', 'mime'),
+                           ('picture', 'extension'), ('picture.unknownext', 'extension'),
+                           ('...', 'filename')):
+            with self.subTest(name=name), self.assertRaises(WoowUploadRejected) as caught:
+                image.write({'name': name})
+            self.assertEqual(caught.exception.code, code)
+        self.assertEqual(self.image.name, 'picture.png')
+        self.assertEqual(self.image.mimetype, 'image/png')
+
+    def test_rename_sanitizes_like_upload_and_keeps_matching_extensions(self):
+        image = self.image.with_user(self.admin)
+        image.write({'name': '\u202ephoto\u202c.png'})
+        self.assertEqual(self.image.name, 'photo.png')
+        image.write({'name': 'a' * 300 + '.png'})
+        self.assertEqual(len(self.image.name), 200)
+        self.assertTrue(self.image.name.endswith('.png'))
+        image.write({'name': '../CON.png'})
+        self.assertEqual(self.image.name, '_CON.png')
+        # text/plain content may carry either listed extension of its type.
+        self.text.with_user(self.admin).write({'name': 'notes.csv'})
+        self.assertEqual(self.text.name, 'notes.csv')
+        self.assertEqual(self.text.mimetype, 'text/plain')
+
+    def test_link_rename_only_applies_the_name_rules(self):
+        link = self.link.with_user(self.admin)
+        link.write({'name': 'Company\x07 site'})
+        self.assertEqual(self.link.name, 'Company site')
+        link.write({'name': 'index.html'})
+        self.assertEqual(self.link.name, 'index.html')
+        with self.assertRaises(WoowUploadRejected) as caught:
+            link.write({'name': '  '})
+        self.assertEqual(caught.exception.code, 'filename')
+        self.assertEqual(self.link.name, 'index.html')
+
+    def test_batch_rename_and_unrelated_writes_keep_legacy_names(self):
+        self.env.cr.execute('UPDATE woow_document SET name = %s WHERE id = %s',
+                            ('legacy\u202e.html', self.text.id))
+        self.env.invalidate_all()
+        self.text.with_user(self.admin).write({'description': '<p>touched</p>'})
+        self.text.with_user(self.admin).write({'name': 'legacy\u202e.html'})
+        self.assertEqual(self.text.name, 'legacy\u202e.html')
+        mixed = (self.image | self.text).with_user(self.admin)
+        with self.assertRaises(WoowUploadRejected) as caught:
+            mixed.write({'name': 'shared.png'})
+        self.assertEqual(caught.exception.code, 'mime')
+        self.assertEqual(self.image.name, 'picture.png')
+        self.assertEqual(self.text.name, 'legacy\u202e.html')
+        texts = (self.text | self.other).with_user(self.admin)
+        texts.write({'name': ' renamed\u202e.txt'})
+        self.assertEqual(set(texts.mapped('name')), {'renamed.txt'})
+
+    def test_rename_with_new_content_keeps_the_upload_path(self):
+        image = self.image.with_user(self.admin)
+        with self.assertRaises(WoowUploadRejected) as caught:
+            image.write({'name': 'replaced.html', 'datas': self.png})
+        self.assertEqual(caught.exception.code, 'extension')
+        image.write({'name': 'replaced.png', 'datas': self.png})
+        self.assertEqual((self.image.name, self.image.mimetype), ('replaced.png', 'image/png'))
+        image.write({'name': 'swapped.txt', 'datas': base64.b64encode(b'now text')})
+        self.assertEqual((self.image.name, self.image.mimetype), ('swapped.txt', 'text/plain'))
 
 
 @tagged('woow_docmgmt_files')
