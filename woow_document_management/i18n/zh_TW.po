@@ -1500,6 +1500,11 @@ msgid "Password"
 msgstr "密碼"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__password_hash
+msgid "Password Hash"
+msgstr "密碼雜湊"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__password_hash
 msgid "Password Hash"
 msgstr "密碼雜湊值"
@@ -2088,6 +2093,18 @@ msgstr "分享所屬公司無法使用。"
 #: code:addons/woow_document_management/wizards/share_wizard.py:0
 msgid "The share expiry is outside the allowed period."
 msgstr "分享連結的到期時間超出允許範圍。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "The share password is set through the password field."
+msgstr "分享密碼只能透過密碼欄位設定。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "The share password must be between %(low)d and %(high)d characters."
+msgstr "分享密碼長度必須介於 %(low)d 到 %(high)d 個字元。"
 
 #. module: woow_document_management
 #. odoo-python

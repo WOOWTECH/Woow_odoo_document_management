@@ -76,9 +76,12 @@ class WoowDocumentShareService(models.Model):
         """Create a link and return (share, plaintext token); the token exists only in the result."""
         data = dict(vals)
         password = data.pop('password', None)
+        password_hash = data.pop('password_hash', None)   # hashed by the share wizard on save
         self._check_create_rights(data)
         if password:
             data['password_hash'] = tokens.hash_password(password)
+        elif password_hash:
+            data['password_hash'] = password_hash
         elif self.env['woow.document.settings']._get_settings().share_require_password:
             raise UserError(_('A password is required for share links.'))
         token = tokens.new_token()
