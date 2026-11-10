@@ -185,3 +185,11 @@ rules:
   groups: [manager]
   perms: '1000'
   domain: "[(1, '=', 1)]"
+# R-M0 is a global rule on a core model (mail.message): share users (portal / public) never
+# read, write, create or unlink this module's chatter; internal users are unaffected (DEC-11).
+- id: rule_woow_mail_message_share_users
+  ref: R-M0
+  model: mail.message
+  groups: []
+  perms: '1111'
+  domain: "[(1, '=', 1)] if not user.share else [('model', 'not in', ['woow.document', 'woow.document.folder'])]"

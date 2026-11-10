@@ -229,6 +229,21 @@ def model_ref(model):
     return 'model_' + model.replace('.', '_')
 
 
+def rule_model(ref, by_ref):
+    """Model name of a rule's model_id ref.
+
+    Module models resolve through the ACL table; a core model ref such as
+    ``mail.model_mail_message`` (or the bare ``model_mail_message`` of a generated file)
+    resolves from its ``model_`` xml id. Anything else is returned unchanged.
+    """
+    name = ref.rsplit('.', 1)[-1]
+    if name in by_ref:
+        return by_ref[name]
+    if name.startswith('model_'):
+        return name[len('model_'):].replace('_', '.')
+    return ref
+
+
 def check(root, args):
     out = []
     path = os.path.join(root, MATRIX)
@@ -307,7 +322,7 @@ def check(root, args):
         if want is None:
             out.append(A.Violation(rp, line, 'MTX-RULE', 'rule %s is not in the matrix' % rid))
             continue
-        model = by_ref.get(got['model'], got['model'])
+        model = rule_model(got['model'], by_ref)
         groups_want = sorted(alias.get(g, g) for g in (want.get('groups') or []))
         if model != want['model']:
             out.append(A.Violation(rp, line, 'MTX-RULE', 'rule %s model %s, matrix %s' % (rid, model, want['model'])))
