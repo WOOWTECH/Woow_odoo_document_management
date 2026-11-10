@@ -18,7 +18,7 @@ from ..models.upload_policy import WoowUploadRejected
 
 @tagged('woow_docmgmt_files')
 class TestRenamePolicy(TransactionCase):
-    """7f649b10612c: renaming a document follows the upload filename policy."""
+    """renaming a document follows the upload filename policy."""
 
     def setUp(self):
         super().setUp()

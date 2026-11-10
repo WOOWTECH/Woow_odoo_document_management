@@ -33,7 +33,7 @@ class TestDocumentCron(TransactionCase):
         return share, row, scope_env
 
     def test_log_retention_keeps_the_download_counter_of_live_limited_shares(self):
-        """be65ea8fa161: retention must not reset max_downloads of an active, unexpired share."""
+        """retention must not reset max_downloads of an active, unexpired share."""
         self.env['ir.config_parameter'].sudo().set_param(
             'woow_document_management.log_retention_days', '30')
         group = self.env.ref('woow_document_management.group_woow_document_user')

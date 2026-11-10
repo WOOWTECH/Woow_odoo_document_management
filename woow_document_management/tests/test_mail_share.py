@@ -14,7 +14,7 @@ from ..services import tokens
 
 @tagged('woow_docmgmt_share_mail')
 class TestShareWizardPassword(TransactionCase):
-    """df38931ba9cd: the share password is hashed when the wizard row is saved."""
+    """the share password is hashed when the wizard row is saved."""
 
     def setUp(self):
         super().setUp()

@@ -422,7 +422,7 @@ class TestShareHttp(HttpCase):
         self.assertEqual(revoked.status_code, 404)
 
     def test_log_retention_never_reopens_an_exhausted_limited_share(self):
-        """be65ea8fa161: the weekly audit retention keeps the counted download of a live share."""
+        """the weekly audit retention keeps the counted download of a live share."""
         self.env['ir.config_parameter'].sudo().set_param(
             'woow_document_management.log_retention_days', '30')
         admin = self.env.ref('base.user_admin')
