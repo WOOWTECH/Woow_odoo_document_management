@@ -292,11 +292,11 @@
 | Q4 | `services/locks.py`（`try_lock`、`lock`、`bounded_wait`） | `SELECT pg_try_advisory_xact_lock(%s)`、`SELECT pg_advisory_xact_lock(%s)`、`SELECT current_setting('lock_timeout')`、`SELECT set_config('lock_timeout', %s, true)` |
 | Q5 | `models/quota.py::_bytes_if_new` | arch §6.4 Q5 |
 | Q6 | `models/ir_attachment.py`（守衛） | arch §6.4 Q6 |
-| Q17 | `models/ir_attachment.py::_woow_field_attachment_ids`、`::_woow_document_file_is_unique` | 要加進討論的附件中，哪些是某個 binary 欄位的附件；文件的檔案欄位是否剛好只有一個 binary 附件、且就是 `attachment_id` |
+| Q17 | `models/ir_attachment.py::_woow_field_attachment_ids`、`::_woow_document_file_row` | 要加進討論的附件中，哪些是某個 binary 欄位的附件；文件記錄的檔案附件（`attachment_id`，且是不帶 URL、屬於該文件 `datas` 的 binary 附件）的儲存位置，串流只從這一列建立 |
 | Q18 | `models/mail_thread_guard.py::_woow_follower_scope`、`::_woow_user_companies` | 通知對象所在記錄的讀取規則所依據的儲存欄位（state、公司、eff_* 授權、直接分享），以及被通知帳號的公司 |
 | Q19 | `models/document_folder.py::_woow_check_name_free` | 同一層、同公司、啟用中的資料夾是否已用這個名稱（與唯一索引相同的判斷），先回 M-02 |
 | Q20 | `models/document.py::_woow_portal_direct_documents` | 直接分享給呼叫者本人聯絡人的文件 id，再以呼叫者的 record rule 搜尋 |
-| Q21 | `models/trash_actions.py::_woow_lock_purge_root` | purge 讀任何 hold 之前，以 `SELECT … FOR NO KEY UPDATE` 鎖住這個根資料夾的列（只鎖不寫列版本）：本批快照之後 commit 的 legal hold 或還原改過這一列，就 serialization_failure、跳過這個根；之後才開始的會等這一批結束 |
+| Q21 | `models/trash_actions.py::_woow_lock_purge_root` | purge 讀任何 hold 之前，以 `SELECT … FOR NO KEY UPDATE` 依 id 順序鎖住這個根資料夾與子樹裡每個資料夾的列（子樹以 active_test=False 的 child_of 取得，含個別丟進回收桶的資料夾；只鎖不寫列版本）：本批快照之後 commit 的 legal hold、還原或搬移改過其中任一列，就 serialization_failure、跳過這個根；之後才開始的會等這一批結束 |
 
 - 其他地方出現 `pg_*advisory*`，或 locks.py 裡呼叫內建的 `hash(`，都直接失敗（T-STAT-22）。
 - tag、access、`attachment_id`、`token_hash` 的唯一索引，一律用 ORM 或 `odoo.tools.sql.create_unique_index(cr, name, table, [固定運算式])` 建在各自 model 的 `init()` 裡。這不是 raw SQL，不算 Q3（IC-R07）。
@@ -711,7 +711,7 @@ class WoowDocumentGuardMixin(models.AbstractModel):
 **`woow.document.folder`（`models/document_folder.py`）**
 - 欄位照 arch §3.1，**另外有以下這些**（其他 lane 會用到的名稱一律照這裡寫）：
   - 10 個 eff 欄位：`eff_read_user_ids`、`eff_upload_user_ids`、`eff_edit_user_ids`、`eff_manage_user_ids`、`eff_read_group_ids`、`eff_upload_group_ids`、`eff_edit_group_ids`、`eff_manage_group_ids`、`eff_read_partner_ids`、`eff_upload_partner_ids`。rel 表是 `woow_doc_folder_eff_{r,u,e,m}_{user,group}_rel` 和 `woow_doc_folder_eff_{r,u}_partner_rel`。
-  - `in_trash`、`subtree_restored_at`、`has_restricted_descendant`、`subtree_legal_hold`：stored、recursive。
+  - `in_trash`、`subtree_restored_at`、`has_restricted_descendant`、`subtree_legal_hold`：stored、recursive。`has_restricted_descendant`、`subtree_legal_hold` 以 `with_context(active_test=False).child_ids` 計算：個別丟進回收桶的子資料夾也算，儲存值不受重算時 context 影響；`init()` 在每次安裝與更新時呼叫 `_woow_recompute_subtree_flags()` 重算所有資料夾的這兩個欄位。
   - `woow_user_rank`：Integer，非 stored，`@api.depends_context('uid')`，值是 0～4。文件管理員和 su 是 4。
   - `woow_has_portal_members`：Boolean，非 stored，條件是 `bool(eff_read_partner_ids)`（ER-15）。
   - `effective_access_lines`：Json。`document_count`、`subfolder_count`：在使用者 env 用 `_read_group` 計算。
@@ -880,13 +880,14 @@ def is_safe(url: str, *, allow_mailto: bool = False) -> bool: ...
 
 **ir.attachment 守衛**
 - 只 `_inherit='ir.attachment'`，覆寫 `create(vals_list)` 和 `write(vals)`，**不碰** `unlink`、`check`、`_search`（I-03）。
-- 守衛只對非 su 生效：
+- 守衛只對非 su 生效（下面「寫入後的目標」一條例外，su 也適用）：
   - **create**：`res_model in WOOW_MODELS` 而且符合以下任一條件 → AccessError：`res_field` 有值、`public` 為真、帶 `access_token`。
   - **write**：
     - Q6 查出 self 裡哪些是「本模組 model 的欄位附件」。對這些列，寫入 `GUARDED_WRITE_KEYS = ('raw','datas','db_datas','mimetype','type','url','res_model','res_id','res_field','public','access_token','store_fname')` 任何一鍵 → AccessError。
     - 對本模組 model 的 chatter 附件（res_model 用目前使用者的 ORM 讀取），寫 `public`、`access_token`、`res_model`、`res_id`、`res_field` → AccessError。
     - 把 `res_model` 改成本模組 model、同時設定 `res_field` → AccessError。
   - `generate_access_token()` 和 `copy()` 會走 write 或 create，所以一起被擋（core 的 generate_access_token 不是 sudo，`ir_attachment.py` L667–676）。
+- **寫入後的目標（所有 env，含 su）**：write 帶 `res_model`、`res_id` 或 `res_field`，而寫入後 `res_model` 是本模組 model 時，`_woow_check_field_target` 以 Q6 讀出每列原本的（res_model, res_id, res_field）：寫入後帶 `res_field`、且與原本的目標不同 → AccessError。core 以 su 把發文者的待送附件改掛到記錄上（`_process_attachments_for_post`，`message_post` 與可指定任何 `model`／`res_id` 的 `message_notify` 都會走到），binary 欄位只建立附件、從不搬移，所以沒有任何途徑能讓文件或資料夾多出一筆欄位附件。
 
 **mail_thread_guard（ER-20）**
 ```python
@@ -911,7 +912,7 @@ class _Guard(models.AbstractModel):   # 實際上分別 _inherit woow.document �
     # mail.message._get_record_name 都只用資料夾自己的名稱，不帶上層路徑（I-08）。
 ```
 - `mail.thread._message_route_process`：路由目標是這兩個 model 時，只有 su（fetchmail）或 `base.group_system`（mail gateway 腳本）能處理；其他人經 `message_process` 送信一律 AccessError。
-- `ir.binary`（`models/ir_binary.py`）：`_find_record` 對本模組 model 的記錄，只要帶 `access_token`（參數或 query）就 MissingError，`/web/content` 回 404、`/web/image` 回 placeholder，回應不會被標成 public；`_record_to_stream` 對 `woow.document.datas` 先以 Q17 確認只有一個、且就是 `attachment_id` 的 binary 附件，否則 MissingError，不串流其他附件。
+- `ir.binary`（`models/ir_binary.py`）：`_find_record` 對本模組 model 的記錄，只要帶 `access_token`（參數或 query）就 MissingError，`/web/content` 回 404、`/web/image` 回 placeholder，回應不會被標成 public；`_record_to_stream` 對 `woow.document.datas` 一律從文件自己的 `attachment_id` 建立串流（Q17 讀出儲存位置；必須是不帶 URL、屬於該文件 `datas` 的 binary 附件，否則 MissingError）。下載、預覽、portal、分享、ZIP 與 `/web/content`、`/web/image` 都經過這裡，其他宣稱同一欄位的附件即使存在也不會被送出。
 - **ir.attachment write** 另依「寫入後的值」判斷：`res_model` 改成本模組 model 時，若該列原本或寫入後帶 `res_field`、`public` 或 `access_token` → AccessError（兩步驟搬移也擋）。
 
 ### 8.7 IF-UNINST：`W/hooks.py`
@@ -1145,6 +1146,9 @@ class WoowDocShareController(http.Controller):
           否則 → uniform_404('share')；
         - token 路徑：tokens.extract_code(raw) 是 None → 記 denied 並回 404；之後才做 S2 和 _validate_for_access；
         - 有效 token 和已授權的 session，永遠不會因為 IP 桶滿了被擋（arch §15）；
+        - id 路徑（require_grant=True）：先讀 session 裡這個 id 的授權（_session_grant）；沒有、過期或格式不對 → 直接 _denied，
+          不做 S2 和 _validate_for_access。不存在、已撤銷與有效的 id 做一樣的事（查詢數相同，所以時間也相同）、回一樣的答案；
+          有授權時才解析、驗證分享，再比對 h 與 pw；
         - resolve=False（只給 /close 用）：不呼叫 S2，也不碰 DB，回傳 ShareAccess(share_sudo=空 recordset, scope_env=None, …)。"""
 
     @http.route('/woow-docs/s', type='http', auth='public', methods=['GET'])
@@ -1229,8 +1233,8 @@ def _woow_purge(self) -> tuple[int, int]:
     """內部用，只有 su 或文件管理員能呼叫。由深到淺；legal_hold 或 subtree_legal_hold → M-34；
     每筆包在 savepoint 和 locks.bounded_wait 裡，失敗的記 purge（denied，detail 只放 id）後跳過。回傳 (done, failed)。
     同一次執行中已隨上層一起刪除的記錄直接略過，不算 done 也不算 failed。
-    資料夾的每個根先以 _woow_lock_purge_root（Q21）鎖住自己的列，再讀 active 與子樹的 hold；
-    文件的 hold 與刪除是同一列。所以在本交易快照之後 commit 的 legal hold 或還原，會讓該根或該文件
+    資料夾的每個根先以 _woow_lock_purge_root（Q21）鎖住自己與子樹裡每個資料夾的列（含個別丟進回收桶的），再讀 active 與子樹的 hold；
+    文件的 hold 與刪除是同一列。所以在本交易快照之後 commit 的 legal hold、還原或搬移（子樹任何一個資料夾），會讓該根或該文件
     serialization_failure（並行死結同樣處理），這一筆算 failed、整批照常 commit。
     資料夾另有 _woow_purge(budget=None)：budget 是這次最多刪除的記錄數（文件和資料夾都算）；
     放不下的子樹保留在回收桶、只刪掉一部分，下次呼叫接著刪。"""
@@ -1959,4 +1963,5 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-11 | G4 修正 | **密碼解鎖與分享列屏障**：`share_unlock` 先以請求快照判斷來源跨分享上限、同分享同來源冷卻、同分享每小時上限（舊快照只會少算，據此拒絕必定正確）：來源上限已滿走 `_denied`（`rate_limited`、429），其餘 429，皆不取 `share:<id>` 鎖、不寫 share 列。要比對時才 `_lock_password_attempts`（`share:<id>` advisory 鎖＋`SELECT … FOR NO KEY UPDATE`，只鎖不寫列版本，Q12）、鎖定來源計數列，再判斷一次上限，然後比對密碼。錯誤密碼先 `_count_password_failure`（`UPDATE … SET write_date = write_date` 寫新的列版本），再記 `share_unlock_failed`、回 404；正確密碼移除本次建立、count 仍為 0 的來源計數列，回 303。所以只有計入的失敗會寫 share 列：快照早於它的嘗試在列鎖得到 serialization_failure 並重試，而沒有計入失敗的嘗試（正確密碼、被拒絕的嘗試）不會讓擁有者的撤銷或編輯 serialization_failure。下載同理：`_download_slot_available` 先以快照拒絕已用完的連結（不鎖、不寫），其餘取 `share:<id>` 鎖與列鎖後重新計數；`_record_download` 只對有次數限制的連結寫列版本，再記 `share_download`。鎖順序：`share:<id>` → share 列 → 來源計數列 → 事件 bucket；容量槽在獨立交易取得。SC：T-SHARE-44 先在複製的 DB 安裝模組，期望 10 次 404、1 次 429、share_access bucket 10、`rate_limited` 1、來源計數 10；T-SHARE-45（`dev/sc/sc_source_limit_two_links.py`）：同一來源兩個用戶端同時對兩個連結猜密碼，比對過的猜測恰為上限 3，之後同來源的正確密碼也回 429；T-SHARE-46（`dev/sc/sc_denied_sources_together.py`）：12 個來源（信任的迴環 proxy 加 `X-Real-IP`）同時送被拒絕的開啟請求，第一輪同時送一次正確密碼，伺服器紀錄不得有並行錯誤重試，拒絕全為 404、解鎖 303、容量恰為每個新計數列與新 bucket 各一格。真 HTTP 的 SC 以資料庫時鐘對齊分鐘，跨分鐘的那一輪清空計數後重跑一次。 |
 | 2026-11-11 | G4 修正 | **User-Agent 清理**（補充 §8.4 `user_agent` 一點）：`_log_event` 寫入前先移除 user agent 的控制字元（`str.isprintable()` 為假的字元，含 NUL），再截斷到 256 字元（`USER_AGENT_SIZE`），ok 與 denied 兩條路都套用。PostgreSQL 的 text 不能存 NUL：原樣寫入會讓請求 500 並整筆 rollback，錯誤密碼與被拒絕的請求都不會計入冷卻與限流，而側交易已取的容量槽不退回。 |
 | 2026-11-12 | 審查修正 | **附件與串流**：`ir.attachment.write` 依寫入後的值判斷，帶 `res_field`、`public` 或 `access_token` 的附件不能分兩步改掛到本模組 model；`message_post` 等經 `_process_attachments_for_post` 加入討論的附件不能是欄位附件（Q17）；`ir.binary._record_to_stream` 只串流文件記錄的那一個 binary 附件，`_find_record` 對本模組記錄拒絕 `access_token`（`/web/content` 404、`/web/image` placeholder，不再是 public 快取）。**mail**：`message_new` 一律拒絕；`mail.thread._message_route_process` 路由到文件或資料夾時只接受 su 或系統管理員；portal 只能移除自己的 follower；follower 在讀不到記錄後不再收到通知（Q18，HD-10 的無帳號聯絡人不變）；資料夾的 record_name、信件主旨、活動名稱只用資料夾自己的名稱。**名稱與排序**：同層同名回 M-02（Q19，不論另一個資料夾是否看得到；DB 唯一索引保留）；別的 model 依指向資料夾的 many2one 排序或分組時，非文件管理員改依資料夾 id；文件的 display_name 依呼叫者的 record rule 折疊為「Restricted document」；guard mixin 的 `_search` 與 `_read_group_groupby` 檢查欄位 groups（many2many、one2many 也算），`/my/docs` 的直接分享改走 `_woow_portal_direct_documents`（Q20）。**配額**：一般上傳一律計入檔案大小，只有加入資料夾精靈抵扣已存的相同內容；百分比只給文件管理員。**分享信**：佇列中的分享信，其 mail.message 副本的 body 清空，連結只留在 mail.mail。**回收桶**：已隨上層刪除的記錄略過；cron 每批最多刪 PURGE_BATCH 筆記錄，大型子樹分批完成。**稽核**：`access_change` 每個資料夾一列、只列該資料夾的成員列 id；detail 的 id 清單最多 500 個。**上傳**：ZIP64 end record 與 central directory 的實際標頭數也套用 4096 筆、1 MiB 的上限，ZipFile 之前就拒絕。**設定**：信任代理與用戶端 IP 標頭加上說明。 |
-| 2026-11-12 | 審查修正 | **回收桶與 legal hold**：分批 purge 的每個根資料夾在讀任何 hold 之前先鎖住自己的列（Q21，`SELECT … FOR NO KEY UPDATE`，只鎖不寫列版本）。子樹任何資料夾設 hold 都會改寫根的 `subtree_legal_hold`、還原會改寫 `active`，所以在本批快照之後 commit 的 hold 或還原讓該根 serialization_failure、整個根都不刪；之後才開始的 hold 等這一批 commit。文件的 hold 與刪除是同一列，並行設下的文件 hold 讓刪除 serialization_failure。這兩種錯誤（與並行死結）都只讓該根或該文件算 failed、跳過，整批照常 commit，不再讓 cron 批次失敗。**通知**：follower 讀取權重驗先套公司規則（R-D0、R-F0 沒有 groups，portal 帳號同樣受限），portal 分支另要求 base.group_portal（R-D5、R-F5 是 portal 群組的規則）；只在其他公司的 portal follower 與直接分享對象不再收到該記錄的通知。 |
+| 2026-11-12 | 審查修正 | **回收桶與 legal hold**：分批 purge 的每個根資料夾在讀任何 hold 之前先鎖住自己的列（Q21，`SELECT … FOR NO KEY UPDATE`，只鎖不寫列版本）。還原會改寫 `active`，在本批快照之後 commit 的 hold 或還原讓該根 serialization_failure、整個根都不刪（更正：hold 設在個別丟進回收桶的子資料夾或其下時，當時的 `subtree_legal_hold` 不會改寫根，見下一列）；之後才開始的 hold 等這一批 commit。文件的 hold 與刪除是同一列，並行設下的文件 hold 讓刪除 serialization_failure。這兩種錯誤（與並行死結）都只讓該根或該文件算 failed、跳過，整批照常 commit，不再讓 cron 批次失敗。**通知**：follower 讀取權重驗先套公司規則（R-D0、R-F0 沒有 groups，portal 帳號同樣受限），portal 分支另要求 base.group_portal（R-D5、R-F5 是 portal 群組的規則）；只在其他公司的 portal follower 與直接分享對象不再收到該記錄的通知。 |
+| 2026-11-12 | 審查修正（第二輪） | **purge 屏障**：`_woow_lock_purge_root`（Q21）改為依 id 順序鎖住根與子樹每個資料夾的列（子樹以 active_test=False 取得），本批快照之後 commit 的 hold、還原或搬移只要改到子樹任一資料夾列，該根就 serialization_failure、整個根都不刪，不再依賴儲存的聚合欄位；`subtree_legal_hold` 與 `has_restricted_descendant` 改以 `with_context(active_test=False).child_ids` 計算，個別丟進回收桶的子資料夾（及其下）的 hold 也會到達根，`init()` 每次安裝與更新時重算。**分享 id 路由**：`_share_entry` 先讀 session 授權，沒有就直接 `_denied`，不存在、已撤銷與有效的 id 查詢數相同。**附件**：`ir.attachment.write` 在所有 env（含 su）都拒絕讓附件寫入後成為本模組記錄的另一筆欄位附件（`message_notify` 指定 model／res_id 也擋）；`_record_to_stream` 一律從文件自己的 `attachment_id` 串流（Q17 `_woow_document_file_row` 取代 `_woow_document_file_is_unique`），殘留的其他欄位附件不再讓文件 404，也不會被送出。 |
