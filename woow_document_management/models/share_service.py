@@ -1,9 +1,12 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Share issuance and request scope resolution (S2 is isolated here)."""
+import logging
 from datetime import timedelta
 from ipaddress import ip_address
 from urllib.parse import urlsplit
+
+from psycopg2 import errors
 
 from odoo import _, Command, api, fields, models
 from odoo.exceptions import AccessError, UserError
@@ -14,6 +17,8 @@ from ..services.constants import (MAIL_PER_USER_PER_HOUR, MAX_SHARE_DOCUMENTS,
                                  SHARE_RECORD_RETENTION_DAYS)
 from ..services.locks import lock
 from ..services.zip_builder import ZipLimitExceeded
+
+_logger = logging.getLogger(__name__)
 
 _USER = 'woow_document_management.group_woow_document_user'
 _MANAGER = 'woow_document_management.group_woow_document_manager'
@@ -406,8 +411,15 @@ class WoowDocumentShareService(models.Model):
         old = self.search(['|', '&', ('state', '=', 'expired'), ('expire_at', '<', cutoff),
                            '&', ('state', '=', 'revoked'), ('revoked_at', '<', cutoff)], limit=200)
         for share in old:
-            with self.env.cr.savepoint():
-                share.unlink()
+            # One link the database refuses to delete (a constraint its rows violate)
+            # never stops the run, which would roll back the expiry marking and the
+            # removal of failed mails above: it stays, and the next run tries again.
+            try:
+                with self.env.cr.savepoint():
+                    share.unlink()
+            except errors.IntegrityError:
+                _logger.warning('A share link could not be deleted and was skipped: id %s',
+                                share.id)
         return None
 
 

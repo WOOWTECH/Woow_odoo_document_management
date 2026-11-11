@@ -1,6 +1,8 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Explicit trash transitions after checking the caller's live access."""
+import logging
+
 from psycopg2 import errors
 
 from odoo import _, fields, models
@@ -11,11 +13,21 @@ from ..services.constants import LOCK_TIMEOUT_MS
 from .document import WoowDocument
 from .document_folder import WoowDocumentFolder
 
+_logger = logging.getLogger(__name__)
+
 # A record that cannot be purged now is skipped, never the whole run: a refused
-# check, a lock wait that timed out, or a row that another transaction changed
-# after this snapshot (a legal hold set meanwhile) or that deadlocked with it.
+# check, a lock wait that timed out, a row that another transaction changed
+# after this snapshot (a legal hold set meanwhile) or that deadlocked with it, or a
+# delete the database refuses because a row that goes with it violates a constraint.
 _PURGE_SKIPPED = (AccessError, UserError, LockBusy, errors.SerializationFailure,
-                  errors.DeadlockDetected)
+                  errors.DeadlockDetected, errors.IntegrityError)
+
+
+def _skipped(kind, record, error):
+    """Note a skipped record; only a refused delete is worth a log line (ids only)."""
+    if isinstance(error, errors.IntegrityError):
+        _logger.warning('Purge skipped a %s the database refused to delete: id %s',
+                        kind, record.id)
 
 
 def _audit(record, event, **detail):
@@ -99,8 +111,9 @@ class WoowDocumentTrash(models.Model):
                     with bounded_wait(self.env.cr, LOCK_TIMEOUT_MS):
                         doc.unlink()
                     done += 1
-            except _PURGE_SKIPPED:
+            except _PURGE_SKIPPED as error:
                 failed += 1
+                _skipped('document', doc, error)
         return done, failed
 
 
@@ -198,8 +211,9 @@ class WoowDocumentFolderTrash(models.Model):
                         None if budget is None else budget - deleted)
                 deleted += count
                 done += finished
-            except _PURGE_SKIPPED:
+            except _PURGE_SKIPPED as error:
                 failed += 1
+                _skipped('folder', root, error)
         return done, failed, deleted
 
     def _woow_lock_purge_root(self):
