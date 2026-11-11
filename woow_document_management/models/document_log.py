@@ -3,11 +3,16 @@
 """Append-only audit events, bounded denied-event buckets and per-source counters."""
 import json
 import re
+import threading
 from itertools import islice
+
+from psycopg2 import OperationalError
+from psycopg2.pool import PoolError
 
 from odoo import api, fields, models
 from odoo.http import request
 from odoo.exceptions import AccessError
+from odoo.tools import config
 
 from ..services.constants import CHANNELS, EVENTS, RESULTS, MAX_DENIED_ROWS_PER_MIN
 from ..services.client_ip import hmac_ip, request_client_ip, source_key, truncate_ip
@@ -23,6 +28,17 @@ SOURCE_LIMITED_EVENTS = ('share_access', 'share_unlock_failed')
 # it names.
 UNBUDGETED_EVENTS = ('share_unlock_failed',)
 USER_AGENT_SIZE = 256
+# A slot is reserved over a second database connection that the request borrows while
+# it keeps its own. A threaded server without a thread limit can run more requests than
+# the pool has connections, so reservations are limited per process: at most
+# SLOT_CONNECTIONS (a thirty-second of the pool, never fewer than one) are open at the
+# same time, and the connections left are the ones the requests themselves still need.
+# A reservation that waits more than SLOT_WAIT seconds for its turn finds no slot, like
+# one that finds the pool full. Prefork workers serve one request at a time and never
+# wait here.
+SLOT_CONNECTIONS = max(1, int(config['db_maxconn']) // 32)
+SLOT_WAIT = 0.5
+_SLOT_GATE = threading.BoundedSemaphore(SLOT_CONNECTIONS)
 # Longest id list one audit row may carry: a folder has at most this many members.
 DETAIL_LIST_MAX = 500
 _EVENT_LABELS = {
@@ -317,6 +333,18 @@ class WoowDocumentDeniedBudget(models.Model):
         reserved by a request that is later rolled back or retried stays used: the
         capacity can only be under-used, never exceeded. In registry test mode the
         cursor shares the test transaction, which serves one request at a time.
+
+        The second connection is a convenience of the record keeping, never a
+        requirement of the request, and it must not cost other requests theirs. At
+        most SLOT_CONNECTIONS reservations of a process run at the same time (the
+        others wait their turn, for SLOT_WAIT seconds at most), so a burst of new
+        sources cannot take the connections that the requests themselves still need.
+        When no turn or no connection can be had (the wait ran out, the connection
+        pool is full, or the database refuses one more connection) there is no slot:
+        False, which refuses a new source's first refusal of the minute with 429 and
+        writes nothing, and never fails the request with a server error. Only the
+        failure to obtain the connection is treated this way; an error inside the
+        reservation propagates.
         """
         self.env.cr.execute(  # sql-ok: Q14
             """SELECT date_trunc('minute', now() AT TIME ZONE 'UTC'),
@@ -325,18 +353,27 @@ class WoowDocumentDeniedBudget(models.Model):
         minute, used = self.env.cr.fetchone()
         if used is not None and used >= MAX_DENIED_ROWS_PER_MIN:
             return False
-        with self.env.registry.cursor() as cr:
-            if not self.env.registry.in_test_mode():
-                cr.execute('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')  # sql-ok: Q14
-            cr.execute(  # sql-ok: Q14
-                """INSERT INTO woow_document_denied_budget (bucket_minute, count)
-                   VALUES (%s, 1)
-                   ON CONFLICT (bucket_minute)
-                   DO UPDATE SET count = woow_document_denied_budget.count + 1
-                     WHERE woow_document_denied_budget.count < %s
-                   RETURNING count""",
-                (minute, MAX_DENIED_ROWS_PER_MIN))
-            return cr.fetchone() is not None
+        if not _SLOT_GATE.acquire(timeout=SLOT_WAIT):
+            return False
+        try:
+            try:
+                side = self.env.registry.cursor()
+            except (PoolError, OperationalError):
+                return False
+            with side as cr:
+                if not self.env.registry.in_test_mode():
+                    cr.execute('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')  # sql-ok: Q14
+                cr.execute(  # sql-ok: Q14
+                    """INSERT INTO woow_document_denied_budget (bucket_minute, count)
+                       VALUES (%s, 1)
+                       ON CONFLICT (bucket_minute)
+                       DO UPDATE SET count = woow_document_denied_budget.count + 1
+                         WHERE woow_document_denied_budget.count < %s
+                       RETURNING count""",
+                    (minute, MAX_DENIED_ROWS_PER_MIN))
+                return cr.fetchone() is not None
+        finally:
+            _SLOT_GATE.release()
 
     def init(self):
         super().init()
