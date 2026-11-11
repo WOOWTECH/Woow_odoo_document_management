@@ -71,6 +71,24 @@ class WoowDocumentShareService(models.Model):
             ('result', '=', 'ok')])
         return prior < self.max_downloads
 
+    def _lock_password_attempts(self, scope_env):
+        """Serialize this link's password attempts before its failure counts are read.
+
+        As for downloads, the advisory lock orders the attempts and the share row
+        update makes an attempt that still holds an older Repeatable Read snapshot
+        fail with serialization_failure, so a retry reads the counts again before
+        any password comparison.
+        """
+        self.ensure_one()
+        if scope_env.su or scope_env.uid != self.create_uid.id or \
+                scope_env.company.id != self.company_id.id:
+            raise AccessError(_('The share is unavailable.'))
+        lock(scope_env.cr, 'share:%d' % self.id)
+        scope_env.cr.execute(  # sql-ok: Q12
+            'UPDATE woow_document_share SET write_date = write_date '
+            'WHERE id = %s RETURNING id', (self.id,))
+        return bool(scope_env.cr.fetchone())
+
     @api.model
     def _issue(self, vals):
         """Create a link and return (share, plaintext token); the token exists only in the result."""

@@ -14,7 +14,7 @@ from ..services import tokens
 from ..services.client_ip import hmac_ip, request_client_ip
 from ..services.constants import (MAX_GRANTS, SESSION_GRANTS_KEY,
                                  SHARE_UNLOCK_FAIL_PER_HOUR)
-from ..services.locks import LockBusy, lock
+from ..services.locks import LockBusy
 from ..services.zip_builder import ZipLimitExceeded
 from . import streaming
 
@@ -41,17 +41,21 @@ def _save_grant(share, grant):
 class WoowDocShareController(http.Controller):
 
     def _denied(self, ip, share_id=None, event='share_access'):
+        """Record one refused request of this source; 429 once its minute limit is used.
+
+        The source count is read with its counter row locked, so requests of one
+        source on different links cannot pass the limit together (Repeatable Read).
+        """
         log = request.env['woow.document.log']
-        if log._count_denied_across_shares(event, ip) >= request.env[
-                'woow.document.settings']._get_settings().denied_rate_per_min:
+        prior = log._count_denied_across_shares(event, ip)
+        if prior is None:
+            return streaming.too_many_requests()
+        if prior >= request.env['woow.document.settings']._get_settings().denied_rate_per_min:
             log._log_event('rate_limited', result='denied', channel='share', ip=ip)
             return streaming.too_many_requests()
         written = log._log_event(
             event, result='denied', channel='share', share_id=share_id, ip=ip)
         if not written:
-            return streaming.too_many_requests()
-        count = log._count_denied_across_shares(event, ip)
-        if count > request.env['woow.document.settings']._get_settings().denied_rate_per_min:
             return streaming.too_many_requests()
         return streaming.uniform_404('share')
 
@@ -177,10 +181,18 @@ class WoowDocShareController(http.Controller):
         if not share.has_password:
             return streaming.uniform_404('share')
         try:
-            # The lock covers both counters, password work, and the denied-event
-            # write. Concurrent guesses cannot all observe the same old count.
-            lock(access.scope_env.cr, 'share:%d' % share.id)
+            # Every limit is decided before the password is compared. The share
+            # lock and row barrier refresh this link's failure counts; the locked
+            # source counter covers the source's attempts on all other links.
+            if not share._lock_password_attempts(access.scope_env):
+                return streaming.uniform_404('share')
             settings = request.env['woow.document.settings']._get_settings()
+            prior = request.env['woow.document.log']._count_denied_across_shares(
+                'share_unlock_failed', access.ip)
+            if prior is None:
+                return streaming.too_many_requests()
+            if prior >= settings.denied_rate_per_min:
+                return self._denied(access.ip, share.id, event='share_unlock_failed')
             log = access.scope_env['woow.document.log']
             failures = log._count_share_unlock_failures(
                 share.id, ip_hash=access.ip_hash,
@@ -201,6 +213,8 @@ class WoowDocShareController(http.Controller):
                 request.redirect('/woow-docs/s/%d' % share.id, code=303, local=True), 'share')
         except LockBusy:
             return streaming.service_busy()
+        except (AccessError, MissingError):
+            return streaming.uniform_404('share')
 
     @http.route('/woow-docs/s/<int:share_id>/zip', type='http', auth='public', methods=['GET'])
     def share_zip(self, share_id, **kw):

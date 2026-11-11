@@ -59,8 +59,8 @@ entries:
   note: creator-scoped aggregate of denied share unlock attempts without exposing restricted IP hashes
 - id: Q13
   file: woow_document_management/models/document_log.py
-  functions: [_count_denied_across_shares]
-  note: per-IP denied-event aggregate across share ids, preventing a share existence oracle
+  functions: [_lock_source, _add_one]
+  note: per-IP denied counter row across share ids (no share existence oracle); locked read and increment that fail with serialization_failure on a stale repeatable read snapshot
 - id: Q14
   file: woow_document_management/models/document_log.py
   functions: [_take_slot]
@@ -76,7 +76,7 @@ entries:
 - id: Q3
   file: woow_document_management/models/document_log.py
   functions: [init]
-  note: fixed-string DDL, global denied audit budget minute unique index
+  note: fixed-string DDL, global denied audit budget minute and per-IP denied counter unique indexes
 - id: Q10
   file: woow_document_management/models/quota.py
   functions: [_check]
@@ -87,5 +87,5 @@ entries:
   note: sender row version barrier before hourly share mail count under repeatable read
 - id: Q12
   file: woow_document_management/models/share_service.py
-  functions: [_download_slot_available]
-  note: share row version barrier before file and ZIP download count under repeatable read
+  functions: [_download_slot_available, _lock_password_attempts]
+  note: share row version barrier before the download count and the password failure counts under repeatable read

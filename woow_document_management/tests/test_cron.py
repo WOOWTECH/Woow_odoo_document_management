@@ -144,3 +144,15 @@ class TestDocumentCron(TransactionCase):
         self.env['woow.document'].sudo()._cron_purge_trash()
         self.assertFalse(document.exists())
         self.assertTrue(held.exists())
+
+    def test_log_retention_removes_minute_counters_older_than_two_days(self):
+        now = fields.Datetime.now()
+        old, recent = now - timedelta(days=3), now - timedelta(hours=1)
+        counters = self.env['woow.document.denied.counter'].sudo().create([{
+            'event': 'share_access', 'ip_hash': 'c' * 64, 'bucket_minute': minute,
+            'count': 1} for minute in (old, recent)])
+        budgets = self.env['woow.document.denied.budget'].sudo().create([{
+            'bucket_minute': minute, 'count': 1} for minute in (old, recent)])
+        self.env['woow.document'].sudo()._cron_log_retention()
+        self.assertEqual(counters.exists(), counters[1])
+        self.assertEqual(budgets.exists(), budgets[1])

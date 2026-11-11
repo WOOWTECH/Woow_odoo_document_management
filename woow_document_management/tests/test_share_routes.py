@@ -12,13 +12,19 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import requests
-from odoo import Command, fields
+from psycopg2 import errors
+
+from odoo import Command, SUPERUSER_ID, api, fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, TransactionCase, tagged
+from odoo.tools import mute_logger
 
+from ..services import tokens
 from ..services.client_ip import hmac_ip
 from ..services.zip_builder import ZipLimitExceeded
 from ..controllers import streaming
+
+CSRF_RE = re.compile(rb'name="csrf_token"[^>]*value="([^"]+)"')
 
 
 @tagged('woow_docmgmt_share_scope')
@@ -130,7 +136,9 @@ class TestShareScope(TransactionCase):
         log._log_event('share_unlock_failed', result='denied', channel='share',
                        share_id=share.id, ip='192.0.2.1')
         digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, '192.0.2.1')
-        since = fields.Datetime.now() - timedelta(minutes=2)
+        # Buckets use the transaction's minute; a wide window keeps the wall clock of a
+        # slow test run from passing them.
+        since = fields.Datetime.now() - timedelta(hours=1)
         self.assertEqual(log._count_share_unlock_failures(share.id, since=since,
                                                           ip_hash=digest), 1)
         self.assertEqual(log._count_share_unlock_failures(share.id, since=since,
@@ -169,9 +177,126 @@ class TestShareScope(TransactionCase):
         self.assertTrue(share.action_revoke())
         self.assertFalse(found._validate_for_access(scope_env))
 
+    def test_password_attempt_barrier_rejects_a_stale_snapshot(self):
+        """Two real Repeatable Read transactions on one protected link.
+
+        B takes its snapshot, then A takes the share lock, records a wrong password
+        from another source and commits. The advisory lock alone would let B read
+        the old failure count after its wait; the share row barrier makes B fail
+        with serialization_failure instead, and the retry sees A's failure before
+        any password comparison.
+        """
+        admin = self.env.ref('base.user_admin')
+        with self.registry.cursor() as cr:
+            env = api.Environment(cr, admin.id, {}, su=True)
+            share_id = env['woow.document.share'].create({
+                'share_type': 'documents', 'company_id': env.company.id,
+                'token_hash': secrets.token_hex(32),
+                'expire_at': fields.Datetime.now() + timedelta(days=1)}).id
+            company_id = env.company.id
+        sources = ['2001:db8:%x::%x' % (secrets.randbelow(0xffff), n) for n in (1, 2)]
+        k_ip = self.env['woow.document.settings']._share_keys().k_ip
+
+        def drop_committed_rows():
+            with self.registry.cursor() as cr:
+                cr.execute('DELETE FROM woow_document_log WHERE share_id = %s', (share_id,))
+                cr.execute('DELETE FROM woow_document_denied_counter WHERE ip_hash = ANY(%s)',
+                           ([hmac_ip(k_ip, ip) for ip in sources],))
+                cr.execute('DELETE FROM woow_document_share WHERE id = %s', (share_id,))
+        self.addCleanup(drop_committed_rows)
+
+        def scope(cr):
+            share = api.Environment(cr, SUPERUSER_ID, {})['woow.document.share'].browse(share_id)
+            return share, api.Environment(cr, admin.id, {'allowed_company_ids': [company_id]})
+
+        since = fields.Datetime.now() - timedelta(hours=1)
+        # No committed global budget row may outlive the test (other tests count them).
+        with patch.object(type(self.env['woow.document.denied.budget']), '_take_slot',
+                          lambda budget: True), \
+                self.registry.cursor() as cr_b, self.registry.cursor() as cr_a:
+            cr_b.execute('SELECT 1')   # B's first statement takes its snapshot.
+            share_a, scope_a = scope(cr_a)
+            self.assertTrue(share_a._lock_password_attempts(scope_a))
+            scope_a['woow.document.log']._log_event(
+                'share_unlock_failed', result='denied', channel='share',
+                share_id=share_id, ip=sources[0])
+            cr_a.commit()
+            share_b, scope_b = scope(cr_b)
+            with mute_logger('odoo.sql_db'), self.assertRaises(errors.SerializationFailure):
+                share_b._lock_password_attempts(scope_b)
+            cr_b.rollback()
+            self.assertTrue(share_b._lock_password_attempts(scope_b))
+            self.assertEqual(scope_b['woow.document.log']._count_share_unlock_failures(
+                share_id, since=since), 1)
+            cr_b.rollback()
+
+    def test_password_attempt_lock_needs_the_creator_scope(self):
+        admin = self.env.ref('base.user_admin')
+        share, _code = self.env['woow.document.share'].with_user(admin)._issue({
+            'share_type': 'folder', 'expire_at': fields.Datetime.now() + timedelta(days=1),
+            'folder_id': self.env['woow.document.folder'].sudo().create({
+                'name': 'Creator scope fixture', 'owner_id': admin.id}).id,
+            'password': secrets.token_urlsafe(16)})
+        link = share.sudo()
+        self.assertTrue(link._lock_password_attempts(share.with_user(admin).env))
+        stranger = self.env['res.users'].sudo().create({
+            'name': 'Scope stranger', 'login': 'wdoc-scope-stranger',
+            'groups_id': [Command.set([
+                self.env.ref('woow_document_management.group_woow_document_user').id])]})
+        # A superuser environment and another user's environment are both refused.
+        for env in (self.env, share.with_user(stranger).env):
+            with self.assertRaises(AccessError):
+                link._lock_password_attempts(env)
+
 
 @tagged('woow_docmgmt_share_http')
 class TestShareHttp(HttpCase):
+
+    def test_source_limit_stops_unlock_on_every_link_before_password_check(self):
+        """A source that used its denied minute limit on one link cannot try another."""
+        params = self.env['ir.config_parameter'].sudo()
+        params.set_param('woow_document_management.denied_rate_per_min', '3')
+        params.set_param('woow_document_management.share_unlock_max_fail', '10')
+        admin = self.env.ref('base.user_admin')
+        password = secrets.token_urlsafe(16)
+        shares = []
+        for index in range(2):
+            folder = self.env['woow.document.folder'].sudo().create({
+                'name': 'Source limit fixture %d' % index, 'owner_id': admin.id})
+            self.env['woow.document'].sudo().create({
+                'name': 'fixture.txt', 'folder_id': folder.id,
+                'datas': base64.b64encode(b'content')})
+            share, code = self.env['woow.document.share'].with_user(admin)._issue({
+                'share_type': 'folder', 'folder_id': folder.id,
+                'expire_at': fields.Datetime.now() + timedelta(days=1), 'password': password})
+            # Opening a link rotates the session, so every POST needs a fresh token.
+            csrf = CSRF_RE.search(self.url_open('/woow-docs/s').content).group(1).decode()
+            opened = self.url_open('/woow-docs/s/open', data={'token': code, 'csrf_token': csrf},
+                                   allow_redirects=False)
+            self.assertEqual(opened.status_code, 303)
+            shares.append(share)
+        first, second = shares
+        locked = self.url_open('/woow-docs/s/%d' % first.id)
+        csrf = CSRF_RE.search(locked.content).group(1).decode()
+        for _ in range(3):
+            self.assertEqual(self.url_open('/woow-docs/s/%d/unlock' % first.id, data={
+                'password': password + 'x', 'csrf_token': csrf},
+                allow_redirects=False).status_code, 404)
+        with patch.object(tokens, 'check_password', side_effect=AssertionError(
+                'a password was compared after the source limit')) as check:
+            for share in (second, first):
+                response = self.url_open('/woow-docs/s/%d/unlock' % share.id, data={
+                    'password': password, 'csrf_token': csrf}, allow_redirects=False)
+                self.assertEqual(response.status_code, 429)
+        check.assert_not_called()
+        self.env.invalidate_all()
+        log = self.env['woow.document.log'].sudo()
+        failed = log.search([('event', '=', 'share_unlock_failed'), ('result', '=', 'denied')])
+        self.assertEqual([(row.share_id, row.count) for row in failed], [(first, 3)])
+        self.assertEqual(log.search([('event', '=', 'rate_limited')]).mapped('count'), [2])
+        counter = self.env['woow.document.denied.counter'].sudo().search([
+            ('event', '=', 'share_unlock_failed')])
+        self.assertEqual(counter.mapped('count'), [3])
 
     def test_denied_rate_limit_is_shared_by_unknown_and_valid_link_ids(self):
         self.env['ir.config_parameter'].sudo().set_param(

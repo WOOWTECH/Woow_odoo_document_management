@@ -302,11 +302,18 @@ msgid "Backend"
 msgstr "後台"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_denied_budget
+msgid "Bounded denied audit minute budget"
+msgstr "拒絕紀錄每分鐘容量"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_home_woow_docs
 msgid "Browse folders and files shared with you"
 msgstr "瀏覽與您分享的資料夾和檔案"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_budget__bucket_minute
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_counter__bucket_minute
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__bucket_minute
 msgid "Bucket Minute"
 msgstr "分鐘區間"
@@ -477,6 +484,8 @@ msgid "Copy these links now. They will not be shown again."
 msgstr "請立即複製這些連結，之後不會再顯示。"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_budget__count
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_counter__count
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__count
 msgid "Count"
 msgstr "數量"
@@ -563,6 +572,11 @@ msgid "Denied"
 msgstr "已拒絕"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_denied_counter
+msgid "Denied share requests per source"
+msgstr "各來源的分享拒絕次數"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__description
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__description
 msgid "Description"
@@ -576,6 +590,8 @@ msgstr "詳細資訊"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_budget__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_counter__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__display_name
@@ -890,6 +906,7 @@ msgid "Enter valid email addresses."
 msgstr "請輸入有效的電子郵件地址。"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_counter__event
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__event
 msgid "Event"
 msgstr "事件"
@@ -1041,6 +1058,8 @@ msgstr "支援的最高值為 95 MB。"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_budget__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_counter__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__id
@@ -1136,6 +1155,7 @@ msgid "Ip Display"
 msgstr "IP 顯示值"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_denied_counter__ip_hash
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__ip_hash
 msgid "Ip Hash"
 msgstr "IP 雜湊值"
