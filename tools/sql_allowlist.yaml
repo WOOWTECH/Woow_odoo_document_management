@@ -85,3 +85,11 @@ entries:
   file: woow_document_management/models/share_service.py
   functions: [_woow_lock_share_row, _woow_count_on_share_row]
   note: share row lock before the download count and the password failure counts under repeatable read, and the row version written only when a download or a wrong password is counted
+- id: Q17
+  file: woow_document_management/models/ir_attachment.py
+  functions: [_woow_field_attachment_ids, _woow_document_file_is_unique]
+  note: attachments that back a binary field among the ids given to a chatter post, and the single binary attachment a document records for its file, read without record rules before core links or streams them as superuser
+- id: Q18
+  file: woow_document_management/models/mail_thread_guard.py
+  functions: [_woow_follower_scope, _woow_user_companies]
+  note: stored grants, state and company behind the read rules of the notified record, and the companies of the notified accounts, so followers who can no longer read the record are not notified (no identity switch)

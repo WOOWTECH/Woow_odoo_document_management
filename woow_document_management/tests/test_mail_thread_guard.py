@@ -6,6 +6,7 @@ import json
 import secrets
 
 from odoo import Command
+from odoo.addons.mail.tests.common import MockEmail
 from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
 
@@ -163,3 +164,330 @@ class TestMailThreadGuardRpc(HttpCase):
         found = self._call_kw('mail.message', 'search_read',
                               [[['id', 'in', ids]]], {'fields': ['body']})
         self.assertEqual(sorted(row['id'] for row in found['result']), sorted(ids))
+
+
+def _raw_email(sender, subject):
+    """A plain RFC 2822 message as the mail gateway receives it."""
+    return ('From: %s\r\nTo: docs@example.test\r\nSubject: %s\r\n'
+            'Message-Id: <%s@example.test>\r\nContent-Type: text/plain; charset=utf-8\r\n'
+            '\r\nInbound body\r\n' % (sender, subject, secrets.token_hex(12)))
+
+
+def _document_user(env, login, **extra):
+    return env['res.users'].sudo().create(dict({
+        'name': login, 'login': login, 'email': '%s@example.test' % login,
+        'groups_id': [Command.set([
+            env.ref('woow_document_management.group_woow_document_user').id])]}, **extra))
+
+
+@tagged('woow_docmgmt_core')
+class TestMailGatewayGuard(TransactionCase):
+    """Incoming email never creates or posts on documents and folders for normal users."""
+
+    def setUp(self):
+        super().setUp()
+        self.plain = self.env['res.users'].sudo().create({
+            'name': 'Gateway plain user', 'login': 'wdoc-gateway-plain',
+            'email': 'gateway-plain@example.test',
+            'groups_id': [Command.set([self.env.ref('base.group_user').id])]})
+        self.reader = _document_user(self.env, 'wdoc-gateway-reader')
+        self.folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Gateway folder', 'owner_id': self.env.ref('base.user_admin').id})
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.folder.id, 'subject_type': 'user',
+            'user_id': self.reader.id, 'level': 'read'})
+        self.document = self.env['woow.document'].sudo().create({
+            'name': 'gateway.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(b'gateway fixture')})
+        self.env.flush_all()
+
+    def _counts(self):
+        return (self.env['woow.document'].sudo().with_context(active_test=False).search_count([]),
+                self.env['woow.document.folder'].sudo().with_context(
+                    active_test=False).search_count([]),
+                self.env['mail.message'].sudo().search_count([('model', 'in', list(_MODELS))]))
+
+    def test_normal_users_cannot_create_records_through_the_gateway(self):
+        before = self._counts()
+        routes = (('woow.document', {'folder_id': self.folder.id, 'document_type': 'url',
+                                     'url': 'https://example.invalid/landing'}),
+                  ('woow.document.folder', {'parent_id': self.folder.id}),
+                  ('woow.document.folder', {}))
+        for entry in ('woow.document', 'woow.document.folder', 'res.partner', 'mail.thread'):
+            for model, values in routes:
+                with self.subTest(entry=entry, model=model, values=values), \
+                        self.assertRaises(AccessError):
+                    self.env[entry].with_user(self.plain).message_process(
+                        model, _raw_email('gateway-plain@example.test', 'Inbound'),
+                        custom_values=dict(values))
+        self.assertEqual(self._counts(), before)
+        for model in _MODELS:
+            with self.assertRaises(AccessError):
+                self.env[model].with_user(self.plain).message_new(
+                    {'subject': 'Direct'}, {'parent_id': self.folder.id})
+
+    def test_reader_cannot_post_on_a_record_through_the_gateway(self):
+        before = self._counts()
+        for thread in (self.document, self.folder):
+            with self.subTest(model=thread._name), self.assertRaises(AccessError):
+                self.env[thread._name].with_user(self.reader).message_process(
+                    thread._name, _raw_email('admin@example.test', 'Spoofed'),
+                    thread_id=thread.id)
+        self.assertEqual(self._counts(), before)
+
+    def test_superuser_gateway_delivers_replies_but_never_creates_records(self):
+        gateway = self.env['mail.thread'].sudo()
+        subject = 'Reply %s' % secrets.token_hex(4)
+        self.assertEqual(gateway.message_process(
+            'woow.document', _raw_email('outside@example.test', subject),
+            thread_id=self.document.id), self.document.id)
+        self.assertEqual(self.env['mail.message'].sudo().search_count([
+            ('model', '=', 'woow.document'), ('res_id', '=', self.document.id),
+            ('subject', '=', subject)]), 1)
+        before = self._counts()
+        for model in _MODELS:
+            with self.subTest(model=model), self.assertRaises(AccessError):
+                gateway.message_process(model, _raw_email('outside@example.test', 'New'))
+            with self.assertRaises(AccessError):
+                self.env[model].sudo().message_new({'subject': 'Direct'})
+        self.assertEqual(self._counts(), before)
+
+
+@tagged('woow_docmgmt_core')
+class TestFollowerRemovalGuard(TransactionCase):
+    """Only internal users may remove followers other than themselves."""
+
+    def setUp(self):
+        super().setUp()
+        admin = self.env.ref('base.user_admin')
+        self.partner = self.env['res.partner'].sudo().create({
+            'name': 'Uploader contact', 'email': 'uploader@example.test'})
+        self.portal = self.env['res.users'].sudo().create({
+            'name': 'Uploader', 'login': 'wdoc-unfollow-portal', 'partner_id': self.partner.id,
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])]})
+        self.member = _document_user(self.env, 'wdoc-unfollow-member')
+        self.editor = _document_user(self.env, 'wdoc-unfollow-editor')
+        self.folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Unfollow folder', 'owner_id': admin.id})
+        access = self.env['woow.document.folder.access'].sudo()
+        access.create({'folder_id': self.folder.id, 'subject_type': 'partner',
+                       'partner_id': self.partner.id, 'level': 'upload'})
+        access.create({'folder_id': self.folder.id, 'subject_type': 'user',
+                       'user_id': self.member.id, 'level': 'read'})
+        access.create({'folder_id': self.folder.id, 'subject_type': 'user',
+                       'user_id': self.editor.id, 'level': 'edit'})
+        self.document = self.env['woow.document'].sudo().create({
+            'name': 'unfollow.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(b'unfollow fixture')})
+        self.followers = (self.member.partner_id | admin.partner_id | self.portal.partner_id)
+        for record in (self.folder, self.document):
+            record.sudo().message_subscribe(partner_ids=self.followers.ids)
+        self.env.flush_all()
+
+    def _followers(self, record):
+        return record.sudo().message_partner_ids
+
+    def test_portal_uploader_cannot_remove_other_followers(self):
+        self.assertTrue(self.folder.with_user(self.portal)._woow_portal_can_upload())
+        for record in (self.folder, self.document):
+            for partner_ids in ([self.member.partner_id.id],
+                                list(range(1, max(self.followers.ids) + 5))):
+                with self.subTest(model=record._name, ids=len(partner_ids)), \
+                        self.assertRaises(AccessError):
+                    record.with_user(self.portal).message_unsubscribe(partner_ids)
+            self.assertEqual(self._followers(record), self.followers)
+
+    def test_self_removal_internal_editors_and_superuser_keep_working(self):
+        self.folder.with_user(self.portal).message_unsubscribe([self.portal.partner_id.id])
+        self.assertNotIn(self.portal.partner_id, self._followers(self.folder))
+        self.folder.with_user(self.editor).message_unsubscribe([self.member.partner_id.id])
+        self.assertNotIn(self.member.partner_id, self._followers(self.folder))
+        self.folder.sudo().message_unsubscribe(partner_ids=self.followers.ids)
+        self.assertFalse(self._followers(self.folder))
+
+
+@tagged('woow_docmgmt_core')
+class TestFolderNamesInMail(TransactionCase, MockEmail):
+    """Mail and activities on a folder never name an ancestor the reader cannot see (I-08)."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = self.env.ref('base.user_admin')
+        self.admin.sudo().write({'email': 'admin@example.test'})
+        self.reader = _document_user(self.env, 'wdoc-names-reader')
+        self.ancestor = self.env['woow.document.folder'].sudo().create({
+            'name': 'VRF Hidden Ancestor', 'owner_id': self.admin.id})
+        self.child = self.env['woow.document.folder'].sudo().create({
+            'name': 'VRF Visible Child', 'parent_id': self.ancestor.id,
+            'inherit_access': False, 'owner_id': self.admin.id})
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.child.id, 'subject_type': 'user',
+            'user_id': self.reader.id, 'level': 'read'})
+        self.child.sudo().message_subscribe(partner_ids=[self.reader.partner_id.id])
+        self.env.flush_all()
+        folders = self.env['woow.document.folder'].with_user(self.reader)
+        self.assertEqual(folders.search_count([('id', '=', self.ancestor.id)]), 0)
+        self.assertNotIn('VRF Hidden Ancestor', self.child.with_user(self.reader).display_name)
+        self.assertIn('VRF Hidden Ancestor', self.child.with_user(self.admin).display_name)
+
+    def test_posted_message_and_its_mail_name_only_the_folder(self):
+        with self.mock_mail_gateway():
+            message = self.child.with_user(self.admin).message_post(
+                body='Status update', message_type='comment',
+                subtype_xmlid='mail.mt_comment', partner_ids=[self.reader.partner_id.id])
+        self.env.flush_all()
+        message = message.sudo()
+        self.assertEqual(message.record_name, 'VRF Visible Child')
+        self.assertNotIn('VRF Hidden Ancestor', message.subject or '')
+        self.assertTrue(self._new_mails)
+        for mail in self._new_mails:
+            self.assertNotIn('VRF Hidden Ancestor', mail.subject or '')
+            self.assertNotIn('VRF Hidden Ancestor', mail.body_html or '')
+        self.assertTrue(self._mails)
+        for sent in self._mails:
+            self.assertNotIn('VRF Hidden Ancestor', sent['subject'] or '')
+            self.assertNotIn('VRF Hidden Ancestor', sent['body'] or '')
+        read = self.env['mail.message'].with_user(self.reader).search_read(
+            [('id', '=', message.id)], ['record_name', 'subject'])
+        self.assertEqual(read[0]['record_name'], 'VRF Visible Child')
+        self.assertNotIn('VRF Hidden Ancestor', read[0]['subject'] or '')
+
+    def test_activity_names_only_the_folder(self):
+        with self.mock_mail_gateway():
+            activity = self.child.with_user(self.admin).activity_schedule(
+                'mail.mail_activity_data_todo', user_id=self.reader.id, summary='Check')
+        self.env.flush_all()
+        self.assertEqual(activity.sudo().res_name, 'VRF Visible Child')
+        self.assertEqual(self.env['mail.activity'].with_user(self.reader).search_read(
+            [('id', '=', activity.id)], ['res_name'])[0]['res_name'], 'VRF Visible Child')
+        for sent in self._mails:
+            self.assertNotIn('VRF Hidden Ancestor', sent['subject'] or '')
+            self.assertNotIn('VRF Hidden Ancestor', sent['body'] or '')
+
+
+@tagged('woow_docmgmt_core')
+class TestRevokedFollowersAreNotNotified(TransactionCase, MockEmail):
+    """Following a record never outlasts the right to read it."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = self.env.ref('base.user_admin')
+        self.admin.sudo().write({'email': 'admin@example.test'})
+        self.member = _document_user(self.env, 'wdoc-follow-member')
+        self.manager = _document_user(self.env, 'wdoc-follow-manager', groups_id=[Command.set([
+            self.env.ref('woow_document_management.group_woow_document_manager').id])])
+        self.portal_partner = self.env['res.partner'].sudo().create({
+            'name': 'Follow portal', 'email': 'follow-portal@example.test'})
+        self.portal = self.env['res.users'].sudo().create({
+            'name': 'Follow portal', 'login': 'wdoc-follow-portal',
+            'partner_id': self.portal_partner.id,
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])]})
+        self.contact = self.env['res.partner'].sudo().create({
+            'name': 'Outside contact', 'email': 'outside-contact@example.test'})
+        self.folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Follow folder', 'owner_id': self.admin.id})
+        self.other = self.env['woow.document.folder'].sudo().create({
+            'name': 'Other folder', 'owner_id': self.admin.id})
+        access = self.env['woow.document.folder.access'].sudo()
+        self.lines = access.create([
+            {'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': self.member.id,
+             'level': 'read'},
+            {'folder_id': self.folder.id, 'subject_type': 'partner',
+             'partner_id': self.portal_partner.id, 'level': 'read'}])
+        self.document = self.env['woow.document'].sudo().create({
+            'name': 'follow.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(b'follow fixture')})
+        self.followers = (self.member.partner_id | self.manager.partner_id |
+                          self.portal_partner | self.contact)
+        for record in (self.folder, self.document):
+            record.sudo().message_subscribe(partner_ids=self.followers.ids)
+        self.env.flush_all()
+
+    def _notified(self, record, **post):
+        with self.mock_mail_gateway():
+            message = record.with_user(self.admin).message_post(
+                body='Follow update', message_type='comment',
+                subtype_xmlid='mail.mt_comment', **post)
+        self.env.flush_all()
+        partners = message.sudo().notification_ids.res_partner_id
+        mailed = {address for mail in self._mails for address in mail['email_to']}
+        return partners, mailed
+
+    def test_members_managers_and_contacts_are_notified(self):
+        for record in (self.folder, self.document):
+            with self.subTest(model=record._name):
+                partners, mailed = self._notified(record)
+                self.assertEqual(partners, self.followers)
+                self.assertTrue(any('follow-portal@example.test' in address for address in mailed))
+
+    def test_removed_members_are_no_longer_notified(self):
+        self.lines.sudo().unlink()
+        self.env.flush_all()
+        self.assertFalse(self.folder.with_user(self.member).has_access('read'))
+        self.assertFalse(self.document.with_user(self.portal).has_access('read'))
+        for record in (self.folder, self.document):
+            with self.subTest(model=record._name):
+                partners, mailed = self._notified(record)
+                self.assertEqual(partners, self.manager.partner_id | self.contact)
+                self.assertFalse(any('follow-portal@example.test' in address for address in mailed))
+                self.assertFalse(self.env['mail.message'].with_user(self.member).search_count(
+                    [('model', '=', record._name), ('res_id', '=', record.id)]))
+                # Naming a partner on purpose still reaches them (HD-10).
+                partners, _mailed = self._notified(
+                    record, partner_ids=[self.member.partner_id.id])
+                self.assertIn(self.member.partner_id, partners)
+
+    def test_moving_away_from_the_grant_stops_notifications(self):
+        self.document.sudo().write({'folder_id': self.other.id})
+        partners, _mailed = self._notified(self.document)
+        self.assertEqual(partners, self.manager.partner_id | self.contact)
+        child = self.env['woow.document.folder'].sudo().create({
+            'name': 'Moving child', 'parent_id': self.folder.id, 'owner_id': self.admin.id})
+        child.sudo().message_subscribe(partner_ids=self.followers.ids)
+        self.assertEqual(self._notified(child)[0], self.followers)
+        child.sudo().write({'parent_id': self.other.id})
+        self.assertEqual(self._notified(child)[0], self.manager.partner_id | self.contact)
+
+    def test_follower_filter_matches_the_record_rules(self):
+        """The rule mirror used for notifications agrees with has_access for every account."""
+        from ..models.mail_thread_guard import _readers_only
+        owner = _document_user(self.env, 'wdoc-follow-owner')
+        editor = _document_user(self.env, 'wdoc-follow-editor')
+        shared = _document_user(self.env, 'wdoc-follow-shared')
+        plain = self.env['res.users'].sudo().create({
+            'name': 'Follow plain', 'login': 'wdoc-follow-plain', 'email': 'plain@example.test',
+            'groups_id': [Command.set([self.env.ref('base.group_user').id])]})
+        stranger = _document_user(self.env, 'wdoc-follow-stranger')
+        access = self.env['woow.document.folder.access'].sudo()
+        access.create([
+            {'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': owner.id,
+             'level': 'upload'},
+            {'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': editor.id,
+             'level': 'edit'}])
+        owned = self.env['woow.document'].sudo().create({
+            'name': 'owned.txt', 'folder_id': self.folder.id, 'owner_id': owner.id,
+            'datas': base64.b64encode(b'owned')})
+        self.document.sudo().write({'shared_user_ids': [Command.set([shared.id])]})
+        trashed = self.env['woow.document'].sudo().create({
+            'name': 'trashed.txt', 'folder_id': self.folder.id, 'owner_id': owner.id,
+            'datas': base64.b64encode(b'trashed')})
+        trashed.sudo().write({'active': False})
+        users = (self.member | self.manager | self.portal | owner | editor | shared | plain |
+                 stranger)
+        records = (self.folder, self.document, owned, trashed)
+        for record in records:
+            record.sudo().message_subscribe(partner_ids=users.partner_id.ids)
+        self.env.flush_all()
+        subtype = self.env.ref('mail.mt_comment').id
+        for record in records:
+            data = self.env['mail.followers']._get_recipient_data(
+                record, 'comment', subtype)[record.id]
+            recipients = [data[user.partner_id.id] for user in users]
+            kept = {item['id'] for item in _readers_only(
+                record.with_user(self.admin), recipients, self.env['mail.message'],
+                {'partner_ids': []})}
+            for user in users:
+                with self.subTest(record=record.display_name, user=user.login):
+                    self.assertEqual(user.partner_id.id in kept,
+                                     record.with_user(user).with_context(
+                                         active_test=False).has_access('read'))

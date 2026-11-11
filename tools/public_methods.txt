@@ -40,7 +40,11 @@ woow.document.notify.wizard::action_send
 *::init
 woow.document::message_post
 woow.document::message_subscribe
+woow.document::message_unsubscribe
+woow.document::message_new
 woow.document.folder::message_post
 woow.document.folder::message_subscribe
+woow.document.folder::message_unsubscribe
+woow.document.folder::message_new
 res.config.settings::set_values
 woow.document.*.wizard::default_get
