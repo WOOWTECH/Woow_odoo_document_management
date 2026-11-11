@@ -252,6 +252,23 @@ class TestMailGatewayGuard(TransactionCase):
                 self.env[model].sudo().message_new({'subject': 'Direct'})
         self.assertEqual(self._counts(), before)
 
+    def test_system_administrator_gateway_delivers_replies(self):
+        """The mail gateway script logs in as a system administrator, not as superuser."""
+        admin = self.env.ref('base.user_admin')
+        self.assertTrue(admin._is_system())
+        gateway = self.env['mail.thread'].with_user(admin)
+        self.assertFalse(gateway.env.su)
+        subject = 'Gateway reply %s' % secrets.token_hex(4)
+        self.assertEqual(gateway.message_process(
+            'woow.document.folder',
+            _raw_email('outside@example.test', subject), thread_id=self.folder.id), self.folder.id)
+        self.assertEqual(self.env['mail.message'].sudo().search_count([
+            ('model', '=', 'woow.document.folder'), ('res_id', '=', self.folder.id),
+            ('subject', '=', subject)]), 1)
+        with self.assertRaises(AccessError):
+            gateway.message_process('woow.document.folder',
+                                    _raw_email('outside@example.test', 'New folder'))
+
 
 @tagged('woow_docmgmt_core')
 class TestFollowerRemovalGuard(TransactionCase):
