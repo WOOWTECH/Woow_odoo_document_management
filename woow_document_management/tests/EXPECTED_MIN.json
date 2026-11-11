@@ -1,9 +1,9 @@
 {
   "batches": {
     "core": 123,
-    "files": 93,
-    "portal": 2,
-    "share": 35
+    "files": 96,
+    "portal": 3,
+    "share": 36
   },
   "files": {
     "test_add_attachment.py": 4,
@@ -21,22 +21,22 @@
     "test_display_name_folding.py": 2,
     "test_folding_service.py": 4,
     "test_i18n_complete.py": 1,
-    "test_internal_routes.py": 5,
+    "test_internal_routes.py": 6,
     "test_locks.py": 6,
     "test_mail_share.py": 6,
     "test_mail_thread_guard.py": 18,
     "test_naming.py": 4,
     "test_native_routes.py": 3,
-    "test_portal_routes.py": 2,
+    "test_portal_routes.py": 3,
     "test_quota.py": 8,
     "test_record_rules.py": 4,
     "test_security_acl.py": 8,
     "test_settings_bounds.py": 9,
-    "test_share_routes.py": 34,
+    "test_share_routes.py": 35,
     "test_share_token.py": 3,
     "test_trash_lifecycle.py": 27,
     "test_uninstall.py": 3,
-    "test_upload_policy.py": 10,
+    "test_upload_policy.py": 17,
     "test_url_policy.py": 4,
     "test_zip_builder.py": 4
   },
