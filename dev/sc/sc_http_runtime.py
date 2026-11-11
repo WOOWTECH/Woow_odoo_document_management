@@ -177,7 +177,36 @@ def sources(spec):
     return result
 
 
-COMMANDS = {'ready': ready, 'denied': denied, 'unlock-race': unlock_race, 'sources': sources}
+def refuse_many(spec):
+    """Refused link requests (an unknown share id) from many sources at once."""
+    spec = json.loads(spec)
+    clients = [Client({'X-Real-IP': '198.51.100.%d' % (index + 1)})
+               for index in range(spec['sources'])]
+    barrier = threading.Barrier(len(clients))
+    result = {'statuses': [[] for _ in clients], 'errors': []}
+
+    def refuse(index):
+        try:
+            for _ in range(spec['rounds']):
+                barrier.wait(timeout=120)   # every round starts all requests together
+                result['statuses'][index].append(clients[index].send(
+                    'GET', '/woow-docs/s/%d' % spec['unknown'])[0])
+        except Exception as exc:  # reported to the runner, which fails closed
+            result['errors'].append(type(exc).__name__)
+            barrier.abort()
+
+    threads = [threading.Thread(target=refuse, args=(index,)) for index in range(len(clients))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=300)
+    if any(thread.is_alive() for thread in threads):
+        result['errors'].append('timeout')
+    return result
+
+
+COMMANDS = {'ready': ready, 'denied': denied, 'unlock-race': unlock_race, 'sources': sources,
+            'refuse-many': refuse_many}
 sys.stdout.write(json.dumps(COMMANDS[sys.argv[1]](*sys.argv[3:])) + '\n')
 '''
 
@@ -287,12 +316,15 @@ class HttpScenario:
                  "DELETE FROM woow_document_denied_counter; "
                  "DELETE FROM woow_document_denied_budget")
 
+    def server_log_count(self, pattern):
+        """Lines of the server log that match the extended regular expression ``pattern``."""
+        output = self.call('exec', 'bash', '-c',
+                           "grep -cE '%s' %s || true" % (pattern, self.server_log))
+        return int(output.strip() or 0)
+
     def server_retries(self):
         """Requests the server rolled back and retried after a concurrency error."""
-        output = self.call('exec', 'bash', '-c',
-                           "grep -cE 'tries left|maximum number of tries' %s || true"
-                           % self.server_log)
-        return int(output.strip() or 0)
+        return self.server_log_count('tries left|maximum number of tries')
 
     def cleanup(self):
         failed = False

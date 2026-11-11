@@ -5,6 +5,7 @@ import base64
 import io
 import re
 import secrets
+import sys
 import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -14,6 +15,7 @@ from unittest.mock import patch
 
 import requests
 from psycopg2 import errors
+from psycopg2.pool import PoolError
 
 from odoo import Command, SUPERUSER_ID, api, fields, sql_db
 from odoo.exceptions import AccessError, UserError
@@ -812,6 +814,52 @@ class TestShareHttp(HttpCase):
             self.assertEqual(self._refusals_of('198.51.100.33'), (
                 [('share_unlock_failed', share.id, 1)], [('share_unlock_failed', 1)]))
             self.assertEqual(self._capacity_used(), 2)
+
+    def test_refusals_without_a_connection_for_a_slot_answer_429_not_500(self):
+        """A full connection pool never turns a refusal into a server error.
+
+        Reserving a capacity slot borrows a second connection. While none can be had,
+        a new source's refusals answer 429 on every route and write nothing, and a
+        source that is already counted needs no slot and still gets its 404. Valid
+        links, wrong passwords (which need no slot) and unlocked sessions are served
+        as usual.
+        """
+        self._trust_forwarded_sources()
+        password = secrets.token_urlsafe(16)
+        share, code, _doc = self._link('No connection fixture', password=password)
+        unknown = '/woow-docs/s/%d' % (share.id + 1000000)
+        counted = {'X-Real-IP': '198.51.100.120'}
+        self.assertEqual(self.url_open(unknown, headers=counted).status_code, 404)
+        original = self.registry.cursor
+
+        def cursor(*args, **kwargs):
+            if sys._getframe(1).f_code.co_name == '_take_slot':
+                raise PoolError('The Connection Pool Is Full')
+            return original(*args, **kwargs)
+
+        capacity, refusals = self._capacity_rows(), self._denied_rows()
+        with patch.object(self.registry, 'cursor', cursor):
+            sends = (lambda headers: self._open('x' * 43, headers=headers),
+                     lambda headers: self.url_open(unknown, headers=headers),
+                     lambda headers: self.url_open('/woow-docs/s/%d' % share.id, headers=headers))
+            for number, send in enumerate(sends):
+                headers = {'X-Real-IP': '198.51.100.%d' % (121 + number)}
+                self.assertEqual(send(headers).status_code, 429)
+                self.assertEqual(self._refusals_of(headers['X-Real-IP']), ([], []))
+            self.assertEqual(self._capacity_rows(), capacity)
+            self.assertEqual(self._denied_rows(), refusals)
+            self.assertEqual(self.url_open(unknown, headers=counted).status_code, 404)
+            self.assertEqual(self._refusals_of('198.51.100.120'),
+                             ([('share_access', None, 2)], [('share_access', 2)]))
+            guesser = {'X-Real-IP': '198.51.100.130'}
+            self.assertEqual(self._open(code, headers=guesser).status_code, 303)
+            self.assertEqual(self._unlock(share, password + 'x', headers=guesser).status_code,
+                             404)
+            self.assertEqual(self._refusals_of('198.51.100.130'), (
+                [('share_unlock_failed', share.id, 1)], [('share_unlock_failed', 1)]))
+            self.assertEqual(self._unlock(share, password, headers=guesser).status_code, 303)
+            self.assertEqual(self.url_open('/woow-docs/s/%d' % share.id,
+                                           headers=guesser).status_code, 200)
 
     def test_refusals_from_one_ipv6_network_and_many_links_stay_bounded(self):
         """A /64 is one source, and refusals on many links share the source's records."""

@@ -12,7 +12,9 @@ case ${1:-} in
         exec python3 sc_source_limit_two_links.py ;;
     denied-sources-together)
         exec python3 sc_denied_sources_together.py ;;
+    denied-many-sources)
+        exec python3 sc_denied_many_sources.py ;;
     *)
-        printf '%s\n' 'usage: run_sc.sh share-max-downloads-race|denied-count-real-http|source-limit-two-links|denied-sources-together' >&2
+        printf '%s\n' 'usage: run_sc.sh share-max-downloads-race|denied-count-real-http|source-limit-two-links|denied-sources-together|denied-many-sources' >&2
         exit 2 ;;
 esac

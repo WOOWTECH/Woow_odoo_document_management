@@ -2,11 +2,13 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 
 import secrets
+import threading
 import time
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from psycopg2 import errors
+from psycopg2 import OperationalError, errors
+from psycopg2.pool import PoolError
 
 from odoo import Command, SUPERUSER_ID, api, fields
 from odoo.exceptions import AccessError
@@ -246,6 +248,128 @@ class TestAuditLog(TransactionCase):
             self.assertEqual(_budget_version(self.cr, minute), version)
             self.assertFalse(self.env['woow.document.denied.counter'].sudo().search(mine))
             self.assertFalse(log.sudo().search(mine))
+
+    def test_no_connection_for_a_slot_counts_as_no_capacity(self):
+        """A full connection pool or a refused connection is "no slot", never an error.
+
+        Reserving a slot needs a second connection. Without one a new source's first
+        refusal of the minute gets the answer of a full minute: its counter row is
+        released and nothing is written, so the caller answers 429; the capacity row
+        and every other row stay as they were. A source that already has its counter
+        row and bucket needs no slot and is counted as usual.
+        """
+        log = self.env['woow.document.log']
+        counters = self.env['woow.document.denied.counter'].sudo()
+        k_ip = self.env['woow.document.settings']._share_keys().k_ip
+        minute = _minute(self.cr)
+        _set_budget(self.cr, minute, 7)
+        counted = '198.51.100.100'
+        self.assertEqual(log._log_event('share_access', result='denied', channel='share',
+                                        ip=counted), 1)
+        used = _budget_version(self.cr, minute)
+        self.assertEqual(used[0], 9)   # the counted source's counter row and bucket
+        failures = (PoolError('The Connection Pool Is Full'),
+                    OperationalError('FATAL:  sorry, too many clients already'))
+        for number, failure in enumerate(failures):
+            with self.subTest(error=type(failure).__name__):
+                ips = ['198.51.100.%d' % (110 + 10 * number + index) for index in range(3)]
+                mine = [('ip_hash', 'in', [hmac_ip(k_ip, ip) for ip in ips])]
+                with patch.object(self.registry, 'cursor', side_effect=failure) as second:
+                    self.assertFalse(self.env['woow.document.denied.budget']._take_slot())
+                    self.assertIsNone(log._count_denied_across_shares('share_access', ips[0]))
+                    self.assertEqual(log._log_event('share_access', result='denied',
+                                                    channel='share', ip=ips[1]), 0)
+                    self.assertEqual(log._log_event('rate_limited', result='denied',
+                                                    channel='share', ip=ips[2]), 0)
+                    # Nothing above held a slot; the counted source asks for none.
+                    self.assertEqual(second.call_count, 4)
+                    self.assertEqual(log._log_event('share_access', result='denied',
+                                                    channel='share', ip=counted), 2 + number)
+                    self.assertEqual(second.call_count, 4)
+                self.assertEqual(_budget_version(self.cr, minute), used)
+                self.assertFalse(counters.search(mine))
+                self.assertFalse(log.sudo().search(mine))
+
+    def test_a_missing_connection_for_the_bucket_still_counts_the_refusal(self):
+        """The counter row got its slot, the audit bucket finds no connection.
+
+        The refusal still counts for its source, as when the minute has room for one
+        slot only; no audit bucket is written and the capacity shows the one slot.
+        """
+        log = self.env['woow.document.log']
+        ip = '198.51.100.150'
+        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, ip)
+        original = self.registry.cursor
+        calls = []
+
+        def cursor(*args, **kwargs):
+            calls.append(1)
+            if len(calls) > 1:
+                raise PoolError('The Connection Pool Is Full')
+            return original(*args, **kwargs)
+
+        with patch.object(self.registry, 'cursor', cursor):
+            self.assertEqual(log._log_event('share_access', result='denied', channel='share',
+                                            ip=ip), 0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(log._peek_denied_across_shares('share_access', ip), 1)
+        self.assertFalse(log.sudo().search([('ip_hash', '=', digest)]))
+        self.assertEqual(_budget(self.env), 1)
+
+    def test_an_error_inside_the_slot_transaction_is_not_hidden(self):
+        """Only a failure to get the connection means "no slot"; other errors propagate."""
+        broken = MagicMock()
+        broken.__enter__.return_value.execute.side_effect = OperationalError(
+            'server closed the connection unexpectedly')
+        broken.__exit__.return_value = False
+        with patch.object(self.registry, 'cursor', return_value=broken), \
+                self.assertRaises(OperationalError):
+            self.env['woow.document.denied.budget']._take_slot()
+        broken.__exit__.assert_called_once()
+
+    def test_slot_reservations_wait_for_their_turn_and_always_give_it_back(self):
+        """A process keeps few reservations open at once, and every outcome returns the turn.
+
+        The second connection of a reservation must not cost other requests theirs. With
+        every turn taken a reservation waits and then finds no slot, without borrowing a
+        connection. The turn is returned after a slot, no slot, a missing connection
+        and an error alike.
+        """
+        budget = self.env['woow.document.denied.budget']
+        gate = threading.BoundedSemaphore(2)
+
+        def turns_free():
+            taken = [gate.acquire(blocking=False) for _turn in range(3)]
+            for _turn in range(sum(taken)):
+                gate.release()
+            return taken == [True, True, False]
+
+        broken = MagicMock()
+        broken.__enter__.return_value.execute.side_effect = OperationalError('connection lost')
+        broken.__exit__.return_value = False
+        with patch.object(document_log_module, '_SLOT_GATE', gate), \
+                patch.object(document_log_module, 'SLOT_WAIT', 0.05):
+            gate.acquire()
+            gate.acquire()
+            with patch.object(self.registry, 'cursor', side_effect=AssertionError(
+                    'a connection was borrowed without a turn')) as second:
+                started = time.monotonic()
+                self.assertFalse(budget._take_slot())
+                self.assertGreaterEqual(time.monotonic() - started, 0.04)
+            second.assert_not_called()
+            gate.release()
+            gate.release()
+            self.assertTrue(turns_free())
+            self.assertTrue(budget._take_slot())
+            self.assertTrue(turns_free())
+            with patch.object(self.registry, 'cursor',
+                              side_effect=PoolError('The Connection Pool Is Full')):
+                self.assertFalse(budget._take_slot())
+            self.assertTrue(turns_free())
+            with patch.object(self.registry, 'cursor', return_value=broken), \
+                    self.assertRaises(OperationalError):
+                budget._take_slot()
+            self.assertTrue(turns_free())
 
 
 @tagged('woow_docmgmt_core')

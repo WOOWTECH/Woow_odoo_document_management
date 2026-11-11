@@ -35,4 +35,13 @@ repeated once on clean counters.
   open answers 404, the unlock answers 303, and the capacity counts exactly
   one slot per new counter row and per new bucket.
 
-All three use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.
+- `sh dev/sc/run_sc.sh denied-many-sources` runs T-SHARE-47: sixty clients, each its own
+  source, send refused link requests in rounds that start together to a threaded server
+  (`--workers=0`, no `ODOO_MAX_HTTP_THREADS`, `db_maxconn` 64). Every request holds one
+  connection and every new source borrows a second one for its capacity slots, so an
+  unlimited burst would take connections that other requests need and the pool would run
+  dry. Every answer must be 404 or 429 and none a server error, the server log must show
+  no error trace and no retry, and the counters must equal the refusals that were answered
+  404 (the reservations that find no turn or no connection are answered 429).
+
+All four use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.
