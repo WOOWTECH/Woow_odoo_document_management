@@ -93,3 +93,11 @@ entries:
   file: woow_document_management/models/mail_thread_guard.py
   functions: [_woow_follower_scope, _woow_user_companies]
   note: stored grants, state and company behind the read rules of the notified record, and the companies of the notified accounts, so followers who can no longer read the record are not notified (no identity switch)
+- id: Q19
+  file: woow_document_management/models/document_folder.py
+  functions: [_woow_check_name_free]
+  note: an active folder already using the name at the same level and company, the same test as the unique name index, answered as M-02 before the insert or update
+- id: Q20
+  file: woow_document_management/models/document.py
+  functions: [_woow_portal_direct_documents]
+  note: documents shared directly with the caller's own contact, then searched under the caller's record rules (the share list is not searchable by portal users)

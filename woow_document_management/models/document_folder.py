@@ -174,6 +174,9 @@ class WoowDocumentFolder(models.Model):
                     if vals.get('owner_id') or vals.get('inherit_access') is False:
                         raise AccessError(_('You do not have enough rights on this folder.'))
                     vals['owner_id'] = parent.owner_id.id or False
+            if not self.env.su and vals.get('active', True):
+                self._woow_check_name_free(
+                    vals.get('name'), parent_id, vals.get('company_id', self.env.company.id))
         return super(WoowDocumentFolder, self.with_context(
             mail_create_nosubscribe=True, mail_create_nolog=True)).create(vals_list)
 
@@ -212,6 +215,13 @@ class WoowDocumentFolder(models.Model):
                                    f'{folder.id}/' in (new_parent.parent_path or '')):
                     raise UserError(_('A folder cannot be moved below itself.'))
                 folder.access_ids._check_parent_ceiling(new_parent)
+        if not self.env.su and {'name', 'parent_id', 'company_id'}.intersection(vals):
+            for folder in self.filtered('active'):
+                self._woow_check_name_free(
+                    vals.get('name', folder.name),
+                    vals['parent_id'] if 'parent_id' in vals else folder.parent_id.id,
+                    vals['company_id'] if 'company_id' in vals else folder.company_id.id,
+                    exclude=folder.ids)
         access_model = self.env['woow.document.folder.access']
         if vals.get('inherit_access') is False:
             for folder in self.filtered('inherit_access'):
@@ -247,6 +257,39 @@ class WoowDocumentFolder(models.Model):
                         folder_id=folder.id, company_id=folder.company_id.id,
                         detail={'hold': bool(folder.legal_hold)})
         return result
+
+    @api.model
+    def _woow_check_name_free(self, name, parent_id, company_id, exclude=()):
+        """M-02 before the per-level unique name index (Q19) would refuse the row.
+
+        The answer is the same whether the folder already using the name is
+        readable by the caller or not, and it carries no database detail.
+        """
+        if not name:
+            return
+        self.flush_model(['name', 'parent_id', 'company_id', 'active'])
+        self.env.cr.execute(  # sql-ok: Q19
+            """SELECT 1 FROM woow_document_folder
+               WHERE active AND COALESCE(parent_id, 0) = %s AND COALESCE(company_id, 0) = %s
+                 AND lower(name) = lower(%s) AND NOT id = ANY(%s)
+               LIMIT 1""",
+            (parent_id or 0, company_id or 0, name, list(exclude)))
+        if self.env.cr.fetchone():
+            raise UserError(_('Another folder in this location already uses this name. '
+                              'Pick a different name.'))
+
+    def _order_to_sql(self, order, query, alias=None, reverse=False):
+        """Order records of another model by folder id for callers who may not read every folder.
+
+        Ordering or grouping a model by a many2one to folders makes core join this
+        table and sort by its ``_order``. Record rules do not filter that join, so
+        sorting by sequence and name would reveal those of folders the caller cannot
+        read. Folder lists themselves (no alias, or this table) keep ``_order``.
+        """
+        if alias and alias != self._table and not self.env.su \
+                and not self.env.user.has_group(_MANAGER):
+            order = 'id'
+        return super()._order_to_sql(order, query, alias=alias, reverse=reverse)
 
     def unlink(self):
         """Permanent deletion must follow trash and legal-hold checks."""

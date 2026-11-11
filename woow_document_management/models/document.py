@@ -112,6 +112,39 @@ class WoowDocument(models.Model):
         for doc in self:
             doc.woow_user_can_write = bool(doc._filtered_access('write'))
 
+    @api.depends('name')
+    @api.depends_context('uid')
+    def _compute_display_name(self):
+        """Only documents found by the caller's record rules show their name (I-08).
+
+        Core reads many2one labels as superuser, so a reference kept elsewhere (an
+        audit row, say) would otherwise name a document its reader may no longer read.
+        """
+        ids = [doc.id for doc in self if isinstance(doc.id, int)]
+        visible = set(self.sudo(False).with_context(active_test=False).search(
+            [('id', 'in', ids)]).ids) if ids else set()
+        label = _('Restricted document')
+        for doc in self:
+            doc.display_name = doc.name if not isinstance(doc.id, int) or doc.id in visible \
+                else label
+
+    @api.model
+    def _woow_portal_direct_documents(self, limit=None):
+        """Live documents shared directly with the caller's own contact, under its rules.
+
+        The share list itself is not searchable by portal users (field groups), so
+        only the caller's own entries are read here, then filtered by record rules.
+        """
+        self.flush_model(['shared_partner_ids'])
+        self.env.cr.execute(  # sql-ok: Q20
+            'SELECT document_id FROM woow_document_shared_partner_rel WHERE partner_id = %s',
+            (self.env.user.partner_id.id,))
+        ids = [row[0] for row in self.env.cr.fetchall()]
+        if not ids:
+            return self.browse()
+        return self.search([('id', 'in', ids), ('active', '=', True),
+                            ('folder_in_trash', '=', False)], limit=limit)
+
     @api.model_create_multi
     def create(self, vals_list):
         """Validate each file before storage; keep multi-file calls atomic."""

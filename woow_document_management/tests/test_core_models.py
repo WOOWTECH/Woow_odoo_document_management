@@ -7,6 +7,7 @@ import math
 from odoo import Command
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
+from odoo.tools import mute_logger
 from psycopg2 import IntegrityError
 from unittest.mock import patch
 
@@ -442,3 +443,80 @@ class TestTagPolicy(TransactionCase):
             'woow_document_management.tag_create_policy', 'users')
         tag = tags.create({'name': 'Allowed tag'})
         self.assertEqual(tag.name, 'Allowed tag')
+
+
+@tagged('woow_docmgmt_core')
+class TestNamesBeyondTheRecordRules(TransactionCase):
+    """Names of folders and documents a user cannot read never leak through other paths."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = self.env.ref('base.user_admin')
+        group = self.env.ref('woow_document_management.group_woow_document_user')
+        self.member = self.env['res.users'].sudo().create({
+            'name': 'Names member', 'login': 'wdoc-names-member',
+            'groups_id': [Command.set([group.id])]})
+
+    def test_duplicate_folder_name_is_m02_whether_or_not_the_other_folder_is_visible(self):
+        folders = self.env['woow.document.folder'].sudo()
+        parent = folders.create({'name': 'Name probe parent', 'owner_id': self.admin.id})
+        sibling = folders.create({'name': 'VRF Visible Sibling', 'parent_id': parent.id})
+        folders.create({'name': 'VRF Hidden Sibling', 'parent_id': parent.id,
+                        'inherit_access': False, 'owner_id': self.admin.id})
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': parent.id, 'subject_type': 'user', 'user_id': self.member.id,
+            'level': 'edit'})
+        self.env.flush_all()
+        mine = self.env['woow.document.folder'].with_user(self.member)
+        self.assertEqual(mine.search_count([('parent_id', '=', parent.id)]), 1)
+        answers = set()
+        for name in ('vrf hidden sibling', 'VRF HIDDEN SIBLING', 'vrf visible sibling'):
+            with self.assertRaises(UserError) as caught:
+                mine.create({'name': name, 'parent_id': parent.id})
+            answers.add(str(caught.exception))
+        with self.assertRaises(UserError) as caught:
+            sibling.with_user(self.member).write({'name': 'Vrf Hidden Sibling'})
+        answers.add(str(caught.exception))
+        self.assertEqual(answers, {'Another folder in this location already uses this name. '
+                                   'Pick a different name.'})
+        created = mine.create({'name': 'VRF Free Name', 'parent_id': parent.id})
+        sibling.with_user(self.member).write({'name': 'VRF Renamed Sibling'})
+        self.assertEqual((created.name, sibling.name), ('VRF Free Name', 'VRF Renamed Sibling'))
+        # The database index stays the final guard for privileged callers.
+        with self.assertRaises(IntegrityError), self.env.cr.savepoint(), \
+                mute_logger('odoo.sql_db'):
+            folders.create({'name': 'vrf free name', 'parent_id': parent.id})
+
+    def test_audit_rows_do_not_name_a_document_after_access_ends(self):
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Revoked names folder', 'owner_id': self.admin.id})
+        line = self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': folder.id, 'subject_type': 'user', 'user_id': self.member.id,
+            'level': 'upload'})
+        document = self.env['woow.document'].with_user(self.member).create({
+            'name': 'original-name.txt', 'folder_id': folder.id,
+            'datas': base64.b64encode(b'revoked names')})
+        logs = self.env['woow.document.log'].with_user(self.member)
+        domain = [('document_id', '=', document.id), ('event', '=', 'upload')]
+        self.assertEqual(logs.search_read(domain, ['document_id'])[0]['document_id'][1],
+                         'original-name.txt')
+        line.unlink()
+        document.sudo().write({'name': 'renamed-after-revocation.txt'})
+        self.env.flush_all()
+        self.env.invalidate_all()
+        with self.assertRaises(AccessError):
+            document.with_user(self.member).read(['name'])
+        rows = logs.search_read(domain, ['document_id', 'folder_id'])
+        self.assertEqual(rows[0]['document_id'], (document.id, 'Restricted document'))
+        groups = logs.read_group(domain, ['document_id'], ['document_id'])
+        self.assertEqual(groups[0]['document_id'][1], 'Restricted document')
+        web = logs.web_search_read(domain, {'document_id': {'fields': {'display_name': {}}}})
+        self.assertEqual(web['records'][0]['document_id']['display_name'], 'Restricted document')
+        self.assertNotIn('renamed-after-revocation', repr((rows, groups, web)))
+        # Readers of the document, the administrator and superuser code keep the name.
+        self.assertEqual(self.env['woow.document.log'].with_user(self.admin).search_read(
+            domain, ['document_id'])[0]['document_id'][1], 'renamed-after-revocation.txt')
+        self.assertEqual(self.env['woow.document'].browse(document.id).display_name,
+                         'renamed-after-revocation.txt')
+        # Superuser code acting for the member sees what the member may see.
+        self.assertEqual(document.sudo().display_name, 'Restricted document')

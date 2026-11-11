@@ -29,6 +29,29 @@ class WoowDocumentGuardMixin(models.AbstractModel):
                     key for key in vals if key not in secret_fields])
         return super(WoowDocumentGuardMixin, model).create(vals_list)
 
+    @api.model
+    def _search(self, domain, offset=0, limit=None, order=None):
+        """Every field a domain starts from follows its read groups.
+
+        Core checks field groups only for columns it reads (``_field_to_sql``);
+        many2many and one2many terms query their relation directly. Record rules
+        run as superuser and are not affected.
+        """
+        if not self.env.su and domain:
+            names = [term[0].split('.', 1)[0] for term in domain
+                     if isinstance(term, (list, tuple)) and term and isinstance(term[0], str)]
+            if names:
+                self.check_field_access_rights('read', names)
+        return super()._search(domain, offset=offset, limit=limit, order=order)
+
+    @api.model
+    def _read_group_groupby(self, groupby_spec, query):
+        """Group only by fields the caller may read (many2many labels come from sudo)."""
+        if not self.env.su:
+            self.check_field_access_rights('read', [
+                groupby_spec.split(':', 1)[0].split('.', 1)[0]])
+        return super()._read_group_groupby(groupby_spec, query)
+
     def copy(self, default=None):
         """Duplicating folders, documents and share links is not offered."""
         raise UserError(_('Duplicating this record is not supported.'))
