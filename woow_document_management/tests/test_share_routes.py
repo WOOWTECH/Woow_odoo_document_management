@@ -390,6 +390,67 @@ class TestShareHttp(HttpCase):
     def _ctid(self, share):
         return self._sql('SELECT ctid FROM woow_document_share WHERE id = %s', (share.id,))[0][0]
 
+    def _unlock_failures(self, share):
+        """Wrong passwords counted for one link (all sources)."""
+        return self._sql("""SELECT COALESCE(SUM(count), 0) FROM woow_document_log
+                            WHERE share_id = %s AND event = 'share_unlock_failed'
+                              AND result = 'denied'""", (share.id,))[0][0]
+
+    def test_refusal_records_do_not_tell_whether_a_share_exists(self):
+        """A live id without a grant and an unknown id use the same records and capacity.
+
+        A counted source already has its bucket of the minute. With one slot left,
+        its refusal of a live link must leave the capacity exactly as its refusal of
+        an unknown id does, so that the next new source's refusal gets the same
+        answer after either: the capacity cannot be used to test share ids.
+        """
+        self._trust_forwarded_sources()
+        live, _code, _doc = self._link('Liveness fixture')
+        unknown = '/woow-docs/s/%d' % (live.id + 1000000)
+        maximum = document_log_module.MAX_DENIED_ROWS_PER_MIN
+        outcomes = []
+        for path, counted, new in ((unknown, '198.51.100.70', '198.51.100.71'),
+                                   ('/woow-docs/s/%d' % live.id, '198.51.100.72',
+                                    '198.51.100.73')):
+            # The counted source's first refusal of the minute: its counter and bucket.
+            self._use_capacity(0)
+            self.assertEqual(self.url_open(unknown, headers={
+                'X-Real-IP': counted}).status_code, 404)
+            self._use_capacity(maximum - 1)
+            self.assertEqual(self.url_open(path, headers={'X-Real-IP': counted}).status_code, 404)
+            used = self._capacity_used()
+            status = self.url_open(unknown, headers={'X-Real-IP': new}).status_code
+            outcomes.append((used, status, self._refusals_of(counted), self._capacity_used()))
+        self.assertEqual(outcomes[0], outcomes[1])
+        self.assertEqual(outcomes[0], (
+            maximum - 1, 404, ([('share_access', None, 2)], [('share_access', 2)]), maximum))
+
+    def test_wrong_passwords_count_with_nul_in_the_user_agent(self):
+        """Control characters in the User-Agent never keep a wrong password from counting.
+
+        PostgreSQL text cannot hold NUL. Written as is, the failure record would make
+        the request fail and roll back with its counts, so the cooldown and the
+        hourly cap would never be reached. Every wrong password answers 404 and
+        counts; at the cooldown limit the next one and the correct password get 429.
+        """
+        password = secrets.token_urlsafe(16)
+        share, code, _doc = self._link('User agent fixture', password=password)
+        self.assertEqual(self._open(code).status_code, 303)
+        agent = {'User-Agent': 'fixture\x00agent\x1b[0m'}
+        limit = self.env['woow.document.settings']._get_settings().share_unlock_max_fail
+        for counted in range(1, limit + 1):
+            self.assertEqual(self._unlock(share, password + 'x', headers=agent).status_code, 404)
+            self.assertEqual(self._unlock_failures(share), counted)
+        with patch.object(tokens, 'check_password', side_effect=AssertionError(
+                'a password was compared during the cooldown')) as check:
+            self.assertEqual(self._unlock(share, password + 'x', headers=agent).status_code, 429)
+            self.assertEqual(self._unlock(share, password, headers=agent).status_code, 429)
+        check.assert_not_called()
+        self.assertEqual(self._unlock_failures(share), limit)
+        self.assertEqual(self._sql("""SELECT DISTINCT user_agent FROM woow_document_log
+                                      WHERE share_id = %s AND result = 'denied'""",
+                                   (share.id,)), [('fixtureagent[0m',)])
+
     def test_source_limit_stops_unlock_on_every_link_before_password_check(self):
         """A source that used its denied minute limit on one link cannot try another."""
         params = self.env['ir.config_parameter'].sudo()
@@ -464,7 +525,8 @@ class TestShareHttp(HttpCase):
         Valid tokens and unlocked sessions are answered as usual. A source that is
         new in the minute gets 429 for every refusal and nothing is written. A
         source with a counter row gets the same answer for an unknown and an
-        existing share id, decided by its count alone.
+        existing share id, decided by its count alone, and both refusals are kept
+        in its bucket of the minute without another slot.
         """
         self._trust_forwarded_sources()
         password = secrets.token_urlsafe(16)
@@ -502,10 +564,11 @@ class TestShareHttp(HttpCase):
                                        headers=counted).status_code, 404)
         self.assertEqual(self.url_open('/woow-docs/s/%d' % other.id,
                                        headers=counted).status_code, 404)
-        # The bucket of the existing id found no capacity; its refusal still counted.
+        # Both refusals joined the source's bucket of the minute: no slot was needed,
+        # and the full minute was neither written nor passed.
         self.assertEqual(self._refusals_of(counted['X-Real-IP']),
-                         ([('share_access', None, 2)], [('share_access', 3)]))
-        self.assertEqual(self._capacity_used(), document_log_module.MAX_DENIED_ROWS_PER_MIN + 1)
+                         ([('share_access', None, 3)], [('share_access', 3)]))
+        self.assertEqual(self._capacity_used(), document_log_module.MAX_DENIED_ROWS_PER_MIN)
 
     def _capacity_row_is_free(self, minute):
         """True when another connection can update the minute's capacity row at once."""
@@ -569,7 +632,7 @@ class TestShareHttp(HttpCase):
             self.assertEqual(self.url_open(unknown, headers={
                 'X-Real-IP': '198.51.100.31'}).status_code, 404)
             self.assertEqual(self._refusals_of('198.51.100.31'), ([], [('share_access', 1)]))
-            self.assertEqual(self._capacity_used(), 3)
+            self.assertEqual(self._capacity_used(), 2)
 
             before = self._denied_rows()
             self.assertEqual(self.url_open(unknown, headers={
@@ -586,7 +649,7 @@ class TestShareHttp(HttpCase):
                 self.assertEqual(check.call_count, 2)
             self.assertEqual(self._refusals_of('198.51.100.33'), (
                 [('share_unlock_failed', share.id, 1)], [('share_unlock_failed', 1)]))
-            self.assertEqual(self._capacity_used(), 3)
+            self.assertEqual(self._capacity_used(), 2)
 
     def test_denied_rate_limit_is_shared_by_unknown_and_valid_link_ids(self):
         self.env['ir.config_parameter'].sudo().set_param(

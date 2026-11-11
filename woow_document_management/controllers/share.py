@@ -46,9 +46,14 @@ class WoowDocShareController(http.Controller):
         The answer depends only on the source's count, read with its counter row
         locked so that requests of one source on different links cannot pass the
         limit together (Repeatable Read). It never depends on the share id or on
-        whether the minute capacity still had room for an audit bucket, so it does
-        not tell whether a share exists. A source that is new in the minute and
-        finds no capacity for its counter row gets 429, and nothing is written.
+        whether the minute capacity still had room for an audit bucket. A refused
+        link request is recorded per source and minute, whichever id it names, so
+        a live id without a grant and an unknown id use the same records and the
+        same capacity: neither the answer nor the capacity left tell whether a
+        share exists. ``share_id`` is only given, and kept, for a counted wrong
+        password, which needs a valid link and grant. A source that is new in the
+        minute and finds no capacity for its counter row gets 429, and nothing is
+        written.
         """
         log = request.env['woow.document.log']
         prior = log._count_denied_across_shares(event, ip)
@@ -103,9 +108,9 @@ class WoowDocShareController(http.Controller):
                 if not isinstance(grant, dict) or type(grant.get('exp')) is not int \
                         or grant['exp'] <= int(time.time()) or not isinstance(grant.get('h'), str) \
                         or not hmac.compare_digest(grant['h'], share_sudo.token_hash[:16]):
-                    return self._denied(ip, share_sudo.id)
+                    return self._denied(ip)
                 if require_unlocked and share_sudo.has_password and grant.get('pw') is not True:
-                    return self._denied(ip, share_sudo.id)
+                    return self._denied(ip)
             return ShareAccess(share_sudo, scope_env, ip, ip_hash, grant)
         except (AccessError, MissingError, UserError, ValueError, TypeError):
             return streaming.uniform_404('share')
@@ -170,7 +175,7 @@ class WoowDocShareController(http.Controller):
             share = access.share_sudo
             docs = share._scope_documents(access.scope_env, [('id', '=', document_id)])
             if len(docs) != 1 or docs.document_type != 'binary':
-                return self._denied(access.ip, share.id)
+                return self._denied(access.ip)
             if not share._download_slot_available(access.scope_env):
                 return streaming.uniform_404('share')
             response = streaming.serve(docs, inline=False, channel='share', event=None)
