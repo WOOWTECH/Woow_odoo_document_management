@@ -189,6 +189,9 @@ class TestShareHttp(HttpCase):
             self.assertEqual(self.url_open('/woow-docs/s/%d' % unknown).status_code, 404)
         # A valid ID without a session grant must use the same IP counter.
         self.assertEqual(self.url_open('/woow-docs/s/%d' % share.id).status_code, 429)
+        self.env.invalidate_all()
+        self.assertEqual(self.env['woow.document.log'].sudo().search_count([
+            ('event', '=', 'rate_limited'), ('result', '=', 'denied')]), 1)
 
     def test_folder_share_zip_hides_ancestor_folder_name(self):
         admin = self.env.ref('base.user_admin')

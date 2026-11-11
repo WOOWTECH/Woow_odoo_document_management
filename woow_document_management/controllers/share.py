@@ -44,6 +44,7 @@ class WoowDocShareController(http.Controller):
         log = request.env['woow.document.log']
         if log._count_denied_across_shares(event, ip) >= request.env[
                 'woow.document.settings']._get_settings().denied_rate_per_min:
+            log._log_event('rate_limited', result='denied', channel='share', ip=ip)
             return streaming.too_many_requests()
         written = log._log_event(
             event, result='denied', channel='share', share_id=share_id, ip=ip)
