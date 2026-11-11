@@ -34,12 +34,15 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   limits count refused link requests and wrong passwords, each up to the per-minute limit. They
   never refuse opening a valid link or using an unlocked session, but once a source has used its
   per-minute limit of wrong passwords, its password attempts on every link, including a correct
-  one, are answered with 429 until the minute ends. The site keeps a per-minute capacity for the
-  records of refused link requests: each new per-source counter and each new audit record (kept
-  per source, link and minute) uses one slot. Wrong passwords use none, since each link counts at
-  most 50 of them per hour. When the capacity is used up, a source's first refused request of the
-  minute is answered with 429 and not recorded, later refused requests of sources already counted
-  still count, and valid links, unlocked sessions and password attempts are not affected.
+  one, are answered with 429 until the minute ends. Each link also limits wrong passwords per
+  source (its cooldown) and to 50 per hour from all sources. The site keeps a per-minute capacity
+  for the records of refused link requests: each new per-source counter and each new audit record
+  (kept per source and minute, whichever link was asked for) uses one slot, so neither the
+  answers nor the capacity left tell whether a link exists. Wrong passwords use none, since each
+  link counts at most 50 of them per hour. When the capacity is used up, a source's first refused
+  request of the minute is answered with 429 and not recorded, later refused requests of sources
+  already counted still count, and valid links, unlocked sessions and password attempts are not
+  affected.
   *(text pending)*
 - **HD-07** The portal folder write right is only an upload probe; real writes are refused.
   *(text pending)*
