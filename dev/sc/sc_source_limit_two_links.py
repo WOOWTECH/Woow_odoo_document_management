@@ -8,7 +8,8 @@ wrong passwords in rounds that start together, so the requests overlap in
 separate Repeatable Read transactions that take different share locks. With
 denied_rate_per_min = 3 across links, exactly 3 guesses may be compared (404);
 every other guess is answered 429. The persisted source counter and the failure
-buckets must equal the number of compared guesses.
+buckets must equal the number of compared guesses. Then the correct password
+is sent from the same source: the limit is used up, so it is answered 429 too.
 """
 
 import json
@@ -64,6 +65,8 @@ def check(scenario):
         statuses = [status for per_client in result['statuses'] for status in per_client]
         if result['errors'] or len(statuses) != 2 * ROUNDS or set(statuses) - {404, 429}:
             raise ScenarioError('http_status')
+        if result['final'] != 429:
+            raise ScenarioError('correct_password_%s' % result['final'])
         compared = statuses.count(404)
         if compared > LIMIT:
             raise ScenarioError('limit_exceeded_%d' % compared)
@@ -82,9 +85,9 @@ def check(scenario):
         limited = scenario.sql(
             "SELECT COALESCE(SUM(count), 0) FROM woow_document_log "
             "WHERE event = 'rate_limited' AND result = 'denied'")
-        if limited != str(statuses.count(429)):
+        if limited != str(statuses.count(429) + 1):
             raise ScenarioError('sql_rate_limited')
-        return '|requests=%d|compared=%d|limit=%d|counter=%s|rate_limited=%s' % (
+        return '|requests=%d|compared=%d|limit=%d|counter=%s|rate_limited=%s|correct=429' % (
             len(statuses), compared, LIMIT, counter, limited)
     raise ScenarioError('minute_boundary')
 

@@ -35,12 +35,15 @@ PORT = int(sys.argv[2])
 
 
 class Client:
-    def __init__(self):
+    def __init__(self, headers=None):
         self.sid = None
+        self.headers = dict(headers or {})
 
     def send(self, method, path, form=None):
         connection = http.client.HTTPConnection('127.0.0.1', PORT, timeout=120)
-        headers = {'Cookie': 'session_id=' + self.sid} if self.sid else {}
+        headers = dict(self.headers)
+        if self.sid:
+            headers['Cookie'] = 'session_id=' + self.sid
         body = None
         if form is not None:
             body = urllib.parse.urlencode(form)
@@ -116,10 +119,65 @@ def unlock_race(spec):
         thread.join(timeout=300)
     if any(thread.is_alive() for thread in threads):
         errors.append('timeout')
-    return {'statuses': statuses, 'errors': errors}
+    # Then the correct password, after the source has used its limit.
+    client, share_id, token = clients[0]
+    final = client.send('POST', '/woow-docs/s/%d/unlock' % share_id,
+                        {'password': spec['password'], 'csrf_token': token})[0]
+    return {'statuses': statuses, 'errors': errors, 'final': final}
 
 
-COMMANDS = {'ready': ready, 'denied': denied, 'unlock-race': unlock_race}
+def sources(spec):
+    """Refused link opens from many sources at once, and a correct unlock among them."""
+    spec = json.loads(spec)
+    refused = []
+    for index in range(spec['sources']):
+        client = Client({'X-Real-IP': '198.51.100.%d' % (index + 1)})
+        refused.append((client, client.csrf('/woow-docs/s')))
+    unlocker = Client({'X-Real-IP': '203.0.113.50'})
+    status, _ = unlocker.send('POST', '/woow-docs/s/open', {
+        'token': spec['code'], 'csrf_token': unlocker.csrf('/woow-docs/s')})
+    if status != 303:
+        raise RuntimeError('link did not open')
+    unlock_token = unlocker.csrf('/woow-docs/s/%d' % spec['share'])
+    barrier = threading.Barrier(len(refused) + 1)
+    result = {'statuses': [[] for _ in refused], 'errors': [], 'unlock': None}
+
+    def refuse(index):
+        client, token = refused[index]
+        try:
+            for _ in range(spec['rounds']):
+                barrier.wait(timeout=120)   # every round starts all requests together
+                result['statuses'][index].append(client.send(
+                    'POST', '/woow-docs/s/open', {'token': 'x' * 43, 'csrf_token': token})[0])
+        except Exception as exc:  # reported to the runner, which fails closed
+            result['errors'].append(type(exc).__name__)
+            barrier.abort()
+
+    def unlock():
+        try:
+            # In the first round, while every new source reserves capacity.
+            barrier.wait(timeout=120)
+            result['unlock'] = unlocker.send(
+                'POST', '/woow-docs/s/%d/unlock' % spec['share'],
+                {'password': spec['password'], 'csrf_token': unlock_token})[0]
+            for _ in range(spec['rounds'] - 1):
+                barrier.wait(timeout=120)
+        except Exception as exc:  # reported to the runner, which fails closed
+            result['errors'].append(type(exc).__name__)
+            barrier.abort()
+
+    threads = [threading.Thread(target=refuse, args=(index,)) for index in range(len(refused))]
+    threads.append(threading.Thread(target=unlock))
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=300)
+    if any(thread.is_alive() for thread in threads):
+        result['errors'].append('timeout')
+    return result
+
+
+COMMANDS = {'ready': ready, 'denied': denied, 'unlock-race': unlock_race, 'sources': sources}
 sys.stdout.write(json.dumps(COMMANDS[sys.argv[1]](*sys.argv[3:])) + '\n')
 '''
 
@@ -228,6 +286,13 @@ class HttpScenario:
         self.sql("DELETE FROM woow_document_log WHERE result = 'denied'; "
                  "DELETE FROM woow_document_denied_counter; "
                  "DELETE FROM woow_document_denied_budget")
+
+    def server_retries(self):
+        """Requests the server rolled back and retried after a concurrency error."""
+        output = self.call('exec', 'bash', '-c',
+                           "grep -cE 'tries left|maximum number of tries' %s || true"
+                           % self.server_log)
+        return int(output.strip() or 0)
 
     def cleanup(self):
         failed = False

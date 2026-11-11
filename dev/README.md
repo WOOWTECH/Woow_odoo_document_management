@@ -25,6 +25,14 @@ repeated once on clean counters.
   from one source send wrong passwords to two protected links in rounds that
   start together. With a limit of 3 across links, exactly 3 guesses are
   compared; the others answer 429, and the source counter and failure buckets
-  both count 3.
+  both count 3. The correct password sent afterwards from that source is
+  answered 429 as well.
+- `sh dev/sc/run_sc.sh denied-sources-together` runs T-SHARE-46: twelve
+  clients, each its own source through `X-Real-IP` behind the trusted loopback
+  proxy, send refused link opens in rounds that start together, and a correct
+  password is sent to a protected link in the first round. No request may be
+  retried for a concurrency error (the server log is checked), every refused
+  open answers 404, the unlock answers 303, and the capacity counts exactly
+  one slot per new counter row and per new bucket.
 
-Both use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.
+All three use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.
