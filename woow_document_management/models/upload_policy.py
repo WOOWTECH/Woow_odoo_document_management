@@ -210,10 +210,17 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
         if mimetype.startswith('image/'):
             try:
                 with Image.open(io.BytesIO(data)) as image:
-                    if image.width * image.height > PIXEL_LIMIT:
-                        raise WoowUploadRejected('pixels')
+                    pixels = image.width * image.height
+            except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+                # Opening an image compares its declared size with Pillow's own limit:
+                # past twice that limit it raises (an Exception, not an OSError), past
+                # it it only warns, which a warnings-as-errors setting turns into an
+                # exception too. Either way the header declares too many pixels.
+                raise WoowUploadRejected('pixels') from exc
             except (UnidentifiedImageError, OSError, ValueError) as exc:
                 raise WoowUploadRejected('content') from exc
+            if pixels > PIXEL_LIMIT:
+                raise WoowUploadRejected('pixels')
         checksum = self.env['ir.attachment']._compute_checksum(data)
         self.env['woow.document.quota']._check(checksum, len(data))
         return ValidatedFile(safe_name, mimetype, len(data), checksum)
