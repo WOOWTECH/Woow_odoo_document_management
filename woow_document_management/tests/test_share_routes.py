@@ -23,6 +23,7 @@ from odoo.tools import mute_logger
 from ..models import document_log as document_log_module
 from ..services import tokens
 from ..services.client_ip import hmac_ip, source_key
+from ..services.constants import SHARE_UNLOCK_FAIL_PER_HOUR
 from ..services.zip_builder import ZipLimitExceeded
 from ..controllers import streaming
 
@@ -451,6 +452,124 @@ class TestShareHttp(HttpCase):
                                       WHERE share_id = %s AND result = 'denied'""",
                                    (share.id,)), [('fixtureagent[0m',)])
 
+    def test_rate_limit_and_valid_token_never_limited(self):
+        """T-SHARE-33: the per-source limit refuses only refused requests.
+
+        One source's 11th refused request of the minute is answered 429, whichever
+        link it names. Another source behind the trusted proxy (X-Real-IP) is not
+        affected. The limited source still opens a valid link (303), unlocks it with
+        the correct password (303) and uses the session (200), and its refused
+        requests stay limited afterwards.
+        """
+        self._trust_forwarded_sources()
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.denied_rate_per_min', '10')
+        password = secrets.token_urlsafe(16)
+        protected, protected_code, doc = self._link('Source limit protected', password=password)
+        plain, plain_code, _doc = self._link('Source limit plain')
+        unknown = '/woow-docs/s/%d' % (plain.id + 1000000)
+        limited = {'X-Real-IP': '198.51.100.60'}
+        refusals = (
+            lambda headers: self._open('x' * 43, headers=headers),              # unknown token
+            lambda headers: self.url_open(unknown, headers=headers),            # unknown id
+            lambda headers: self.url_open('/woow-docs/s/%d' % plain.id,        # no grant
+                                          headers=headers),
+        )
+
+        def counted(source):
+            """Refusals of one source per event: audit buckets summed, and counter rows."""
+            buckets, counters = self._refusals_of(source['X-Real-IP'])
+            totals = {}
+            for event, _share, count in buckets:
+                totals[event] = totals.get(event, 0) + count
+            return totals, dict(counters)
+
+        for index in range(10):
+            self.assertEqual(refusals[index % 3](limited).status_code, 404)
+        for refuse in refusals:
+            self.assertEqual(refuse(limited).status_code, 429)
+        self.assertEqual(counted(limited), ({'rate_limited': 3, 'share_access': 10},
+                                            {'share_access': 10}))
+        other = {'X-Real-IP': '198.51.100.61'}
+        for refuse in refusals:
+            self.assertEqual(refuse(other).status_code, 404)
+
+        self.assertEqual(self._open(protected_code, headers=limited).status_code, 303)
+        self.assertEqual(self._unlock(protected, password, headers=limited).status_code, 303)
+        page = self.url_open('/woow-docs/s/%d' % protected.id, headers=limited)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'fixture.txt', page.content)
+        self.assertEqual(self.url_open('/woow-docs/s/%d/file/%d' % (protected.id, doc.id),
+                                       headers=limited).status_code, 200)
+        self.assertEqual(self._open(plain_code, headers=limited).status_code, 303)
+        self.assertEqual(self.url_open('/woow-docs/s/%d' % plain.id,
+                                       headers=limited).status_code, 200)
+        self.assertEqual(self.url_open(unknown, headers=limited).status_code, 429)
+        self.assertEqual(counted(limited), ({'rate_limited': 4, 'share_access': 10},
+                                            {'share_access': 10}))
+        self.assertEqual(counted(other), ({'share_access': 3}, {'share_access': 3}))
+
+    def test_link_cooldown_counts_an_ipv6_network_as_one_source(self):
+        """The per-link cooldown looks failures up by the source the buckets use (/64).
+
+        Wrong passwords from one IPv6 /64, from one address or from several, use up
+        the link's cooldown for every address of that network: a correct password
+        from another address of it is answered 429 without a comparison. Another
+        /64 still unlocks the link.
+        """
+        self._trust_forwarded_sources()
+        params = self.env['ir.config_parameter'].sudo()
+        password = secrets.token_urlsafe(16)
+        cases = (
+            (None, ['2001:db8:1:2::1'], '2001:db8:1:2::99', '2001:db8:1:3::1'),
+            (3, ['2001:db8:5:6::1', '2001:db8:5:6::2', '2001:db8:5:6::3'],
+             '2001:db8:5:6::9', '2001:db8:5:7::9'),
+        )
+        for index, (max_fail, wrong, same_network, other_network) in enumerate(cases):
+            if max_fail:
+                params.set_param('woow_document_management.share_unlock_max_fail', str(max_fail))
+            limit = self.env['woow.document.settings']._get_settings().share_unlock_max_fail
+            share, code, _doc = self._link('IPv6 cooldown fixture %d' % index, password=password)
+            self.assertEqual(self._open(code).status_code, 303)
+            for attempt in range(limit):
+                source = {'X-Real-IP': wrong[attempt % len(wrong)]}
+                self.assertEqual(self._unlock(share, password + 'x', headers=source).status_code,
+                                 404)
+            self.assertEqual(self._refusals_of(same_network)[0],
+                             [('share_unlock_failed', share.id, limit)])
+            with patch.object(tokens, 'check_password', side_effect=AssertionError(
+                    'a password was compared during the cooldown of its network')) as check:
+                self.assertEqual(self._unlock(share, password, headers={
+                    'X-Real-IP': same_network}).status_code, 429)
+            check.assert_not_called()
+            self.assertEqual(self._unlock(share, password, headers={
+                'X-Real-IP': other_network}).status_code, 303)
+
+    def test_hourly_link_cap_refuses_a_new_source_before_comparing(self):
+        """Each link counts at most SHARE_UNLOCK_FAIL_PER_HOUR wrong passwords an hour.
+
+        Wrong passwords use no minute capacity, so this cap is what bounds their
+        records over many sources. With the cap reached by other sources, a correct
+        password from a source the link has never seen is answered 429 without a
+        comparison; one failure fewer still lets it unlock.
+        """
+        self._trust_forwarded_sources()
+        password = secrets.token_urlsafe(16)
+        log = self.env['woow.document.log']
+        cases = ((SHARE_UNLOCK_FAIL_PER_HOUR - 1, '203.0.113.81', 303, 1),
+                 (SHARE_UNLOCK_FAIL_PER_HOUR, '203.0.113.82', 429, 0))
+        for failures, fresh, expected, compared in cases:
+            share, code, _doc = self._link('Hourly cap fixture %d' % failures, password=password)
+            for index in range(failures):
+                log._log_event('share_unlock_failed', result='denied', channel='share',
+                               share_id=share.id, ip='198.51.100.%d' % (index + 1))
+            self.assertEqual(self._unlock_failures(share), failures)
+            self.assertEqual(self._open(code, headers={'X-Real-IP': fresh}).status_code, 303)
+            with patch.object(tokens, 'check_password', wraps=tokens.check_password) as check:
+                self.assertEqual(self._unlock(share, password, headers={
+                    'X-Real-IP': fresh}).status_code, expected)
+            self.assertEqual(check.call_count, compared)
+
     def test_source_limit_stops_unlock_on_every_link_before_password_check(self):
         """A source that used its denied minute limit on one link cannot try another."""
         params = self.env['ir.config_parameter'].sudo()
@@ -520,7 +639,7 @@ class TestShareHttp(HttpCase):
         self.assertEqual(self._ctid(share), counted)
 
     def test_valid_links_and_sessions_ignore_a_used_up_capacity(self):
-        """T-SHARE-33: a used-up minute capacity only changes refused requests.
+        """A used-up minute capacity only changes refused requests (HD-06).
 
         Valid tokens and unlocked sessions are answered as usual. A source that is
         new in the minute gets 429 for every refusal and nothing is written. A

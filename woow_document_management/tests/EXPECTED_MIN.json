@@ -3,7 +3,7 @@
     "core": 102,
     "files": 49,
     "portal": 2,
-    "share": 26
+    "share": 29
   },
   "files": {
     "test_add_attachment.py": 4,
@@ -30,7 +30,7 @@
     "test_quota.py": 6,
     "test_security_acl.py": 8,
     "test_settings_bounds.py": 9,
-    "test_share_routes.py": 27,
+    "test_share_routes.py": 30,
     "test_share_token.py": 3,
     "test_trash_lifecycle.py": 7,
     "test_uninstall.py": 3,
