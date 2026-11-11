@@ -17,7 +17,15 @@ class WoowDocumentCron(models.Model):
 
     @api.model
     def _cron_purge_trash(self):
-        """Daily: purge trash older than trash_retention_days, in batches."""
+        """Daily: purge trash older than trash_retention_days, in batches.
+
+        One run deletes at most PURGE_BATCH records, documents and folders alike,
+        however large a trashed folder is; the framework runs the next batch while
+        ``remaining`` is not zero. A folder whose subtree does not fit stays in the
+        trash, partly deleted, and is continued by the next batch. Records that
+        fail (legal hold set meanwhile, lock timeout) are skipped and not counted
+        in ``remaining`` (R2b-06).
+        """
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
         retention = self.env['woow.document.settings']._get_settings().trash_retention_days
@@ -27,20 +35,18 @@ class WoowDocumentCron(models.Model):
         domain = [('active', '=', False), ('trashed_date', '<', cutoff)]
         folder_domain = domain + [('subtree_legal_hold', '=', False)]
         document_domain = domain + [('legal_hold', '=', False)]
-        folders = self.env['woow.document.folder'].with_context(active_test=False).search(
-            folder_domain, limit=PURGE_BATCH)
-        documents = self.with_context(active_test=False).search(
-            document_domain, limit=max(0, PURGE_BATCH - len(folders)))
-        done = 0
-        for folder in folders:
-            completed, _failed = folder._woow_purge()
-            done += completed
-        for doc in documents.exists():
-            completed, _failed = doc._woow_purge()
-            done += completed
-        remaining = (self.env['woow.document.folder'].with_context(active_test=False).search_count(
-            folder_domain) + self.with_context(active_test=False).search_count(document_domain))
-        self.env['ir.cron']._notify_progress(done=done, remaining=remaining)
+        folder_model = self.env['woow.document.folder'].with_context(active_test=False)
+        documents_model = self.with_context(active_test=False)
+        folders = folder_model.search(folder_domain, limit=PURGE_BATCH)
+        _done, failed, deleted = folders._woow_purge_batch(PURGE_BATCH)
+        if deleted < PURGE_BATCH:
+            documents = documents_model.search(document_domain, limit=PURGE_BATCH - deleted)
+            done_docs, failed_docs = documents.exists()._woow_purge()
+            deleted += done_docs
+            failed += failed_docs
+        remaining = max(0, folder_model.search_count(folder_domain) +
+                        documents_model.search_count(document_domain) - failed)
+        self.env['ir.cron']._notify_progress(done=deleted, remaining=remaining)
 
     @api.model
     def _cron_share_maintenance(self):

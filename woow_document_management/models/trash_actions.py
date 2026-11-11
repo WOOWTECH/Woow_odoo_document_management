@@ -72,15 +72,20 @@ class WoowDocumentTrash(models.Model):
         return True
 
     def _woow_purge(self):
-        """Delete permanently, deepest first, skipping held and locked records -> (done, failed)."""
+        """Delete permanently, skipping held and locked records -> (done, failed).
+
+        A document already removed with a folder earlier in the same run is skipped
+        and counts as neither.
+        """
         self._require_manager()
         done = failed = 0
         for doc in self.with_context(active_test=False):
-            if doc.active or doc.legal_hold:
-                failed += 1
+            if not doc.exists():
                 continue
             try:
                 with self.env.cr.savepoint():
+                    if doc.active or doc.legal_hold:
+                        raise UserError(_('This item cannot be deleted permanently.'))
                     with bounded_wait(self.env.cr, LOCK_TIMEOUT_MS):
                         doc.unlink()
                     done += 1
@@ -144,31 +149,65 @@ class WoowDocumentFolderTrash(models.Model):
                 _audit(folder, 'legal_hold', hold=state)
         return True
 
-    def _woow_purge(self):
-        """Delete permanently, deepest first, skipping held and locked records -> (done, failed)."""
+    def _woow_purge(self, budget=None):
+        """Delete permanently, deepest first, skipping held and locked records -> (done, failed).
+
+        ``done`` counts the folders removed with their whole subtree. With ``budget``
+        at most that many records (documents and folders) are deleted; a subtree
+        that does not fit is left partly deleted and is continued by the next call.
+        A folder already removed with an ancestor in the same run is skipped and
+        counts as neither.
+        """
+        done, failed, _deleted = self._woow_purge_batch(budget)
+        return done, failed
+
+    def _woow_purge_batch(self, budget=None):
+        """``_woow_purge`` that also returns the number of records deleted."""
         self._require_manager()
-        done = failed = 0
+        done = failed = deleted = 0
         for root in self.with_context(active_test=False):
-            if root.active or root.subtree_legal_hold:
-                failed += 1
+            if budget is not None and deleted >= budget:
+                break
+            if not root.exists():
                 continue
             try:
                 with self.env.cr.savepoint():
+                    if root.active or root.subtree_legal_hold:
+                        raise UserError(_('This item cannot be deleted permanently.'))
                     with bounded_wait(self.env.cr, LOCK_TIMEOUT_MS):
-                        folders = self.with_context(active_test=False).search([
-                            ('id', 'child_of', root.id)])
-                        if any(folder.subtree_legal_hold for folder in folders):
-                            raise UserError(_('This folder cannot be deleted.'))
-                        docs = self.env['woow.document'].with_context(active_test=False).search([
-                            ('folder_id', 'in', folders.ids)])
-                        if any(doc.legal_hold for doc in docs):
-                            raise UserError(_('This folder contains a protected document.'))
-                        for doc in docs:
-                            doc.unlink()
-                        for folder in sorted(folders, key=lambda item: len(item.parent_path or ''),
-                                             reverse=True):
-                            folder.unlink()
-                    done += 1
+                        count, finished = root._woow_purge_tree(
+                            None if budget is None else budget - deleted)
+                deleted += count
+                done += finished
             except (AccessError, UserError, LockBusy):
                 failed += 1
-        return done, failed
+        return done, failed, deleted
+
+    def _woow_purge_tree(self, limit=None):
+        """Delete this trashed folder's documents, then its folders deepest first.
+
+        Returns (records deleted, 1 when the folder itself is gone else 0). With
+        ``limit`` no more than that many records are deleted in this call.
+        """
+        self.ensure_one()
+        folders = self.with_context(active_test=False).search([('id', 'child_of', self.id)])
+        if any(folder.subtree_legal_hold for folder in folders):
+            raise UserError(_('This folder cannot be deleted.'))
+        docs = self.env['woow.document'].with_context(active_test=False).search(
+            [('folder_id', 'in', folders.ids)], order='id')
+        if any(doc.legal_hold for doc in docs):
+            raise UserError(_('This folder contains a protected document.'))
+        deleted = 0
+        if docs:
+            chunk = docs if limit is None else docs[:limit]
+            chunk.unlink()
+            deleted = len(chunk)
+            if len(chunk) < len(docs):
+                return deleted, 0
+        for folder in sorted(folders, key=lambda item: (len(item.parent_path or ''), item.id),
+                             reverse=True):
+            if limit is not None and deleted >= limit:
+                return deleted, 0
+            folder.unlink()
+            deleted += 1
+        return deleted, 1
