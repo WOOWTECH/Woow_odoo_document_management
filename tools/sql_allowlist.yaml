@@ -101,3 +101,7 @@ entries:
   file: woow_document_management/models/document.py
   functions: [_woow_portal_direct_documents]
   note: documents shared directly with the caller's own contact, then searched under the caller's record rules (the share list is not searchable by portal users)
+- id: Q21
+  file: woow_document_management/models/trash_actions.py
+  functions: [_woow_lock_purge_root]
+  note: purge root row lock that writes no row version, taken before the subtree holds are read, so a legal hold or restore committed after a purge batch's repeatable read snapshot fails that root with serialization_failure and a later one waits for the batch

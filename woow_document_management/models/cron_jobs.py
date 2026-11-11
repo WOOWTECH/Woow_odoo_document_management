@@ -22,9 +22,12 @@ class WoowDocumentCron(models.Model):
         One run deletes at most PURGE_BATCH records, documents and folders alike,
         however large a trashed folder is; the framework runs the next batch while
         ``remaining`` is not zero. A folder whose subtree does not fit stays in the
-        trash, partly deleted, and is continued by the next batch. Records that
-        fail (legal hold set meanwhile, lock timeout) are skipped and not counted
-        in ``remaining`` (R2b-06).
+        trash, partly deleted, and is continued by the next batch. A record that
+        cannot be deleted now is skipped and the batch still commits: a hold found
+        in this batch's snapshot, a lock wait that timed out, or a legal hold or
+        restore committed after the snapshot (the purge root's row lock or the
+        document delete then fails with serialization_failure). Skipped records
+        are not counted in ``remaining`` (R2b-06).
         """
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))

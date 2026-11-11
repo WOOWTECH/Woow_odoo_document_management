@@ -1,6 +1,8 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Explicit trash transitions after checking the caller's live access."""
+from psycopg2 import errors
+
 from odoo import _, fields, models
 from odoo.exceptions import AccessError, UserError
 from ..services.locks import LockBusy, bounded_wait
@@ -8,6 +10,12 @@ from ..services.constants import LOCK_TIMEOUT_MS
 
 from .document import WoowDocument
 from .document_folder import WoowDocumentFolder
+
+# A record that cannot be purged now is skipped, never the whole run: a refused
+# check, a lock wait that timed out, or a row that another transaction changed
+# after this snapshot (a legal hold set meanwhile) or that deadlocked with it.
+_PURGE_SKIPPED = (AccessError, UserError, LockBusy, errors.SerializationFailure,
+                  errors.DeadlockDetected)
 
 
 def _audit(record, event, **detail):
@@ -75,7 +83,9 @@ class WoowDocumentTrash(models.Model):
         """Delete permanently, skipping held and locked records -> (done, failed).
 
         A document already removed with a folder earlier in the same run is skipped
-        and counts as neither.
+        and counts as neither. The hold is read from this transaction's snapshot and
+        the delete writes the same row, so a hold committed after the snapshot makes
+        the delete fail with serialization_failure: that document counts as failed.
         """
         self._require_manager()
         done = failed = 0
@@ -89,7 +99,7 @@ class WoowDocumentTrash(models.Model):
                     with bounded_wait(self.env.cr, LOCK_TIMEOUT_MS):
                         doc.unlink()
                     done += 1
-            except (AccessError, UserError, LockBusy):
+            except _PURGE_SKIPPED:
                 failed += 1
         return done, failed
 
@@ -156,13 +166,20 @@ class WoowDocumentFolderTrash(models.Model):
         at most that many records (documents and folders) are deleted; a subtree
         that does not fit is left partly deleted and is continued by the next call.
         A folder already removed with an ancestor in the same run is skipped and
-        counts as neither.
+        counts as neither. A root that a legal hold or restore committed after this
+        transaction's snapshot has changed counts as failed and nothing of it is
+        deleted.
         """
         done, failed, _deleted = self._woow_purge_batch(budget)
         return done, failed
 
     def _woow_purge_batch(self, budget=None):
-        """``_woow_purge`` that also returns the number of records deleted."""
+        """``_woow_purge`` that also returns the number of records deleted.
+
+        Each root row is locked before any of its holds is read
+        (``_woow_lock_purge_root``), so a batch that deletes only documents or
+        only the deepest folders cannot miss a hold committed meanwhile.
+        """
         self._require_manager()
         done = failed = deleted = 0
         for root in self.with_context(active_test=False):
@@ -171,23 +188,40 @@ class WoowDocumentFolderTrash(models.Model):
             if not root.exists():
                 continue
             try:
-                with self.env.cr.savepoint():
+                with self.env.cr.savepoint(), bounded_wait(self.env.cr, LOCK_TIMEOUT_MS):
+                    root._woow_lock_purge_root()
                     if root.active or root.subtree_legal_hold:
                         raise UserError(_('This item cannot be deleted permanently.'))
-                    with bounded_wait(self.env.cr, LOCK_TIMEOUT_MS):
-                        count, finished = root._woow_purge_tree(
-                            None if budget is None else budget - deleted)
+                    count, finished = root._woow_purge_tree(
+                        None if budget is None else budget - deleted)
                 deleted += count
                 done += finished
-            except (AccessError, UserError, LockBusy):
+            except _PURGE_SKIPPED:
                 failed += 1
         return done, failed, deleted
+
+    def _woow_lock_purge_root(self):
+        """Row lock on a purge root that writes no row version (a barrier for stale snapshots).
+
+        A legal hold set on the root or on any folder below it turns the root's
+        stored ``subtree_legal_hold`` on, and a restore turns ``active`` on; both
+        update this row. Under Repeatable Read, SELECT ... FOR NO KEY UPDATE fails
+        with serialization_failure when a transaction that committed after this
+        snapshot changed the row, and such a change that starts later waits until
+        this transaction ends. Holds on documents need no barrier: deleting a
+        document writes the row that its hold changed.
+        """
+        self.ensure_one()
+        self.env.cr.execute(  # sql-ok: Q21
+            'SELECT id FROM woow_document_folder WHERE id = %s FOR NO KEY UPDATE', (self.id,))
 
     def _woow_purge_tree(self, limit=None):
         """Delete this trashed folder's documents, then its folders deepest first.
 
         Returns (records deleted, 1 when the folder itself is gone else 0). With
-        ``limit`` no more than that many records are deleted in this call.
+        ``limit`` no more than that many records are deleted in this call. The
+        holds are read from the snapshot, so the caller locks this folder's row
+        first (``_woow_lock_purge_root``).
         """
         self.ensure_one()
         folders = self.with_context(active_test=False).search([('id', 'child_of', self.id)])
