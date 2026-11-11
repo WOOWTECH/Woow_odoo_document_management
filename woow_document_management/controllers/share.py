@@ -11,7 +11,7 @@ from odoo.exceptions import AccessError, MissingError, UserError
 from odoo.http import Response, request
 
 from ..services import tokens
-from ..services.client_ip import hmac_ip, request_client_ip
+from ..services.client_ip import hmac_ip, request_client_ip, source_key
 from ..services.constants import (MAX_GRANTS, SESSION_GRANTS_KEY,
                                  SHARE_UNLOCK_FAIL_PER_HOUR)
 from ..services.locks import LockBusy
@@ -41,10 +41,14 @@ def _save_grant(share, grant):
 class WoowDocShareController(http.Controller):
 
     def _denied(self, ip, share_id=None, event='share_access'):
-        """Record one refused request of this source; 429 once its minute limit is used.
+        """Count one refused request of this source: 404, or 429 once its minute limit is used.
 
-        The source count is read with its counter row locked, so requests of one
-        source on different links cannot pass the limit together (Repeatable Read).
+        The answer depends only on the source's count, read with its counter row
+        locked so that requests of one source on different links cannot pass the
+        limit together (Repeatable Read). It never depends on the share id or on
+        whether the minute capacity still had room for an audit bucket, so it does
+        not tell whether a share exists. A source that is new in the minute and
+        finds no capacity for its counter row gets 429, and nothing is written.
         """
         log = request.env['woow.document.log']
         prior = log._count_denied_across_shares(event, ip)
@@ -53,11 +57,26 @@ class WoowDocShareController(http.Controller):
         if prior >= request.env['woow.document.settings']._get_settings().denied_rate_per_min:
             log._log_event('rate_limited', result='denied', channel='share', ip=ip)
             return streaming.too_many_requests()
-        written = log._log_event(
-            event, result='denied', channel='share', share_id=share_id, ip=ip)
-        if not written:
-            return streaming.too_many_requests()
+        log._log_event(event, result='denied', channel='share', share_id=share_id, ip=ip)
         return streaming.uniform_404('share')
+
+    def _unlock_limit(self, access, settings, source_count):
+        """The unlock limit that is used up: 'source' (all links), 'link' or None."""
+        if source_count >= settings.denied_rate_per_min:
+            return 'source'
+        source = hmac_ip(request.env['woow.document.settings']._share_keys().k_ip,
+                         source_key(access.ip))
+        log = access.scope_env['woow.document.log']
+        now = fields.Datetime.now()
+        if log._count_share_unlock_failures(
+                access.share_sudo.id, ip_hash=source,
+                since=now - timedelta(minutes=settings.share_unlock_cooldown_min)) \
+                >= settings.share_unlock_max_fail:
+            return 'link'
+        if log._count_share_unlock_failures(
+                access.share_sudo.id, since=now - timedelta(hours=1)) >= SHARE_UNLOCK_FAIL_PER_HOUR:
+            return 'link'
+        return None
 
     def _share_entry(self, *, token=None, share_id=None, require_grant=True,
                      require_unlocked=True, resolve=True):
@@ -65,8 +84,6 @@ class WoowDocShareController(http.Controller):
         if not resolve:
             return ShareAccess(request.env['woow.document.share'].browse(), None, '', '', None)
         try:
-            if request.env['woow.document.log']._denied_budget_exhausted():
-                return streaming.too_many_requests()
             settings = request.env['woow.document.settings']._get_settings()
             ip = request_client_ip(request.httprequest, settings)
             ip_hash = hmac_ip(request.env['woow.document.settings']._share_keys().k_ip, ip)
@@ -161,10 +178,8 @@ class WoowDocShareController(http.Controller):
             # releasing the share lock so one-use links cannot be replayed with
             # Range requests; 304/416 responses do not transfer content.
             if response.status_code in (200, 206):
-                access.scope_env['woow.document.log']._log_event(
-                    'share_download', channel='share', share_id=share.id,
-                    company_id=share.company_id.id, ip=access.ip,
-                    detail={'files': 1, 'bytes': docs.file_size})
+                share._record_download(access.scope_env, access.ip,
+                                       {'files': 1, 'bytes': docs.file_size})
             return response
         except LockBusy:
             return streaming.service_busy()
@@ -181,31 +196,34 @@ class WoowDocShareController(http.Controller):
         if not share.has_password:
             return streaming.uniform_404('share')
         try:
-            # Every limit is decided before the password is compared. The share
-            # lock and row barrier refresh this link's failure counts; the locked
-            # source counter covers the source's attempts on all other links.
+            settings = request.env['woow.document.settings']._get_settings()
+            log = request.env['woow.document.log']
+            # Refuse from the request snapshot first, without locks or writes. A stale
+            # snapshot can only miss failures, so a limit reached here is reached for
+            # certain, and a refused attempt never locks or writes the share row.
+            limit = self._unlock_limit(access, settings, log._peek_denied_across_shares(
+                'share_unlock_failed', access.ip))
+            if limit == 'source':
+                return self._denied(access.ip, share.id, event='share_unlock_failed')
+            if limit:
+                return streaming.too_many_requests()
+            # Serialize the comparison. The share lock and row lock cover this link's
+            # failures, the locked source counter row the source's failures on every
+            # link. Both fail with serialization_failure, and Odoo retries on a fresh
+            # snapshot, when a failure was counted after this snapshot; the limits are
+            # then decided again on counts no other request can change meanwhile.
             if not share._lock_password_attempts(access.scope_env):
                 return streaming.uniform_404('share')
-            settings = request.env['woow.document.settings']._get_settings()
-            prior = request.env['woow.document.log']._count_denied_across_shares(
-                'share_unlock_failed', access.ip)
-            if prior is None:
+            prior = log._count_denied_across_shares('share_unlock_failed', access.ip)
+            if prior is None or self._unlock_limit(access, settings, prior):
+                log._release_denied_source('share_unlock_failed', access.ip)
                 return streaming.too_many_requests()
-            if prior >= settings.denied_rate_per_min:
+            if not tokens.check_password(post.get('password') or '', share.password_hash):
+                # A counted failure needs no minute capacity, and it updates the share
+                # row so that attempts holding an older snapshot fail at the row lock.
+                share._count_password_failure(access.scope_env)
                 return self._denied(access.ip, share.id, event='share_unlock_failed')
-            log = access.scope_env['woow.document.log']
-            failures = log._count_share_unlock_failures(
-                share.id, ip_hash=access.ip_hash,
-                since=fields.Datetime.now() - timedelta(minutes=settings.share_unlock_cooldown_min))
-            if failures >= settings.share_unlock_max_fail:
-                return streaming.too_many_requests()
-            share_failures = log._count_share_unlock_failures(
-                share.id, since=fields.Datetime.now() - timedelta(hours=1))
-            if share_failures >= SHARE_UNLOCK_FAIL_PER_HOUR:
-                return streaming.too_many_requests()
-            password = post.get('password') or ''
-            if not tokens.check_password(password, share.password_hash):
-                return self._denied(access.ip, share.id, event='share_unlock_failed')
+            log._release_denied_source('share_unlock_failed', access.ip)
             grant = dict(access.grant)
             grant['pw'] = True
             _save_grant(share, grant)
@@ -233,10 +251,8 @@ class WoowDocShareController(http.Controller):
                 return streaming.uniform_404('share')
 
         def before_stream(stats):
-            access.scope_env['woow.document.log']._log_event(
-                'share_download', channel='share', share_id=share.id,
-                company_id=share.company_id.id, ip=access.ip,
-                detail={'zip': 1, 'files': stats.files, 'bytes': stats.bytes})
+            share._record_download(access.scope_env, access.ip,
+                                   {'zip': 1, 'files': stats.files, 'bytes': stats.bytes})
 
         return streaming.zip_response(docs, root_folder=share.folder_id if share.share_type == 'folder' else None,
                                       channel='share', share_id=share.id,

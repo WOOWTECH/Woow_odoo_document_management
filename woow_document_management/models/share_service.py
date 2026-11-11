@@ -46,48 +46,86 @@ class WoowDocumentShareService(models.Model):
                 ('share_id', '=', share.id), ('event', '=', 'share_download'),
                 ('result', '=', 'ok')])
 
-    def _download_slot_available(self, scope_env):
-        """Serialize a share's file and ZIP downloads before reading its audit count.
-
-        An advisory lock alone does not refresh a Repeatable Read snapshot. Updating
-        the share row after taking the lock makes a concurrent request with an old
-        snapshot fail with serialization_failure; Odoo can retry it with a fresh
-        transaction instead of granting an extra download from a stale count.
-        """
+    def _woow_check_scope_env(self, scope_env):
+        """Public share work runs only in the creator's non-superuser scope."""
         self.ensure_one()
         if scope_env.su or scope_env.uid != self.create_uid.id or \
                 scope_env.company.id != self.company_id.id:
             raise AccessError(_('The share is unavailable.'))
-        lock(scope_env.cr, 'share:%d' % self.id)
-        if not self.max_downloads:
-            return True
+
+    def _woow_lock_share_row(self, scope_env):
+        """Row lock that writes no row version (a barrier for stale snapshots).
+
+        Under Repeatable Read, SELECT ... FOR NO KEY UPDATE fails with
+        serialization_failure when a transaction that committed after this snapshot
+        updated the row (``_woow_count_on_share_row``). A transaction that only
+        locked the row never makes another one fail, so an attempt that ends without
+        a counted event cannot make an owner's revoke or edit of the link fail.
+        Foreign key checks of new audit rows (FOR KEY SHARE) do not wait for it.
+        """
+        scope_env.cr.execute(  # sql-ok: Q12
+            'SELECT id FROM woow_document_share WHERE id = %s FOR NO KEY UPDATE', (self.id,))
+        return bool(scope_env.cr.fetchone())
+
+    def _woow_count_on_share_row(self, scope_env):
+        """Write a new row version when a counted event of this link is recorded."""
         scope_env.cr.execute(  # sql-ok: Q12
             'UPDATE woow_document_share SET write_date = write_date '
             'WHERE id = %s RETURNING id', (self.id,))
         if not scope_env.cr.fetchone():
-            return False
-        prior = scope_env['woow.document.log']._sum_count([
+            raise AccessError(_('The share is unavailable.'))
+
+    def _woow_download_count(self, scope_env):
+        return scope_env['woow.document.log']._sum_count([
             ('share_id', '=', self.id), ('event', '=', 'share_download'),
             ('result', '=', 'ok')])
-        return prior < self.max_downloads
+
+    def _download_slot_available(self, scope_env):
+        """Decide one file or ZIP download of a limited link from a current count.
+
+        A stale Repeatable Read snapshot can only miss downloads, so a link that is
+        used up in the request snapshot is refused at once, without the share lock
+        or a write. Otherwise the share lock orders the requests and the row lock
+        makes one whose snapshot predates a counted download (``_record_download``
+        updates the share row) fail with serialization_failure; Odoo retries it with
+        a fresh transaction instead of granting an extra download from a stale count.
+        """
+        self._woow_check_scope_env(scope_env)
+        if self.max_downloads and self._woow_download_count(scope_env) >= self.max_downloads:
+            return False
+        lock(scope_env.cr, 'share:%d' % self.id)
+        if not self.max_downloads:
+            return True
+        if not self._woow_lock_share_row(scope_env):
+            return False
+        return self._woow_download_count(scope_env) < self.max_downloads
+
+    def _record_download(self, scope_env, ip, detail):
+        """Log one share download; for a limited link also update the share row."""
+        self._woow_check_scope_env(scope_env)
+        if self.max_downloads:
+            self._woow_count_on_share_row(scope_env)
+        scope_env['woow.document.log']._log_event(
+            'share_download', channel='share', share_id=self.id,
+            company_id=self.company_id.id, ip=ip, detail=detail)
 
     def _lock_password_attempts(self, scope_env):
-        """Serialize this link's password attempts before its failure counts are read.
+        """Serialize this link's password comparisons before its failure counts are read.
 
-        As for downloads, the advisory lock orders the attempts and the share row
-        update makes an attempt that still holds an older Repeatable Read snapshot
-        fail with serialization_failure, so a retry reads the counts again before
-        any password comparison.
+        The advisory lock orders the attempts that compare a password. The row lock
+        writes no row version: only a counted failure updates the share row
+        (``_count_password_failure``), so an attempt whose snapshot predates one
+        fails with serialization_failure and is retried before any comparison, while
+        attempts without a counted failure never make the owner's updates fail.
         """
-        self.ensure_one()
-        if scope_env.su or scope_env.uid != self.create_uid.id or \
-                scope_env.company.id != self.company_id.id:
-            raise AccessError(_('The share is unavailable.'))
+        self._woow_check_scope_env(scope_env)
         lock(scope_env.cr, 'share:%d' % self.id)
-        scope_env.cr.execute(  # sql-ok: Q12
-            'UPDATE woow_document_share SET write_date = write_date '
-            'WHERE id = %s RETURNING id', (self.id,))
-        return bool(scope_env.cr.fetchone())
+        return self._woow_lock_share_row(scope_env)
+
+    def _count_password_failure(self, scope_env):
+        """Mark a counted wrong password on the share row, under the share lock."""
+        self._woow_check_scope_env(scope_env)
+        self._woow_count_on_share_row(scope_env)
 
     @api.model
     def _issue(self, vals):

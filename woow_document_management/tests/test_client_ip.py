@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from odoo.tests import TransactionCase, tagged
 
 from ..services.client_ip import (client_ip, hmac_ip, parse_trusted_proxies,
-                                  request_client_ip, truncate_ip)
+                                  request_client_ip, source_key, truncate_ip)
 
 
 @tagged('woow_docmgmt_core')
@@ -53,3 +53,12 @@ class TestClientIp(TransactionCase):
         self.assertEqual(truncate_ip('invalid'), '')
         self.assertEqual(len(hmac_ip(b'key', '192.0.2.42')), 64)
         self.assertNotEqual(hmac_ip(b'key', '192.0.2.42'), hmac_ip(b'key', '192.0.2.43'))
+
+    def test_source_key_counts_an_ipv6_network_as_one_source(self):
+        self.assertEqual(source_key('192.0.2.42'), '192.0.2.42')
+        self.assertEqual(source_key('2001:db8:0:7::42'), '2001:db8:0:7::/64')
+        self.assertEqual(source_key('2001:db8:0:7:ffff::1'), '2001:db8:0:7::/64')
+        self.assertNotEqual(source_key('2001:db8:0:8::1'), source_key('2001:db8:0:7::1'))
+        self.assertEqual(source_key('::ffff:192.0.2.42'), '192.0.2.42')
+        self.assertEqual(source_key(''), '')
+        self.assertEqual(source_key('invalid'), 'invalid')

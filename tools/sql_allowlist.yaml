@@ -59,20 +59,16 @@ entries:
   note: creator-scoped aggregate of denied share unlock attempts without exposing restricted IP hashes
 - id: Q13
   file: woow_document_management/models/document_log.py
-  functions: [_lock_source, _add_one]
-  note: per-IP denied counter row across share ids (no share existence oracle); locked read and increment that fail with serialization_failure on a stale repeatable read snapshot
+  functions: [_peek_source, _lock_source, _add_one, _release_source]
+  note: per-source denied counter row across share ids (no share existence oracle); snapshot read, locked read and increment that fail with serialization_failure on a stale repeatable read snapshot, removal of a row that counts nothing
 - id: Q14
   file: woow_document_management/models/document_log.py
   functions: [_take_slot]
-  note: atomic per-minute global denied audit budget with a saturated counter
-- id: Q15
-  file: woow_document_management/models/document_log.py
-  functions: [_denied_budget_exhausted]
-  note: fail-closed public share entry check against the current global minute budget
+  note: per-minute denied record capacity with a saturated counter, reserved in its own short read committed transaction for the calling transaction's minute
 - id: Q16
   file: woow_document_management/models/document_log.py
   functions: [_denied_bucket_exists]
-  note: existing per-IP minute buckets do not consume another global row slot
+  note: existing per-source minute buckets do not consume another capacity slot
 - id: Q3
   file: woow_document_management/models/document_log.py
   functions: [init]
@@ -87,5 +83,5 @@ entries:
   note: sender row version barrier before hourly share mail count under repeatable read
 - id: Q12
   file: woow_document_management/models/share_service.py
-  functions: [_download_slot_available, _lock_password_attempts]
-  note: share row version barrier before the download count and the password failure counts under repeatable read
+  functions: [_woow_lock_share_row, _woow_count_on_share_row]
+  note: share row lock before the download count and the password failure counts under repeatable read, and the row version written only when a download or a wrong password is counted

@@ -78,6 +78,24 @@ def truncate_ip(ip: str) -> str:
     return str(ipaddress.ip_network('%s/%d' % (addr, prefix), strict=False))
 
 
+def source_key(ip: str) -> str:
+    """Rate-limit source of a client address: IPv4 as is, IPv6 as its /64 network.
+
+    One host or subscriber usually holds a whole IPv6 /64, so refused requests are
+    counted per network there. IPv4-mapped IPv6 addresses count as their IPv4
+    address. Invalid values are returned unchanged.
+    """
+    try:
+        addr = ipaddress.ip_address((ip or '').strip())
+    except ValueError:
+        return ip or ''
+    if addr.version == 6 and addr.ipv4_mapped is not None:
+        return str(addr.ipv4_mapped)
+    if addr.version == 4:
+        return str(addr)
+    return str(ipaddress.ip_network('%s/64' % addr, strict=False))
+
+
 def hmac_ip(k_ip: bytes, ip: str) -> str:
     """HMAC-SHA256 of the full IP, 64 hex characters."""
     return hmac.new(k_ip, (ip or '').encode(), hashlib.sha256).hexdigest()

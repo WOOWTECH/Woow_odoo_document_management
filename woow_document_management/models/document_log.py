@@ -9,11 +9,15 @@ from odoo.http import request
 from odoo.exceptions import AccessError
 
 from ..services.constants import CHANNELS, EVENTS, RESULTS, MAX_DENIED_ROWS_PER_MIN
-from ..services.client_ip import hmac_ip, request_client_ip, truncate_ip
+from ..services.client_ip import hmac_ip, request_client_ip, source_key, truncate_ip
 
 _MANAGER = 'woow_document_management.group_woow_document_manager'
 # Denied events limited per source across all share ids (denied_rate_per_min).
 SOURCE_LIMITED_EVENTS = ('share_access', 'share_unlock_failed')
+# A wrong password can only be sent with a valid link and session grant, and each
+# link counts at most SHARE_UNLOCK_FAIL_PER_HOUR of them, so its records are bounded
+# by the links and never use the per-minute capacity (MAX_DENIED_ROWS_PER_MIN).
+UNBUDGETED_EVENTS = ('share_unlock_failed',)
 _EVENT_LABELS = {
     'view': 'Previewed', 'download': 'Downloaded', 'zip': 'Downloaded as ZIP',
     'upload': 'Uploaded', 'replace': 'File replaced', 'trash': 'Moved to trash',
@@ -57,29 +61,47 @@ class WoowDocumentLog(models.Model):
         return int(rows[0].get('count') or 0) if rows else 0
 
     @api.model
+    def _source_digest(self, event, ip):
+        """HMAC of the rate-limit source of ``ip`` (an IPv6 /64 counts as one)."""
+        if event not in SOURCE_LIMITED_EVENTS or not isinstance(ip, str):
+            raise ValueError('Invalid denied counter request.')
+        return hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, source_key(ip))
+
+    @api.model
     def _count_denied_across_shares(self, event, ip):
-        """Rate-limit one IP across all share IDs without revealing link existence.
+        """Rate-limit one source across all share IDs without revealing link existence.
 
         Returns this minute's denied count of the source, read through its locked
         counter row (Repeatable Read safe, see ``woow.document.denied.counter``), or
-        None when no row capacity is left for a new source this minute (answer 429).
-        The row stays locked until the transaction ends, so the caller's decision
-        and its own denied event cannot interleave with another request.
+        None when a new source finds no capacity left for its row this minute
+        (answer 429). The row stays locked until the transaction ends, so the
+        caller's decision and its own denied event cannot interleave with another
+        request of the same source.
         """
-        if event not in SOURCE_LIMITED_EVENTS or not isinstance(ip, str):
-            raise ValueError('Invalid denied counter request.')
-        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, ip)
-        return self.env['woow.document.denied.counter']._lock_source(event, digest)
+        return self.env['woow.document.denied.counter']._lock_source(
+            event, self._source_digest(event, ip))
 
     @api.model
-    def _denied_budget_exhausted(self):
-        """Fail closed for public share requests after the global minute budget."""
-        self.env.cr.execute(  # sql-ok: Q15
-            """SELECT count >= %s FROM woow_document_denied_budget
-               WHERE bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
-            (MAX_DENIED_ROWS_PER_MIN,))
-        row = self.env.cr.fetchone()
-        return bool(row and row[0])
+    def _peek_denied_across_shares(self, event, ip):
+        """The source's count in the request snapshot, without locks or writes.
+
+        A stale snapshot can only miss refusals, so a limit reached here is reached
+        for certain. Before relying on a count below a limit, lock it with
+        ``_count_denied_across_shares``.
+        """
+        return self.env['woow.document.denied.counter']._peek_source(
+            event, self._source_digest(event, ip))
+
+    @api.model
+    def _release_denied_source(self, event, ip):
+        """Drop the source's counter row of this minute while it counts nothing.
+
+        ``_count_denied_across_shares`` creates a missing row with count 0 so that
+        concurrent requests of one source meet on it; an attempt that ends without
+        a refusal (a correct password) removes it again.
+        """
+        self.env['woow.document.denied.counter']._release_source(
+            event, self._source_digest(event, ip))
 
     @api.model
     def _denied_bucket_exists(self, event, ip_hash, share_id):
@@ -126,7 +148,15 @@ class WoowDocumentLog(models.Model):
     def _log_event(self, event, *, result='ok', channel, user_id=None, partner_id=None,
                    share_id=None, document_id=None, folder_id=None, company_id=None, ip=None,
                    user_agent=None, detail=None):
-        """Write a bounded event without storing names, addresses or credentials."""
+        """Write a bounded event without storing names, addresses or credentials.
+
+        A denied event is merged into its (event, source, share, minute) bucket and
+        returns the bucket's count. A new bucket uses one slot of the minute capacity
+        unless its event is in UNBUDGETED_EVENTS; without a slot nothing is written
+        to the audit log and 0 is returned. A source-limited event also adds one to
+        the source's counter row: a new source's row needs a slot too (0 and nothing
+        written without one), an existing row always counts the event.
+        """
         if event not in EVENTS or result not in RESULTS or channel not in CHANNELS:
             raise ValueError('invalid audit event')
         detail = detail or {}
@@ -145,7 +175,10 @@ class WoowDocumentLog(models.Model):
         if user_agent is None and request:
             user_agent = str(request.httprequest.user_agent)
         keys = self.env['woow.document.settings']._share_keys() if ip else None
-        ip_hash = hmac_ip(keys.k_ip, ip) if keys else None
+        # Refused requests are kept per rate-limit source (an IPv6 /64 is one), so
+        # one network cannot spread them over a new bucket for every address.
+        ip_hash = (hmac_ip(keys.k_ip, source_key(ip) if result == 'denied' else ip)
+                   if keys else None)
         ip_display = (truncate_ip(ip) if settings.log_ip_mode == 'truncate' else
                       ip_hash if settings.log_ip_mode == 'hash' else None)
         user_id = (None if self.env.user._is_public() else self.env.uid) if user_id is None else user_id
@@ -158,33 +191,36 @@ class WoowDocumentLog(models.Model):
             vals.update(document_id=document_id, folder_id=folder_id)
             self.sudo().create(vals)  # sudo-ok: S1
             return 1
-        # Lock order: source counter row, global minute budget, event bucket.
+        # Lock order: source counter row, then the event bucket. Slots of the minute
+        # capacity are reserved in their own short transactions (``_take_slot``).
         counters = self.env['woow.document.denied.counter']
-        source = (hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, ip)
+        source = (self._source_digest(event, ip)
                   if event in SOURCE_LIMITED_EVENTS and isinstance(ip, str) else None)
         if source is not None and counters._lock_source(event, source) is None:
             return 0
-        if (not self._denied_bucket_exists(event, ip_hash, share_id) and
-                not self.env['woow.document.denied.budget']._take_slot()):
-            return 0
-        self.flush_model()
-        self.env.cr.execute(  # sql-ok: Q1
-            """INSERT INTO woow_document_log
-               (create_uid, create_date, write_uid, write_date, event, result, channel,
-                user_id, partner_id, share_id, company_id, ip_hash, ip_display,
-                user_agent, bucket_minute, count, detail)
-               VALUES (%s, now() AT TIME ZONE 'UTC', %s, now() AT TIME ZONE 'UTC',
-                       %s, 'denied', %s, %s, %s, %s, %s, %s, %s, %s,
-                       date_trunc('minute', now() AT TIME ZONE 'UTC'), 1, %s::jsonb)
-               ON CONFLICT (event, (COALESCE(ip_hash, '')), (COALESCE(share_id, 0)), bucket_minute)
-                 WHERE result = 'denied'
-               DO UPDATE SET count = woow_document_log.count + 1,
-                             write_date = EXCLUDED.write_date
-               RETURNING count""",
-            (self.env.uid, self.env.uid, event, channel, user_id, partner_id,
-             share_id, company_id, ip_hash, ip_display, vals['user_agent'],
-             json.dumps(detail, ensure_ascii=False, separators=(',', ':'))))
-        count = self.env.cr.fetchone()[0]
+        count = 0
+        if (event in UNBUDGETED_EVENTS or self._denied_bucket_exists(event, ip_hash, share_id)
+                or self.env['woow.document.denied.budget']._take_slot()):
+            self.flush_model()
+            self.env.cr.execute(  # sql-ok: Q1
+                """INSERT INTO woow_document_log
+                   (create_uid, create_date, write_uid, write_date, event, result, channel,
+                    user_id, partner_id, share_id, company_id, ip_hash, ip_display,
+                    user_agent, bucket_minute, count, detail)
+                   VALUES (%s, now() AT TIME ZONE 'UTC', %s, now() AT TIME ZONE 'UTC',
+                           %s, 'denied', %s, %s, %s, %s, %s, %s, %s, %s,
+                           date_trunc('minute', now() AT TIME ZONE 'UTC'), 1, %s::jsonb)
+                   ON CONFLICT (event, (COALESCE(ip_hash, '')), (COALESCE(share_id, 0)), bucket_minute)
+                     WHERE result = 'denied'
+                   DO UPDATE SET count = woow_document_log.count + 1,
+                                 write_date = EXCLUDED.write_date
+                   RETURNING count""",
+                (self.env.uid, self.env.uid, event, channel, user_id, partner_id,
+                 share_id, company_id, ip_hash, ip_display, vals['user_agent'],
+                 json.dumps(detail, ensure_ascii=False, separators=(',', ':'))))
+            count = self.env.cr.fetchone()[0]
+        # With no capacity left for a new bucket the refusal still counts for its
+        # source, whose row already exists: the limits never depend on capacity.
         if source is not None:
             counters._add_one(event, source)
         self.invalidate_model()
@@ -200,6 +236,12 @@ class WoowDocumentLog(models.Model):
 
 
 class WoowDocumentDeniedBudget(models.Model):
+    """Per-minute capacity for the records of refused share requests.
+
+    Every new source counter row and every new denied audit bucket, except those
+    of UNBUDGETED_EVENTS, reserves one of MAX_DENIED_ROWS_PER_MIN slots of its
+    minute. Existing rows are updated without a slot.
+    """
     _name = 'woow.document.denied.budget'
     _description = 'Bounded denied audit minute budget'
     _log_access = False
@@ -209,16 +251,31 @@ class WoowDocumentDeniedBudget(models.Model):
 
     @api.model
     def _take_slot(self):
-        """Atomically reserve one of the finite denied rows (audit buckets and source
-        counters) for this minute."""
+        """Reserve one slot of the calling transaction's minute; False when none is left.
+
+        The reservation runs in its own short READ COMMITTED transaction that commits
+        at once. Requests therefore never meet on the minute row inside their
+        Repeatable Read transactions, and reserving a slot cannot fail with
+        serialization_failure or hold the row while the request goes on. A slot
+        reserved by a request that is later rolled back or retried stays used: the
+        capacity can only be under-used, never exceeded. In registry test mode the
+        cursor shares the test transaction, which serves one request at a time.
+        """
         self.env.cr.execute(  # sql-ok: Q14
-            """INSERT INTO woow_document_denied_budget (bucket_minute, count)
-               VALUES (date_trunc('minute', now() AT TIME ZONE 'UTC'), 1)
-               ON CONFLICT (bucket_minute)
-               DO UPDATE SET count = LEAST(woow_document_denied_budget.count + 1, %s)
-               RETURNING count""",
-            (MAX_DENIED_ROWS_PER_MIN + 1,))
-        return self.env.cr.fetchone()[0] <= MAX_DENIED_ROWS_PER_MIN
+            "SELECT date_trunc('minute', now() AT TIME ZONE 'UTC')")
+        minute = self.env.cr.fetchone()[0]
+        with self.env.registry.cursor() as cr:
+            if not self.env.registry.in_test_mode():
+                cr.execute('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')  # sql-ok: Q14
+            cr.execute(  # sql-ok: Q14
+                """INSERT INTO woow_document_denied_budget (bucket_minute, count)
+                   VALUES (%s, 1)
+                   ON CONFLICT (bucket_minute)
+                   DO UPDATE SET count = LEAST(woow_document_denied_budget.count + 1, %s)
+                   RETURNING count""",
+                (minute, MAX_DENIED_ROWS_PER_MIN + 1))
+            count = cr.fetchone()[0]
+        return count <= MAX_DENIED_ROWS_PER_MIN
 
     def init(self):
         super().init()
@@ -248,11 +305,28 @@ class WoowDocumentDeniedCounter(models.Model):
     count = fields.Integer(required=True)
 
     @api.model
+    def _peek_source(self, event, ip_hash):
+        """The source's count of this minute in the request snapshot (0 without a row)."""
+        self.env.cr.execute(  # sql-ok: Q13
+            """SELECT count FROM woow_document_denied_counter
+               WHERE event = %s AND ip_hash = %s
+                 AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
+            (event, ip_hash))
+        row = self.env.cr.fetchone()
+        return row[0] if row else 0
+
+    @api.model
     def _lock_source(self, event, ip_hash):
         """Lock the source's row of this minute and return its count.
 
-        A new row takes one slot of the global minute budget, like a new audit
-        bucket; None when no slot is left.
+        A missing row is created with count 0 in the caller's transaction, so that
+        concurrent requests of the source wait for it and then fail with
+        serialization_failure. For a budgeted event the new row reserves one slot of
+        the minute capacity; without a slot the row is removed again and None is
+        returned. An existing row is locked with SELECT ... FOR UPDATE: INSERT ...
+        DO NOTHING does not lock a row that the snapshot already sees, and only the
+        locked read fails when another transaction changed the row after this
+        snapshot.
         """
         self.env.cr.execute(  # sql-ok: Q13
             """INSERT INTO woow_document_denied_counter (event, ip_hash, bucket_minute, count)
@@ -261,13 +335,9 @@ class WoowDocumentDeniedCounter(models.Model):
                RETURNING count""",
             (event, ip_hash))
         if self.env.cr.fetchone():
-            if self.env['woow.document.denied.budget']._take_slot():
+            if event in UNBUDGETED_EVENTS or self.env['woow.document.denied.budget']._take_slot():
                 return 0
-            self.env.cr.execute(  # sql-ok: Q13
-                """DELETE FROM woow_document_denied_counter
-                   WHERE event = %s AND ip_hash = %s
-                     AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
-                (event, ip_hash))
+            self._release_source(event, ip_hash)
             return None
         self.env.cr.execute(  # sql-ok: Q13
             """SELECT count FROM woow_document_denied_counter
@@ -287,6 +357,16 @@ class WoowDocumentDeniedCounter(models.Model):
                  AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
             (event, ip_hash))
         self.invalidate_model(['count'])
+
+    @api.model
+    def _release_source(self, event, ip_hash):
+        """Remove the source's row of this minute while its count is still 0."""
+        self.env.cr.execute(  # sql-ok: Q13
+            """DELETE FROM woow_document_denied_counter
+               WHERE event = %s AND ip_hash = %s AND count = 0
+                 AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
+            (event, ip_hash))
+        self.invalidate_model()
 
     def init(self):
         super().init()
