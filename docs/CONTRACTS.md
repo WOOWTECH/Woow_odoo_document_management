@@ -296,6 +296,7 @@
 | Q18 | `models/mail_thread_guard.py::_woow_follower_scope`、`::_woow_user_companies` | 通知對象所在記錄的讀取規則所依據的儲存欄位（state、公司、eff_* 授權、直接分享），以及被通知帳號的公司 |
 | Q19 | `models/document_folder.py::_woow_check_name_free` | 同一層、同公司、啟用中的資料夾是否已用這個名稱（與唯一索引相同的判斷），先回 M-02 |
 | Q20 | `models/document.py::_woow_portal_direct_documents` | 直接分享給呼叫者本人聯絡人的文件 id，再以呼叫者的 record rule 搜尋 |
+| Q21 | `models/trash_actions.py::_woow_lock_purge_root` | purge 讀任何 hold 之前，以 `SELECT … FOR NO KEY UPDATE` 鎖住這個根資料夾的列（只鎖不寫列版本）：本批快照之後 commit 的 legal hold 或還原改過這一列，就 serialization_failure、跳過這個根；之後才開始的會等這一批結束 |
 
 - 其他地方出現 `pg_*advisory*`，或 locks.py 裡呼叫內建的 `hash(`，都直接失敗（T-STAT-22）。
 - tag、access、`attachment_id`、`token_hash` 的唯一索引，一律用 ORM 或 `odoo.tools.sql.create_unique_index(cr, name, table, [固定運算式])` 建在各自 model 的 `init()` 裡。這不是 raw SQL，不算 Q3（IC-R07）。
@@ -1228,6 +1229,9 @@ def _woow_purge(self) -> tuple[int, int]:
     """內部用，只有 su 或文件管理員能呼叫。由深到淺；legal_hold 或 subtree_legal_hold → M-34；
     每筆包在 savepoint 和 locks.bounded_wait 裡，失敗的記 purge（denied，detail 只放 id）後跳過。回傳 (done, failed)。
     同一次執行中已隨上層一起刪除的記錄直接略過，不算 done 也不算 failed。
+    資料夾的每個根先以 _woow_lock_purge_root（Q21）鎖住自己的列，再讀 active 與子樹的 hold；
+    文件的 hold 與刪除是同一列。所以在本交易快照之後 commit 的 legal hold 或還原，會讓該根或該文件
+    serialization_failure（並行死結同樣處理），這一筆算 failed、整批照常 commit。
     資料夾另有 _woow_purge(budget=None)：budget 是這次最多刪除的記錄數（文件和資料夾都算）；
     放不下的子樹保留在回收桶、只刪掉一部分，下次呼叫接著刪。"""
 ```
@@ -1240,7 +1244,7 @@ def _woow_purge(self) -> tuple[int, int]:
 
 | xmlid | 方法（在 `woow.document` 上，`@api.model`） | 頻率 | 內容 |
 |---|---|---|---|
-| `ir_cron_woow_document_purge_trash` | `_cron_purge_trash()` | 每天 | 每批最多刪除 PURGE_BATCH 筆記錄（文件和資料夾都算，不論回收桶資料夾多大）；`ir.cron._notify_progress(done=刪除筆數, remaining=)`；失敗的不算進 remaining；同一筆連續失敗 POISON_ALERT_DAYS 天，就對管理員建立 activity（R2b-06） |
+| `ir_cron_woow_document_purge_trash` | `_cron_purge_trash()` | 每天 | 每批最多刪除 PURGE_BATCH 筆記錄（文件和資料夾都算，不論回收桶資料夾多大）；`ir.cron._notify_progress(done=刪除筆數, remaining=)`；失敗的（含本批快照之後才 commit 的 legal hold、還原）跳過、整批照常 commit，不算進 remaining；同一筆連續失敗 POISON_ALERT_DAYS 天，就對管理員建立 activity（R2b-06） |
 | `ir_cron_woow_document_share_maintenance` | `_cron_share_maintenance()` | 每小時 | 呼叫 `share._maintenance_run()` |
 | `ir_cron_woow_document_log_retention` | `_cron_log_retention()` | 每週 | 每批 LOG_RETENTION_BATCH 筆 |
 | `ir_cron_woow_document_quota` | `_cron_quota()` | 每天 | 呼叫 `quota._cron_check_warn()` |
@@ -1955,3 +1959,4 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-11 | G4 修正 | **密碼解鎖與分享列屏障**：`share_unlock` 先以請求快照判斷來源跨分享上限、同分享同來源冷卻、同分享每小時上限（舊快照只會少算，據此拒絕必定正確）：來源上限已滿走 `_denied`（`rate_limited`、429），其餘 429，皆不取 `share:<id>` 鎖、不寫 share 列。要比對時才 `_lock_password_attempts`（`share:<id>` advisory 鎖＋`SELECT … FOR NO KEY UPDATE`，只鎖不寫列版本，Q12）、鎖定來源計數列，再判斷一次上限，然後比對密碼。錯誤密碼先 `_count_password_failure`（`UPDATE … SET write_date = write_date` 寫新的列版本），再記 `share_unlock_failed`、回 404；正確密碼移除本次建立、count 仍為 0 的來源計數列，回 303。所以只有計入的失敗會寫 share 列：快照早於它的嘗試在列鎖得到 serialization_failure 並重試，而沒有計入失敗的嘗試（正確密碼、被拒絕的嘗試）不會讓擁有者的撤銷或編輯 serialization_failure。下載同理：`_download_slot_available` 先以快照拒絕已用完的連結（不鎖、不寫），其餘取 `share:<id>` 鎖與列鎖後重新計數；`_record_download` 只對有次數限制的連結寫列版本，再記 `share_download`。鎖順序：`share:<id>` → share 列 → 來源計數列 → 事件 bucket；容量槽在獨立交易取得。SC：T-SHARE-44 先在複製的 DB 安裝模組，期望 10 次 404、1 次 429、share_access bucket 10、`rate_limited` 1、來源計數 10；T-SHARE-45（`dev/sc/sc_source_limit_two_links.py`）：同一來源兩個用戶端同時對兩個連結猜密碼，比對過的猜測恰為上限 3，之後同來源的正確密碼也回 429；T-SHARE-46（`dev/sc/sc_denied_sources_together.py`）：12 個來源（信任的迴環 proxy 加 `X-Real-IP`）同時送被拒絕的開啟請求，第一輪同時送一次正確密碼，伺服器紀錄不得有並行錯誤重試，拒絕全為 404、解鎖 303、容量恰為每個新計數列與新 bucket 各一格。真 HTTP 的 SC 以資料庫時鐘對齊分鐘，跨分鐘的那一輪清空計數後重跑一次。 |
 | 2026-11-11 | G4 修正 | **User-Agent 清理**（補充 §8.4 `user_agent` 一點）：`_log_event` 寫入前先移除 user agent 的控制字元（`str.isprintable()` 為假的字元，含 NUL），再截斷到 256 字元（`USER_AGENT_SIZE`），ok 與 denied 兩條路都套用。PostgreSQL 的 text 不能存 NUL：原樣寫入會讓請求 500 並整筆 rollback，錯誤密碼與被拒絕的請求都不會計入冷卻與限流，而側交易已取的容量槽不退回。 |
 | 2026-11-12 | 審查修正 | **附件與串流**：`ir.attachment.write` 依寫入後的值判斷，帶 `res_field`、`public` 或 `access_token` 的附件不能分兩步改掛到本模組 model；`message_post` 等經 `_process_attachments_for_post` 加入討論的附件不能是欄位附件（Q17）；`ir.binary._record_to_stream` 只串流文件記錄的那一個 binary 附件，`_find_record` 對本模組記錄拒絕 `access_token`（`/web/content` 404、`/web/image` placeholder，不再是 public 快取）。**mail**：`message_new` 一律拒絕；`mail.thread._message_route_process` 路由到文件或資料夾時只接受 su 或系統管理員；portal 只能移除自己的 follower；follower 在讀不到記錄後不再收到通知（Q18，HD-10 的無帳號聯絡人不變）；資料夾的 record_name、信件主旨、活動名稱只用資料夾自己的名稱。**名稱與排序**：同層同名回 M-02（Q19，不論另一個資料夾是否看得到；DB 唯一索引保留）；別的 model 依指向資料夾的 many2one 排序或分組時，非文件管理員改依資料夾 id；文件的 display_name 依呼叫者的 record rule 折疊為「Restricted document」；guard mixin 的 `_search` 與 `_read_group_groupby` 檢查欄位 groups（many2many、one2many 也算），`/my/docs` 的直接分享改走 `_woow_portal_direct_documents`（Q20）。**配額**：一般上傳一律計入檔案大小，只有加入資料夾精靈抵扣已存的相同內容；百分比只給文件管理員。**分享信**：佇列中的分享信，其 mail.message 副本的 body 清空，連結只留在 mail.mail。**回收桶**：已隨上層刪除的記錄略過；cron 每批最多刪 PURGE_BATCH 筆記錄，大型子樹分批完成。**稽核**：`access_change` 每個資料夾一列、只列該資料夾的成員列 id；detail 的 id 清單最多 500 個。**上傳**：ZIP64 end record 與 central directory 的實際標頭數也套用 4096 筆、1 MiB 的上限，ZipFile 之前就拒絕。**設定**：信任代理與用戶端 IP 標頭加上說明。 |
+| 2026-11-12 | 審查修正 | **回收桶與 legal hold**：分批 purge 的每個根資料夾在讀任何 hold 之前先鎖住自己的列（Q21，`SELECT … FOR NO KEY UPDATE`，只鎖不寫列版本）。子樹任何資料夾設 hold 都會改寫根的 `subtree_legal_hold`、還原會改寫 `active`，所以在本批快照之後 commit 的 hold 或還原讓該根 serialization_failure、整個根都不刪；之後才開始的 hold 等這一批 commit。文件的 hold 與刪除是同一列，並行設下的文件 hold 讓刪除 serialization_failure。這兩種錯誤（與並行死結）都只讓該根或該文件算 failed、跳過，整批照常 commit，不再讓 cron 批次失敗。**通知**：follower 讀取權重驗先套公司規則（R-D0、R-F0 沒有 groups，portal 帳號同樣受限），portal 分支另要求 base.group_portal（R-D5、R-F5 是 portal 群組的規則）；只在其他公司的 portal follower 與直接分享對象不再收到該記錄的通知。 |
