@@ -255,4 +255,17 @@
         <field name="perm_create" eval="False" />
         <field name="perm_unlink" eval="False" />
     </record>
+    <!-- R-M0: share (portal / public) users never reach this module's chatter through the
+         mail.message ORM or RPC (DEC-11); internal users keep core behaviour. Global rule:
+         core _search and _check_access both apply it, so search, search_read, read and
+         call_kw are covered together. -->
+    <record id="rule_woow_mail_message_share_users" model="ir.rule">
+        <field name="name">R-M0 rule_woow_mail_message_share_users</field>
+        <field name="model_id" ref="mail.model_mail_message" />
+        <field name="domain_force">[(1, '=', 1)] if not user.share else [('model', 'not in', ['woow.document', 'woow.document.folder'])]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
 </odoo>

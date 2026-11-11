@@ -1101,7 +1101,7 @@ class WoowDocumentShareButtons(models.Model):   # 兩個類別，分別 _inherit
 
 **精靈 `woow.document.share.wizard`（`wizards/share_wizard.py`）**
 - `action_create_links(self) -> dict` 回傳 `{'type': 'ir.actions.client', 'tag': 'woow_document_share_result', 'params': {'links': [...]}}`。
-- 明文 token 只放在回應的 params 裡。password 是 transient 欄位，送出後清空，不記 log。
+- 明文 token 只放在回應的 params 裡。password 不儲存：精靈列 create / write 時立即以 `tokens.hash_password` 存成 `password_hash`（長度 8～128 於儲存時以 UserError 檢查），成功後清空，不記 log；呼叫端不得直接提供 `password_hash`（AccessError）。
 
 ### 10.3 IF-ROUTE-SHARE：`W/controllers/share.py`（7 個 decorated 函式，全部 `auth='public'`、`type='http'`）
 - **提供者**：L5。
@@ -1923,4 +1923,8 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-07 | L0 ci-sweep | §21.8 第 3 點的註記：`static/tests/tours/share/**` 歸 L5、`static/tests/tours/test_suites/**` 歸 L11、其他 tours 歸 L8，以 §1.3 為準。 |
 | 2026-11-07 | L0 ci-sweep | static tools 的實作約定：`tools/sql_allowlist.yaml` 的 Q6 允許守衛檔（`models/ir_attachment.py`）內任何函式（契約只寫到檔案）；HD-07 的註記寫在 portal 那一列 ACL 的 `id` 或 `name` 欄（CSV 沒有註解語法）；`tools/security_matrix.yaml` 的 rule domain 以「解析後的 Python 運算式」比對，空白和引號不影響；`quota._cron_check_warn` 的 stub 在 su 檢查之後丟 NotImplementedError（§3 原文寫「丟 AccessError」，非 su 呼叫仍是 AccessError）。 |
 | 2026-11-09 | G4 hardening | 附件建立前先合併 `default_get` 對應的目標與存取欄位，再執行模組 guard 與 Odoo core 權限檢查。分享 ZIP 的 folder 範圍以分享根目錄為起點，文件清單分享使用平鋪檔名；相同名稱由 ZIP builder 去重。拒絕事件保留各 share 的稽核歸屬，限流計數 Q13 則跨 share ID 以 IP 摘要聚合。文件搬移只留模組稽核事件，不將 `folder_id` 寫入 chatter tracking。 |
+| 2026-11-10 | G4 修正 | **R-M0**：`mail.message` 全域 ir.rule，`user.share` 為真時排除 `woow.document` 與 `woow.document.folder`，portal 不再能經 ORM／RPC 讀取這兩個 model 的 chatter（DEC-11）；內部使用者不變。`tools/security_matrix.yaml` 登錄 R-M0，`check_security_matrix` 解析 core model 的 `model_id` ref。 |
+| 2026-11-10 | G4 修正 | **audit log 保留期例外**：`_cron_log_retention` 不清除 `state=active`、未過期且 `max_downloads>0` 的分享的 `share_download`／ok 列（它們是下載計數）；分享過期或撤銷後依 `log_retention_days` 清除。`log_retention_days` 合法範圍 30～3650 不變。 |
+| 2026-11-10 | G4 修正 | **分享精靈密碼**：`password` 改為不儲存的 compute 欄位，create / write 立即雜湊到 `password_hash`；`_issue` 接受精靈已雜湊的值，不重複 hash；`init()` 以固定 DDL（Q3）刪除舊 schema 的明文欄。 |
+| 2026-11-10 | G4 修正 | **改名政策**：`WoowDocument.write` 只改 `name` 時呼叫 `upload_policy._validate_rename`：所有文件套 `sanitize_filename`；binary 文件另要求副檔名在允許清單、不在禁用清單且與儲存的 MIME 一致；url 文件只套名稱規則。名稱未變或寫入其他欄位不檢查，既有資料不批次更名。 |
 

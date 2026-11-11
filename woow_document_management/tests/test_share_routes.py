@@ -421,6 +421,40 @@ class TestShareHttp(HttpCase):
         revoked = self.url_open('/woow-docs/s/%d' % share.id)
         self.assertEqual(revoked.status_code, 404)
 
+    def test_log_retention_never_reopens_an_exhausted_limited_share(self):
+        """the weekly audit retention keeps the counted download of a live share."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.log_retention_days', '30')
+        admin = self.env.ref('base.user_admin')
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Retention http fixture', 'owner_id': admin.id})
+        doc = self.env['woow.document'].sudo().create({
+            'name': 'retention.txt', 'folder_id': folder.id,
+            'datas': base64.b64encode(b'counted-once')})
+        share, code = self.env['woow.document.share'].with_user(admin)._issue({
+            'share_type': 'folder', 'folder_id': folder.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=60),
+            'max_downloads': 1})
+        landing = self.url_open('/woow-docs/s')
+        csrf = re.search(rb'name="csrf_token"[^>]*value="([^"]+)"', landing.content)
+        self.assertIsNotNone(csrf)
+        opened = self.url_open('/woow-docs/s/open', data={
+            'token': code, 'csrf_token': csrf.group(1).decode()},
+            allow_redirects=False)
+        self.assertEqual(opened.status_code, 303)
+        path = '/woow-docs/s/%d/file/%d' % (share.id, doc.id)
+        self.assertEqual(self.url_open(path).status_code, 200)
+        row = self.env['woow.document.log'].sudo().search([
+            ('share_id', '=', share.id), ('event', '=', 'share_download'),
+            ('result', '=', 'ok')])
+        self.assertEqual(len(row), 1)
+        self.env.cr.execute('UPDATE woow_document_log SET create_date = %s WHERE id = %s',
+                            (fields.Datetime.now() - timedelta(days=31), row.id))
+        self.env.invalidate_all()
+        self.env['woow.document'].sudo()._cron_log_retention()
+        self.assertTrue(row.exists())
+        self.assertEqual(self.url_open(path).status_code, 404)
+
     def test_partial_file_download_consumes_one_share_slot(self):
         admin = self.env.ref('base.user_admin')
         folder = self.env['woow.document.folder'].sudo().create({

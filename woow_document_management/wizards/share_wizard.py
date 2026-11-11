@@ -5,10 +5,12 @@ import re
 from datetime import timedelta
 from email.utils import parseaddr
 
-from odoo import _, Command, fields, models
-from odoo.exceptions import UserError
+from odoo import _, api, Command, fields, models
+from odoo.exceptions import AccessError, UserError
 
-from ..services.constants import MAX_RECIPIENTS, MAX_SHARE_DOCUMENTS
+from ..services import tokens
+from ..services.constants import (MAX_RECIPIENTS, MAX_SHARE_DOCUMENTS, PASSWORD_MAX,
+                                 PASSWORD_MIN)
 
 
 class WoowDocumentShareWizard(models.TransientModel):
@@ -23,8 +25,47 @@ class WoowDocumentShareWizard(models.TransientModel):
     recipient_emails = fields.Text()
     expire_at = fields.Datetime()
     max_downloads = fields.Integer(default=0)
-    password = fields.Char()   # transient; cleared after use, never logged
+    # The form saves the row before the button runs (two requests), so a stored field would
+    # commit the plaintext. create / write hash it into password_hash at once; password is
+    # never stored and always reads back empty. Neither value is logged.
+    password = fields.Char(compute='_compute_password', readonly=False)
+    password_hash = fields.Char(readonly=True)   # written only through ``password``
     note = fields.Text()
+
+    def _compute_password(self):
+        for wizard in self:
+            wizard.password = False
+
+    def init(self):
+        """Drop the plaintext column of the previous schema; wizard rows are transient."""
+        super().init()
+        self.env.cr.execute(  # sql-ok: Q3
+            'ALTER TABLE woow_document_share_wizard DROP COLUMN IF EXISTS password')
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        return super().create([self._woow_hash_password(vals) for vals in vals_list])
+
+    def write(self, vals):
+        return super().write(self._woow_hash_password(vals))
+
+    def _woow_hash_password(self, vals):
+        """Replace ``password`` by its hash; a ready-made hash is never accepted from callers."""
+        if 'password_hash' in vals and not self.env.su:
+            raise AccessError(_('The share password is set through the password field.'))
+        if 'password' not in vals:
+            return vals
+        vals = dict(vals)
+        password = vals.pop('password')
+        if not password:
+            vals['password_hash'] = False
+            return vals
+        try:
+            vals['password_hash'] = tokens.hash_password(password)
+        except ValueError:
+            raise UserError(_('The share password must be between %(low)d and %(high)d characters.',
+                              low=PASSWORD_MIN, high=PASSWORD_MAX)) from None
+        return vals
 
     def action_create_links(self):
         """Create the share links and return them once to the creator."""
@@ -63,7 +104,7 @@ class WoowDocumentShareWizard(models.TransientModel):
                     values = dict(scope, expire_at=expiry, max_downloads=self.max_downloads,
                                   recipient_email=recipient or False)
                     share, token = self.env['woow.document.share']._issue({
-                        **values, 'password': self.password or None})
+                        **values, 'password_hash': self.password_hash or None})
                     url = share._woow_link_url(token)
                     if recipient:
                         share._woow_send_link(token, self.note)
@@ -71,4 +112,6 @@ class WoowDocumentShareWizard(models.TransientModel):
             return {'type': 'ir.actions.client', 'tag': 'woow_document_share_result',
                     'params': {'links': links}}
         finally:
+            # Success clears the hash; a failed request rolls this back together with
+            # the rest, so the form can be corrected and saved again.
             self.write({'password': False})

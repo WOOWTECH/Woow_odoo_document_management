@@ -29,6 +29,10 @@ entries:
   file: woow_document_management/models/document_share.py
   functions: [init]
   note: fixed-string DDL, share token hash unique index
+- id: Q3
+  file: woow_document_management/wizards/share_wizard.py
+  functions: [init]
+  note: fixed-string DDL, drop the legacy plaintext password column of the share wizard
 - id: Q4
   file: woow_document_management/services/locks.py
   functions: [try_lock, lock, bounded_wait]

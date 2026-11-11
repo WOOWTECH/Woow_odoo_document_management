@@ -57,12 +57,23 @@ class WoowDocumentCron(models.Model):
 
     @api.model
     def _cron_log_retention(self):
-        """Weekly: delete audit rows older than log_retention_days, in batches."""
+        """Weekly: delete audit rows older than log_retention_days, in batches.
+
+        Exception (decided retention rule): the successful ``share_download`` rows of a
+        share that is still active, not yet expired and limited (``max_downloads`` > 0)
+        are its download counter and stay until the share expires or is revoked; from
+        then on they follow the ordinary retention period.
+        """
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
         days = self.env['woow.document.settings']._get_settings().log_retention_days
-        cutoff = fields.Datetime.to_datetime(fields.Datetime.now()) - timedelta(days=days)
-        domain = [('create_date', '<', cutoff)]
+        now = fields.Datetime.to_datetime(fields.Datetime.now())
+        cutoff = now - timedelta(days=days)
+        counted_by_live_share = [
+            '&', '&', ('event', '=', 'share_download'), ('result', '=', 'ok'),
+            ('share_id', 'any', [('state', '=', 'active'), ('expire_at', '>', now),
+                                 ('max_downloads', '>', 0)])]
+        domain = ['&', ('create_date', '<', cutoff), '!', *counted_by_live_share]
         rows = self.env['woow.document.log'].search(domain, limit=LOG_RETENTION_BATCH)
         done = len(rows)
         rows.unlink()

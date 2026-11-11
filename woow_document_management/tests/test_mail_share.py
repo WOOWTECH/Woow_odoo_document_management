@@ -7,6 +7,110 @@ from datetime import timedelta
 from odoo import Command, fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import TransactionCase, tagged
+from odoo.tools.sql import column_exists
+
+from ..services import tokens
+
+
+@tagged('woow_docmgmt_share_mail')
+class TestShareWizardPassword(TransactionCase):
+    """the share password is hashed when the wizard row is saved."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = self.env.ref('base.user_admin')
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.share_link_base_url', 'https://docs.example.test')
+        self.folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Wizard password folder', 'owner_id': self.admin.id})
+        self.wizards = self.env['woow.document.share.wizard'].with_user(self.admin)
+
+    def _row_values(self, wizard):
+        """Every column of the wizard row as stored in the database."""
+        self.env.flush_all()
+        self.env.cr.execute('SELECT * FROM woow_document_share_wizard WHERE id = %s',
+                            (wizard.id,))
+        row = self.env.cr.fetchone()
+        return {column.name: row[index] for index, column in enumerate(self.env.cr.description)}
+
+    def test_failed_action_leaves_no_plaintext_and_resave_keeps_the_password(self):
+        password = secrets.token_urlsafe(16)
+        wizard = self.wizards.create({
+            'share_type': 'folder', 'folder_id': self.folder.id,
+            'password': password,
+            'expire_at': fields.Datetime.now() + timedelta(days=400)})
+        self.env.invalidate_all()
+        with self.assertRaises(UserError):
+            wizard.action_create_links()
+        stored = self._row_values(wizard)
+        self.assertNotIn('password', stored)
+        self.assertFalse(column_exists(self.env.cr, 'woow_document_share_wizard', 'password'))
+        self.assertFalse(any(password in str(value) for value in stored.values()))
+        self.assertTrue(tokens.check_password(password, stored['password_hash']))
+        self.assertFalse(wizard.password)
+        # The client saves again with only the corrected field: the password survives.
+        wizard.write({'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        self.env.invalidate_all()
+        result = wizard.action_create_links()
+        self.assertEqual(result['tag'], 'woow_document_share_result')
+        share = self.env['woow.document.share'].sudo().search([
+            ('folder_id', '=', self.folder.id)])
+        self.assertEqual(len(share), 1)
+        self.assertTrue(share.has_password)
+        self.assertTrue(tokens.check_password(password, share.password_hash))
+        self.assertFalse(wizard.password)
+        self.assertFalse(wizard.password_hash)
+        self.assertFalse(self._row_values(wizard)['password_hash'])
+
+    def test_password_length_is_checked_when_the_row_is_saved(self):
+        short = secrets.token_urlsafe(2)[:3]
+        with self.assertRaises(UserError):
+            self.wizards.create({
+                'share_type': 'folder', 'folder_id': self.folder.id, 'password': short,
+                'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        wizard = self.wizards.create({
+            'share_type': 'folder', 'folder_id': self.folder.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        with self.assertRaises(UserError):
+            wizard.write({'password': secrets.token_urlsafe(100)[:129]})
+        wizard.write({'password': secrets.token_urlsafe(16)})
+        self.assertTrue(wizard.password_hash)
+        wizard.write({'password': False})
+        self.assertFalse(wizard.password_hash)
+
+    def test_hash_cannot_be_injected_and_empty_password_follows_the_policy(self):
+        forged = tokens.hash_password(secrets.token_urlsafe(16))
+        with self.assertRaises(AccessError):
+            self.wizards.create({
+                'share_type': 'folder', 'folder_id': self.folder.id,
+                'password_hash': forged,
+                'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        wizard = self.wizards.create({
+            'share_type': 'folder', 'folder_id': self.folder.id, 'password': '',
+            'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        with self.assertRaises(AccessError):
+            wizard.write({'password_hash': forged})
+        self.assertFalse(wizard.password_hash)
+        self.assertEqual(wizard.action_create_links()['tag'], 'woow_document_share_result')
+        share = self.env['woow.document.share'].sudo().search([
+            ('folder_id', '=', self.folder.id)])
+        self.assertFalse(share.has_password)
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.share_require_password', 'True')
+        required = self.wizards.create({
+            'share_type': 'folder', 'folder_id': self.folder.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        with self.assertRaises(UserError):
+            required.action_create_links()
+        self.assertEqual(self.env['woow.document.share'].sudo().search_count([
+            ('folder_id', '=', self.folder.id)]), 1)
+
+    def test_init_drops_the_legacy_plaintext_column(self):
+        self.env.cr.execute(
+            'ALTER TABLE woow_document_share_wizard ADD COLUMN IF NOT EXISTS password varchar')
+        self.assertTrue(column_exists(self.env.cr, 'woow_document_share_wizard', 'password'))
+        self.env['woow.document.share.wizard'].init()
+        self.assertFalse(column_exists(self.env.cr, 'woow_document_share_wizard', 'password'))
 
 
 @tagged('woow_docmgmt_share_mail')

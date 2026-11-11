@@ -1486,6 +1486,11 @@ msgid "Password"
 msgstr ""
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__password_hash
+msgid "Password Hash"
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__password_hash
 msgid "Password Hash"
 msgstr ""
@@ -2069,6 +2074,18 @@ msgstr ""
 #: code:addons/woow_document_management/models/share_service.py:0
 #: code:addons/woow_document_management/wizards/share_wizard.py:0
 msgid "The share expiry is outside the allowed period."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "The share password is set through the password field."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/share_wizard.py:0
+msgid "The share password must be between %(low)d and %(high)d characters."
 msgstr ""
 
 #. module: woow_document_management
