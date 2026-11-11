@@ -8,7 +8,7 @@ from odoo import api, fields, models
 from odoo.http import request
 from odoo.exceptions import AccessError
 
-from ..services.constants import CHANNELS, EVENTS, RESULTS
+from ..services.constants import CHANNELS, EVENTS, RESULTS, MAX_DENIED_ROWS_PER_MIN
 from ..services.client_ip import hmac_ip, request_client_ip, truncate_ip
 
 _MANAGER = 'woow_document_management.group_woow_document_manager'
@@ -67,6 +67,30 @@ class WoowDocumentLog(models.Model):
                  AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
             (event, digest))
         return int(self.env.cr.fetchone()[0])
+
+    @api.model
+    def _denied_budget_exhausted(self):
+        """Fail closed for public share requests after the global minute budget."""
+        self.env.cr.execute(  # sql-ok: Q15
+            """SELECT count >= %s FROM woow_document_denied_budget
+               WHERE bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
+            (MAX_DENIED_ROWS_PER_MIN,))
+        row = self.env.cr.fetchone()
+        return bool(row and row[0])
+
+    @api.model
+    def _denied_bucket_exists(self, event, ip_hash, share_id):
+        """Only new audit buckets consume the global row budget."""
+        self.flush_model(['event', 'result', 'ip_hash', 'share_id', 'bucket_minute'])
+        self.env.cr.execute(  # sql-ok: Q16
+            """SELECT 1 FROM woow_document_log
+               WHERE result = 'denied' AND event = %s
+                 AND COALESCE(ip_hash, '') = COALESCE(%s, '')
+                 AND COALESCE(share_id, 0) = COALESCE(%s, 0)
+                 AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')
+               LIMIT 1""",
+            (event, ip_hash, share_id))
+        return self.env.cr.fetchone() is not None
 
     @api.model
     def _count_share_unlock_failures(self, share_id, *, since, ip_hash=None):
@@ -131,6 +155,9 @@ class WoowDocumentLog(models.Model):
             vals.update(document_id=document_id, folder_id=folder_id)
             self.sudo().create(vals)  # sudo-ok: S1
             return 1
+        if (not self._denied_bucket_exists(event, ip_hash, share_id) and
+                not self.env['woow.document.denied.budget']._take_slot()):
+            return 0
         self.flush_model()
         self.env.cr.execute(  # sql-ok: Q1
             """INSERT INTO woow_document_log
@@ -159,3 +186,30 @@ class WoowDocumentLog(models.Model):
                ON woow_document_log (event, (COALESCE(ip_hash, '')),
                    (COALESCE(share_id, 0)), bucket_minute)
                WHERE result = 'denied'""")
+
+
+class WoowDocumentDeniedBudget(models.Model):
+    _name = 'woow.document.denied.budget'
+    _description = 'Bounded denied audit minute budget'
+    _log_access = False
+
+    bucket_minute = fields.Datetime(required=True, index=True)
+    count = fields.Integer(required=True)
+
+    @api.model
+    def _take_slot(self):
+        """Atomically reserve one of the finite denied-event rows for this minute."""
+        self.env.cr.execute(  # sql-ok: Q14
+            """INSERT INTO woow_document_denied_budget (bucket_minute, count)
+               VALUES (date_trunc('minute', now() AT TIME ZONE 'UTC'), 1)
+               ON CONFLICT (bucket_minute)
+               DO UPDATE SET count = LEAST(woow_document_denied_budget.count + 1, %s)
+               RETURNING count""",
+            (MAX_DENIED_ROWS_PER_MIN + 1,))
+        return self.env.cr.fetchone()[0] <= MAX_DENIED_ROWS_PER_MIN
+
+    def init(self):
+        super().init()
+        self.env.cr.execute(  # sql-ok: Q3
+            """CREATE UNIQUE INDEX IF NOT EXISTS woow_document_denied_budget_minute
+               ON woow_document_denied_budget (bucket_minute)""")

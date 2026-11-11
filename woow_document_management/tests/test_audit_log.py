@@ -4,6 +4,8 @@
 from odoo.exceptions import AccessError
 from odoo import Command
 from odoo.tests import TransactionCase, tagged
+from unittest.mock import patch
+from ..models import document_log as document_log_module
 
 
 @tagged('woow_docmgmt_core')
@@ -59,6 +61,22 @@ class TestAuditLog(TransactionCase):
         rows = log.search([('event', '=', 'share_open'), ('result', '=', 'denied')])
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows.count, 1000)
+        self.assertEqual(self.env['woow.document.denied.budget'].sudo().search([]).count, 1)
+
+    def test_rotating_ips_cannot_create_unbounded_denied_rows(self):
+        log = self.env['woow.document.log']
+        with patch.object(document_log_module, 'MAX_DENIED_ROWS_PER_MIN', 3):
+            for n in range(12):
+                written = log._log_event(
+                    'share_access', result='denied', channel='share',
+                    ip='198.51.100.%d' % (n + 1))
+                self.assertEqual(bool(written), n < 3)
+            self.assertTrue(log._denied_budget_exhausted())
+        rows = log.search([('event', '=', 'share_access'), ('result', '=', 'denied')])
+        self.assertEqual(len(rows), 3)
+        budget = self.env['woow.document.denied.budget'].sudo().search([])
+        self.assertEqual(len(budget), 1)
+        self.assertEqual(budget.count, 4)
 
     def test_audit_detail_rejects_strings(self):
         with self.assertRaises(ValueError):

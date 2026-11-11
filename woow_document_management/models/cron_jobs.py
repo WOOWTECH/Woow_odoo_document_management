@@ -77,8 +77,15 @@ class WoowDocumentCron(models.Model):
         rows = self.env['woow.document.log'].search(domain, limit=LOG_RETENTION_BATCH)
         done = len(rows)
         rows.unlink()
+        budget_cutoff = now - timedelta(days=2)
+        budgets = self.env['woow.document.denied.budget'].search([
+            ('bucket_minute', '<', budget_cutoff)], limit=LOG_RETENTION_BATCH)
+        budgets.unlink()
         self.env['ir.cron']._notify_progress(
-            done=done, remaining=self.env['woow.document.log'].search_count(domain))
+            done=done + len(budgets),
+            remaining=(self.env['woow.document.log'].search_count(domain) +
+                       self.env['woow.document.denied.budget'].search_count([
+                           ('bucket_minute', '<', budget_cutoff)])))
 
     @api.model
     def _cron_quota(self):

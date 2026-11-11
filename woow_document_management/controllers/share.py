@@ -42,12 +42,15 @@ class WoowDocShareController(http.Controller):
 
     def _denied(self, ip, share_id=None, event='share_access'):
         log = request.env['woow.document.log']
-        log._log_event(
+        if log._count_denied_across_shares(event, ip) >= request.env[
+                'woow.document.settings']._get_settings().denied_rate_per_min:
+            return streaming.too_many_requests()
+        written = log._log_event(
             event, result='denied', channel='share', share_id=share_id, ip=ip)
+        if not written:
+            return streaming.too_many_requests()
         count = log._count_denied_across_shares(event, ip)
         if count > request.env['woow.document.settings']._get_settings().denied_rate_per_min:
-            request.env['woow.document.log']._log_event(
-                'rate_limited', result='denied', channel='share', share_id=share_id, ip=ip)
             return streaming.too_many_requests()
         return streaming.uniform_404('share')
 
@@ -57,6 +60,8 @@ class WoowDocShareController(http.Controller):
         if not resolve:
             return ShareAccess(request.env['woow.document.share'].browse(), None, '', '', None)
         try:
+            if request.env['woow.document.log']._denied_budget_exhausted():
+                return streaming.too_many_requests()
             settings = request.env['woow.document.settings']._get_settings()
             ip = request_client_ip(request.httprequest, settings)
             ip_hash = hmac_ip(request.env['woow.document.settings']._share_keys().k_ip, ip)
