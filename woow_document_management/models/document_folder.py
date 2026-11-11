@@ -114,6 +114,7 @@ class WoowDocumentFolder(models.Model):
                ON woow_document_folder ((COALESCE(parent_id, 0)),
                                          (COALESCE(company_id, 0)), lower(name))
                WHERE active""")
+        self._woow_recompute_subtree_flags()
 
     def _compute_effective(self):
         """Merge inherited and local grants; owner has manage and portal is capped at upload."""
@@ -326,16 +327,39 @@ class WoowDocumentFolder(models.Model):
 
     @api.depends('inherit_access', 'child_ids.inherit_access', 'child_ids.has_restricted_descendant')
     def _compute_has_restricted_descendant(self):
+        """Every child counts, trashed ones included (see ``_compute_subtree_legal_hold``)."""
         for folder in self:
             folder.has_restricted_descendant = (not folder.inherit_access or any(
-                child.has_restricted_descendant for child in folder.child_ids))
+                child.has_restricted_descendant
+                for child in folder.with_context(active_test=False).child_ids))
 
     @api.depends('legal_hold', 'child_ids.subtree_legal_hold')
     def _compute_subtree_legal_hold(self):
-        """A hold anywhere below a folder prevents subtree purge."""
+        """A hold anywhere below a folder prevents subtree purge.
+
+        Children trashed on their own count as well. The stored value must not
+        depend on the context of the transaction that recomputes it: reading
+        ``child_ids`` with the default context drops inactive children, so a hold
+        set on a separately trashed folder, or below one, would never reach the
+        folders above it.
+        """
         for folder in self:
             folder.subtree_legal_hold = bool(folder.legal_hold or any(
-                child.subtree_legal_hold for child in folder.child_ids))
+                child.subtree_legal_hold
+                for child in folder.with_context(active_test=False).child_ids))
+
+    def _woow_recompute_subtree_flags(self):
+        """Recompute ``subtree_legal_hold`` and ``has_restricted_descendant`` of every folder.
+
+        Run on each install and update of the module (``init``): rows stored by
+        earlier code may have skipped children that were trashed on their own.
+        """
+        names = ('subtree_legal_hold', 'has_restricted_descendant')
+        folders = self.with_context(active_test=False).search([])
+        if folders:
+            for name in names:
+                self.env.add_to_compute(self._fields[name], folders)
+            folders.flush_recordset(list(names))
 
     @api.depends_context('uid')
     def _compute_display_name(self):

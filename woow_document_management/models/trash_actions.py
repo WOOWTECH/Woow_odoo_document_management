@@ -166,7 +166,8 @@ class WoowDocumentFolderTrash(models.Model):
         at most that many records (documents and folders) are deleted; a subtree
         that does not fit is left partly deleted and is continued by the next call.
         A folder already removed with an ancestor in the same run is skipped and
-        counts as neither. A root that a legal hold or restore committed after this
+        counts as neither. A root whose subtree (any folder in it, trashed on its
+        own or not) a legal hold, restore or move committed after this
         transaction's snapshot has changed counts as failed and nothing of it is
         deleted.
         """
@@ -176,9 +177,10 @@ class WoowDocumentFolderTrash(models.Model):
     def _woow_purge_batch(self, budget=None):
         """``_woow_purge`` that also returns the number of records deleted.
 
-        Each root row is locked before any of its holds is read
-        (``_woow_lock_purge_root``), so a batch that deletes only documents or
-        only the deepest folders cannot miss a hold committed meanwhile.
+        The rows of each root and of every folder below it are locked before any
+        hold is read (``_woow_lock_purge_root``), so a batch that deletes only
+        documents or only the deepest folders cannot miss a folder hold committed
+        meanwhile, wherever in the subtree it was set.
         """
         self._require_manager()
         done = failed = deleted = 0
@@ -201,27 +203,32 @@ class WoowDocumentFolderTrash(models.Model):
         return done, failed, deleted
 
     def _woow_lock_purge_root(self):
-        """Row lock on a purge root that writes no row version (a barrier for stale snapshots).
+        """Row locks on a purge root and every folder below it, writing no row version.
 
-        A legal hold set on the root or on any folder below it turns the root's
-        stored ``subtree_legal_hold`` on, and a restore turns ``active`` on; both
-        update this row. Under Repeatable Read, SELECT ... FOR NO KEY UPDATE fails
+        This is the barrier for stale snapshots. A legal hold, a restore or a move
+        of any folder of the subtree, trashed on its own or not, updates that
+        folder's row. Under Repeatable Read, SELECT ... FOR NO KEY UPDATE fails
         with serialization_failure when a transaction that committed after this
-        snapshot changed the row, and such a change that starts later waits until
-        this transaction ends. Holds on documents need no barrier: deleting a
-        document writes the row that its hold changed.
+        snapshot changed one of the rows, and such a change that starts later
+        waits until this transaction ends. The subtree is searched with trashed
+        folders included and locked in id order, so the barrier does not depend
+        on how the stored ``subtree_legal_hold`` reaches the root. Holds on
+        documents need no barrier: deleting a document writes the row that its
+        hold changed.
         """
         self.ensure_one()
+        subtree = self.with_context(active_test=False).search([('id', 'child_of', self.id)])
         self.env.cr.execute(  # sql-ok: Q21
-            'SELECT id FROM woow_document_folder WHERE id = %s FOR NO KEY UPDATE', (self.id,))
+            'SELECT id FROM woow_document_folder WHERE id = ANY(%s) '
+            'ORDER BY id FOR NO KEY UPDATE', (subtree.ids or [self.id],))
 
     def _woow_purge_tree(self, limit=None):
         """Delete this trashed folder's documents, then its folders deepest first.
 
         Returns (records deleted, 1 when the folder itself is gone else 0). With
         ``limit`` no more than that many records are deleted in this call. The
-        holds are read from the snapshot, so the caller locks this folder's row
-        first (``_woow_lock_purge_root``).
+        holds are read from the snapshot, so the caller first locks the rows of
+        this folder and of every folder below it (``_woow_lock_purge_root``).
         """
         self.ensure_one()
         folders = self.with_context(active_test=False).search([('id', 'child_of', self.id)])

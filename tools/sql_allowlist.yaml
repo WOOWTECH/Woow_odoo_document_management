@@ -104,4 +104,4 @@ entries:
 - id: Q21
   file: woow_document_management/models/trash_actions.py
   functions: [_woow_lock_purge_root]
-  note: purge root row lock that writes no row version, taken before the subtree holds are read, so a legal hold or restore committed after a purge batch's repeatable read snapshot fails that root with serialization_failure and a later one waits for the batch
+  note: row locks on a purge root and on every folder of its subtree (trashed ones included, in id order) that write no row version, taken before any hold is read, so a legal hold, restore or move of any subtree folder committed after a purge batch's repeatable read snapshot fails that root with serialization_failure and a later one waits for the batch
