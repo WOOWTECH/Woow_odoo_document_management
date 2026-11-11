@@ -6,6 +6,7 @@
 import base64
 import io
 import secrets
+import zipfile
 
 from PIL import Image
 
@@ -54,28 +55,33 @@ class TestNativeDocumentRoutes(HttpCase):
         self.env.flush_all()
         return reader, folder, document
 
-    def test_a_second_file_attachment_is_refused_on_every_route(self):
+    def test_a_second_file_attachment_is_never_served_on_any_route(self):
+        """Every route streams the attachment the document records, never a newer claimant."""
         reader, folder, document = self._reader_fixture('dup')
         self.authenticate(reader.login, reader.login)
         routes = ('/woow_document/doc/%d/download' % document.id,
                   '/woow_document/doc/%d/preview' % document.id,
                   '/web/content/woow.document/%d/datas/probe.txt' % document.id,
                   '/woow_document/zip?document_ids=%d' % document.id)
-        for path in routes:
+
+        def served(path):
             response = self.url_open(path, allow_redirects=False)
-            self.assertEqual(response.status_code, 200, path)
+            if response.status_code != 200 or 'zip' not in path:
+                return response.status_code, response.content
+            with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+                return 200, b''.join(archive.read(name) for name in archive.namelist())
+
+        for path in routes:
+            self.assertEqual(served(path), (200, b'native-file-content'), path)
         forged = self.env['ir.attachment'].sudo().create({
             'name': 'datas', 'type': 'binary', 'raw': b'FORGED-BYTES',
             'res_model': 'woow.document', 'res_id': document.id, 'res_field': 'datas'})
         self.env.flush_all()
         for path in routes:
-            response = self.url_open(path, allow_redirects=False)
-            self.assertEqual(response.status_code, 404, path)
-            self.assertNotIn(b'FORGED-BYTES', response.content, path)
+            self.assertEqual(served(path), (200, b'native-file-content'), path)
         forged.unlink()
         self.env.flush_all()
-        response = self.url_open(routes[0], allow_redirects=False)
-        self.assertEqual((response.status_code, response.content), (200, b'native-file-content'))
+        self.assertEqual(served(routes[0]), (200, b'native-file-content'))
 
     def test_access_token_never_makes_a_document_response_public(self):
         png = io.BytesIO()
