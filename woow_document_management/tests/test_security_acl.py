@@ -84,6 +84,30 @@ class TestDocumentPermissions(TransactionCase):
         with self.assertRaises(AccessError):
             folder.write({'eff_manage_user_ids': [Command.link(self.user.id)]})
 
+    def test_child_creation_keeps_access_within_parent(self):
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.root.id, 'subject_type': 'user',
+            'user_id': self.user.id, 'level': 'edit',
+        })
+        self.env.flush_all()
+        folders = self.env['woow.document.folder'].with_user(self.user)
+        child = folders.create({'name': 'Editor child', 'parent_id': self.root.id})
+        self.env.flush_all()
+        self.assertEqual(child.owner_id, self.root.owner_id)
+        self.assertTrue(child._woow_has_rank(3))
+        self.assertFalse(child._woow_has_rank(4))
+        with self.assertRaises(AccessError):
+            folders.create({'name': 'Chosen owner', 'parent_id': self.root.id,
+                            'owner_id': self.user.id})
+        with self.assertRaises(AccessError):
+            folders.create({'name': 'Isolated child', 'parent_id': self.root.id,
+                            'inherit_access': False})
+        with self.assertRaises(AccessError):
+            self.env['woow.document.folder.access'].with_user(self.user).create({
+                'folder_id': child.id, 'subject_type': 'user',
+                'user_id': self.user.id, 'level': 'manage',
+            })
+
     def test_root_policy_and_field_groups(self):
         folder = self.env['woow.document.folder'].with_user(self.user)
         with self.assertRaises(AccessError):

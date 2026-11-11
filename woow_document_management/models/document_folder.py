@@ -168,6 +168,12 @@ class WoowDocumentFolder(models.Model):
                 parent._woow_require_rank(3)
                 if parent.in_trash:
                     raise AccessError(_('You do not have enough rights on this folder.'))
+                if not parent._woow_has_rank(4):
+                    # An editor can organize a child, but must not gain its
+                    # implicit owner/manage grant above the parent's ceiling.
+                    if vals.get('owner_id') or vals.get('inherit_access') is False:
+                        raise AccessError(_('You do not have enough rights on this folder.'))
+                    vals['owner_id'] = parent.owner_id.id or False
         return super(WoowDocumentFolder, self.with_context(
             mail_create_nosubscribe=True, mail_create_nolog=True)).create(vals_list)
 
