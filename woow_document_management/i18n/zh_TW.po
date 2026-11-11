@@ -1289,6 +1289,11 @@ msgid "Link"
 msgstr "連結"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__link_ref
+msgid "Link Ref"
+msgstr "連結編號"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.uniform_404_share
 msgid "Link unavailable"
 msgstr "連結無法使用"

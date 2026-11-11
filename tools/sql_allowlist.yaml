@@ -8,7 +8,7 @@ entries:
 - id: Q1
   file: woow_document_management/models/document_log.py
   functions: [_log_event]
-  note: denied-event bucket upsert, verbatim ER-28 point 2 SQL
+  note: denied-event bucket upsert, ER-28 point 2 SQL with the conflict key on the plain link_ref column (deleting a link clears share_id but never link_ref)
 - id: Q2
   file: woow_document_management/models/quota.py
   functions: [_usage_bytes]
@@ -20,7 +20,7 @@ entries:
 - id: Q3
   file: woow_document_management/models/document_log.py
   functions: [init]
-  note: fixed-string DDL, denied bucket unique index (ER-28 point 1)
+  note: fixed-string DDL, denied bucket unique index on link_ref (ER-28 point 1, key column changed) with the one-time carry-over of the link ids of earlier rows and the drop of the earlier index, which is the marker for it
 - id: Q3
   file: woow_document_management/models/document_tag.py
   functions: [init]
@@ -68,7 +68,7 @@ entries:
 - id: Q16
   file: woow_document_management/models/document_log.py
   functions: [_denied_bucket_exists]
-  note: existing per-source minute buckets do not consume another capacity slot
+  note: existing per-source minute buckets (keyed like the unique index, on link_ref) do not consume another capacity slot
 - id: Q3
   file: woow_document_management/models/document_log.py
   functions: [init]

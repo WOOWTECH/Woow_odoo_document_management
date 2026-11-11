@@ -18,8 +18,9 @@ SOURCE_LIMITED_EVENTS = ('share_access', 'share_unlock_failed')
 # A wrong password can only be sent with a valid link and session grant, and each
 # link counts at most SHARE_UNLOCK_FAIL_PER_HOUR of them, so its records are bounded
 # by the links and never use the per-minute capacity (MAX_DENIED_ROWS_PER_MIN).
-# Only these denied events keep their share in the bucket key; every other denied
-# event is kept per (event, source, minute), whichever share it names.
+# Only these denied events keep their share in the bucket key (as ``link_ref``, see
+# there); every other denied event is kept per (event, source, minute), whichever share
+# it names.
 UNBUDGETED_EVENTS = ('share_unlock_failed',)
 USER_AGENT_SIZE = 256
 # Longest id list one audit row may carry: a folder has at most this many members.
@@ -50,6 +51,14 @@ class WoowDocumentLog(models.Model):
     user_id = fields.Many2one('res.users', ondelete='set null', index=True)
     partner_id = fields.Many2one('res.partner', ondelete='set null', index=True)
     share_id = fields.Many2one('woow.document.share', ondelete='set null', index=True)
+    # The link a counted wrong password named, as a plain integer. ``share_id`` is
+    # cleared when its link is deleted; a bucket key that included it would then change
+    # and could merge into the bucket of another deleted link (same event, source and
+    # minute), which the unique index refuses, so deleting that link would fail. This
+    # column is not a foreign key: it never changes after the insert, and ids are never
+    # reused. Only denied buckets of UNBUDGETED_EVENTS carry it (and the denied rows of
+    # earlier versions that named a link, see ``init``).
+    link_ref = fields.Integer()
     document_id = fields.Many2one('woow.document', ondelete='set null', index=True)
     folder_id = fields.Many2one('woow.document.folder', ondelete='set null', index=True)
     company_id = fields.Many2one('res.company', ondelete='set null', index=True)
@@ -110,17 +119,17 @@ class WoowDocumentLog(models.Model):
             event, self._source_digest(event, ip))
 
     @api.model
-    def _denied_bucket_exists(self, event, ip_hash, share_id):
+    def _denied_bucket_exists(self, event, ip_hash, link_ref):
         """Only new audit buckets consume the global row budget."""
-        self.flush_model(['event', 'result', 'ip_hash', 'share_id', 'bucket_minute'])
+        self.flush_model(['event', 'result', 'ip_hash', 'link_ref', 'bucket_minute'])
         self.env.cr.execute(  # sql-ok: Q16
             """SELECT 1 FROM woow_document_log
                WHERE result = 'denied' AND event = %s
                  AND COALESCE(ip_hash, '') = COALESCE(%s, '')
-                 AND COALESCE(share_id, 0) = COALESCE(%s, 0)
+                 AND COALESCE(link_ref, 0) = COALESCE(%s, 0)
                  AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')
                LIMIT 1""",
-            (event, ip_hash, share_id))
+            (event, ip_hash, link_ref))
         return self.env.cr.fetchone() is not None
 
     @api.model
@@ -157,8 +166,10 @@ class WoowDocumentLog(models.Model):
         """Write a bounded event without storing names, addresses or credentials.
 
         A denied event is merged into its (event, source, minute) bucket and returns
-        the bucket's count; only an event in UNBUDGETED_EVENTS keeps ``share_id`` in
-        its bucket. A new bucket uses one slot of the minute capacity unless its event
+        the bucket's count; only an event in UNBUDGETED_EVENTS keeps its link in the
+        bucket: ``share_id`` for the link's readers and ``link_ref``, which is part of
+        the bucket key and stays when the link is deleted (``share_id`` is then
+        cleared). A new bucket uses one slot of the minute capacity unless its event
         is in UNBUDGETED_EVENTS; without a slot nothing is written to the audit log
         and 0 is returned. A source-limited event also adds one to the source's
         counter row: a new source's row needs a slot too (0 and nothing written
@@ -211,6 +222,9 @@ class WoowDocumentLog(models.Model):
             # need a new bucket where an unknown id merges into the source's bucket,
             # and the capacity left would tell whether a share exists.
             share_id = None
+        # The bucket key names the link by ``link_ref`` (the same id as ``share_id``
+        # while the link exists), not by the foreign key that deleting the link clears.
+        link_ref = share_id
         # Lock order: source counter row, then the event bucket. Slots of the minute
         # capacity are reserved in their own short transactions (``_take_slot``).
         counters = self.env['woow.document.denied.counter']
@@ -219,24 +233,24 @@ class WoowDocumentLog(models.Model):
         if source is not None and counters._lock_source(event, source) is None:
             return 0
         count = 0
-        if (event in UNBUDGETED_EVENTS or self._denied_bucket_exists(event, ip_hash, share_id)
+        if (event in UNBUDGETED_EVENTS or self._denied_bucket_exists(event, ip_hash, link_ref)
                 or self.env['woow.document.denied.budget']._take_slot()):
             self.flush_model()
             self.env.cr.execute(  # sql-ok: Q1
                 """INSERT INTO woow_document_log
                    (create_uid, create_date, write_uid, write_date, event, result, channel,
-                    user_id, partner_id, share_id, company_id, ip_hash, ip_display,
+                    user_id, partner_id, share_id, link_ref, company_id, ip_hash, ip_display,
                     user_agent, bucket_minute, count, detail)
                    VALUES (%s, now() AT TIME ZONE 'UTC', %s, now() AT TIME ZONE 'UTC',
-                           %s, 'denied', %s, %s, %s, %s, %s, %s, %s, %s,
+                           %s, 'denied', %s, %s, %s, %s, %s, %s, %s, %s, %s,
                            date_trunc('minute', now() AT TIME ZONE 'UTC'), 1, %s::jsonb)
-                   ON CONFLICT (event, (COALESCE(ip_hash, '')), (COALESCE(share_id, 0)), bucket_minute)
+                   ON CONFLICT (event, (COALESCE(ip_hash, '')), (COALESCE(link_ref, 0)), bucket_minute)
                      WHERE result = 'denied'
                    DO UPDATE SET count = woow_document_log.count + 1,
                                  write_date = EXCLUDED.write_date
                    RETURNING count""",
                 (self.env.uid, self.env.uid, event, channel, user_id, partner_id,
-                 share_id, company_id, ip_hash, ip_display, user_agent,
+                 share_id, link_ref, company_id, ip_hash, ip_display, user_agent,
                  json.dumps(detail, ensure_ascii=False, separators=(',', ':'))))
             count = self.env.cr.fetchone()[0]
         # With no capacity left for a new bucket the refusal still counts for its
@@ -247,12 +261,29 @@ class WoowDocumentLog(models.Model):
         return count
 
     def init(self):
+        """The unique key of the denied buckets, on ``link_ref`` and not on ``share_id``.
+
+        Earlier versions keyed the buckets on ``share_id``, which deleting a link
+        clears: two buckets of one source and minute on two links then became equal,
+        and deleting the second link failed. Rows an earlier version wrote keep their
+        link in ``link_ref`` before the new index is built, so they stay unique, and
+        the old index is dropped. The old index is the marker: later calls skip the
+        copy.
+        """
         super().init()
-        self.env.cr.execute(  # sql-ok: Q3
-            """CREATE UNIQUE INDEX IF NOT EXISTS woow_document_log_denied_bucket
+        cr = self.env.cr
+        cr.execute(  # sql-ok: Q3
+            "SELECT to_regclass('woow_document_log_denied_bucket') IS NOT NULL")
+        if cr.fetchone()[0]:
+            cr.execute(  # sql-ok: Q3
+                """UPDATE woow_document_log SET link_ref = share_id
+                   WHERE result = 'denied' AND share_id IS NOT NULL AND link_ref IS NULL""")
+        cr.execute(  # sql-ok: Q3
+            """CREATE UNIQUE INDEX IF NOT EXISTS woow_document_log_denied_link_bucket
                ON woow_document_log (event, (COALESCE(ip_hash, '')),
-                   (COALESCE(share_id, 0)), bucket_minute)
+                   (COALESCE(link_ref, 0)), bucket_minute)
                WHERE result = 'denied'""")
+        cr.execute('DROP INDEX IF EXISTS woow_document_log_denied_bucket')  # sql-ok: Q3
 
 
 class WoowDocumentDeniedBudget(models.Model):
