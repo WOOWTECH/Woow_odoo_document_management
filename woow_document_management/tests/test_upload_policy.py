@@ -5,6 +5,7 @@
 import base64
 import io
 import struct
+import warnings
 import zipfile
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -15,6 +16,8 @@ from odoo.tests import TransactionCase, tagged
 
 from ..models import upload_policy
 from ..models.upload_policy import WoowUploadRejected
+from ..services.constants import PIXEL_LIMIT
+from .common import png_declaring
 
 
 @tagged('woow_docmgmt_files')
@@ -123,6 +126,70 @@ class TestUploadPolicy(TransactionCase):
         text = self.policy._validate('notes.txt', b'hello world\n')
         self.assertEqual(text.mimetype, 'text/plain')
         self.assertTrue(self.policy._inline_allowed('image/png; charset=binary'))
+
+    def test_image_sizes_beyond_the_pixel_limit_are_rejected_as_pixels(self):
+        """The size a header declares is judged before any pixel is decoded.
+
+        Above twice its own limit Pillow refuses to open an image, with an exception
+        that is neither an OSError nor a ValueError, and below that it only warns.
+        Every declared size past the module's limit is the 'pixels' rejection, for
+        every uploader and whatever Pillow's limit and warning filters are; an image
+        Pillow cannot read at all is still 'content'.
+        """
+        portal = self.env['res.users'].create({
+            'name': 'Pixel portal fixture', 'login': 'doc-pixel-portal-fixture',
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])],
+        })
+        columns = 10000
+        at_limit = png_declaring(columns, PIXEL_LIMIT // columns)
+        self.assertEqual(self.policy._validate('limit.png', at_limit).mimetype, 'image/png')
+        sizes = {'just above the limit': (columns, PIXEL_LIMIT // columns + 1),
+                 'Pillow warns': (12000, 10000),
+                 'Pillow refuses to open it': (200000, 200000),
+                 'the largest the format can declare': (2**32 - 1, 2**32 - 1)}
+        for label, (width, height) in sizes.items():
+            for uploader, policy in (('internal', self.policy),
+                                     ('portal', self.policy.with_user(portal))):
+                with self.subTest(size=label, uploader=uploader), warnings.catch_warnings():
+                    warnings.simplefilter('ignore', Image.DecompressionBombWarning)
+                    with self.assertRaises(WoowUploadRejected) as caught:
+                        policy._validate('big.png', png_declaring(width, height))
+                    self.assertEqual(caught.exception.code, 'pixels')
+        with self.subTest(setting='warnings are errors'), warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with self.assertRaises(WoowUploadRejected) as caught:
+                self.policy._validate('warned.png', png_declaring(12000, 10000))
+            self.assertEqual(caught.exception.code, 'pixels')
+        with self.subTest(setting='Pillow limit disabled'), \
+                patch.object(Image, 'MAX_IMAGE_PIXELS', None):
+            with self.assertRaises(WoowUploadRejected) as caught:
+                self.policy._validate('huge.png', png_declaring(200000, 200000))
+            self.assertEqual(caught.exception.code, 'pixels')
+        with self.subTest(image='cut inside the header'):
+            with self.assertRaises(WoowUploadRejected) as caught:
+                self.policy._validate('cut.png', png_declaring(10, 10)[:30])
+            self.assertEqual(caught.exception.code, 'content')
+
+    def test_creating_or_replacing_a_file_with_an_enormous_image_header_is_rejected(self):
+        """A document write that carries such a header is refused like any bad upload."""
+        admin = self.env.ref('base.user_admin')
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Pixel folder', 'owner_id': admin.id})
+        documents = self.env['woow.document'].sudo()
+        header = base64.b64encode(png_declaring(200000, 200000))
+        with self.assertRaises(WoowUploadRejected) as caught:
+            documents.create({'name': 'huge.png', 'folder_id': folder.id, 'datas': header})
+        self.assertEqual(caught.exception.code, 'pixels')
+        self.assertFalse(documents.search([('folder_id', '=', folder.id)]))
+        stream = io.BytesIO()
+        Image.new('RGB', (2, 2), 'red').save(stream, format='PNG')
+        small = documents.create({'name': 'small.png', 'folder_id': folder.id,
+                                  'datas': base64.b64encode(stream.getvalue())})
+        size = small.file_size
+        with self.assertRaises(WoowUploadRejected) as caught:
+            small.write({'datas': header})
+        self.assertEqual(caught.exception.code, 'pixels')
+        self.assertEqual((small.file_size, small.mimetype), (size, 'image/png'))
 
     def test_blocked_suffix_and_mime_disagreement(self):
         for name, content, expected in (

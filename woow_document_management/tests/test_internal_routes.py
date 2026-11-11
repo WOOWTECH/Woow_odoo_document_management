@@ -10,6 +10,8 @@ import zipfile
 from odoo import Command
 from odoo.tests import HttpCase, tagged
 
+from .common import png_declaring
+
 
 @tagged('woow_docmgmt_http')
 class TestInternalRoutes(HttpCase):
@@ -57,12 +59,16 @@ class TestInternalRoutes(HttpCase):
         response = self.url_open('/woow_document/zip?folder_ids=%d' % self.folder.id)
         self.assertEqual(response.status_code, 400, response.text)
 
-    def test_upload_accepts_text_and_rejects_mixed_batch_atomically(self):
+    def _upload_form(self):
+        """The form fields of an upload into the fixture folder, with this session's CSRF token."""
         secret = self.env['ir.config_parameter'].sudo().get_param('database.secret')
         expires = int(time.time() + 3600)
         message = ('%s%d' % (self.session.sid, expires)).encode('utf-8')
         csrf = hmac.new(secret.encode('ascii'), message, 'sha1').hexdigest() + 'o' + str(expires)
-        data = {'folder_id': str(self.folder.id), 'csrf_token': csrf}
+        return {'folder_id': str(self.folder.id), 'csrf_token': csrf}
+
+    def test_upload_accepts_text_and_rejects_mixed_batch_atomically(self):
+        data = self._upload_form()
         success = self.url_open('/woow_document/upload', data=data, files={
             'files': ('new.txt', b'upload-content', 'text/plain')})
         self.assertEqual(success.status_code, 200, success.text)
@@ -75,6 +81,20 @@ class TestInternalRoutes(HttpCase):
         ])
         self.assertEqual(refused.status_code, 400, refused.text)
         self.assertFalse(refused.json()['ok'])
+        self.assertEqual(self.env['woow.document'].sudo().search_count([
+            ('folder_id', '=', self.folder.id)]), before)
+
+    def test_upload_refuses_an_image_header_declaring_too_many_pixels(self):
+        before = self.env['woow.document'].sudo().search_count([
+            ('folder_id', '=', self.folder.id)])
+        refused = self.url_open('/woow_document/upload', data=self._upload_form(), files=[
+            ('files', ('okay.txt', b'valid', 'text/plain')),
+            ('files', ('huge.png', png_declaring(200000, 200000), 'image/png')),
+        ])
+        self.assertEqual(refused.status_code, 400, refused.text)
+        body = refused.json()
+        self.assertFalse(body['ok'])
+        self.assertEqual([error['code'] for error in body['errors']], ['pixels'])
         self.assertEqual(self.env['woow.document'].sudo().search_count([
             ('folder_id', '=', self.folder.id)]), before)
 

@@ -471,6 +471,43 @@ class TestShareHttp(HttpCase):
                 self.assertEqual(results['revoked'], results['unknown'])
                 self.assertEqual(results['live'], results['unknown'])
 
+    def test_file_route_refuses_a_document_id_beyond_the_database_range_like_any_other(self):
+        """The holder of a grant cannot make the file route fail with a database error.
+
+        The document id comes from the URL. A value above PostgreSQL's integer range
+        used to fail the document search, so the request answered 500 with a
+        traceback, was never counted against its source and could be repeated
+        without limit. Every id the link does not cover now gets the refusal of a
+        missing document: 404, kept in the source's records and stopped by the
+        source's minute limit.
+        """
+        self._trust_forwarded_sources()
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.denied_rate_per_min', '7')
+        share, code, doc = self._link('Range fixture')
+        source = {'X-Real-IP': '198.51.100.140'}
+        self.assertEqual(self._open(code, headers=source).status_code, 303)
+        route = '/woow-docs/s/%d/file/%s' % (share.id, '%s')
+        self.assertEqual(self.url_open(route % doc.id, headers=source).status_code, 200)
+        def counted():
+            return dict(self._refusals_of(source['X-Real-IP'])[1]).get('share_access', 0)
+
+        # Missing, the largest and the first id above the range, past 64 bits, and zero.
+        ids = (doc.id + 1000000, 2**31 - 1, 2**31, 2**63, 2**64, 99999999999999999999999, 0)
+        for document_id in ids:
+            with self.subTest(document_id=document_id):
+                before = counted()
+                response = self.url_open(route % document_id, headers=source)
+                self.assertEqual(response.status_code, 404, response.text[:300])
+                self.assertEqual(counted(), before + 1)
+        limited = self.url_open(route % 99999999999999999999999, headers=source)
+        self.assertEqual(limited.status_code, 429)
+        self.assertEqual(self._refusals_of(source['X-Real-IP']), (
+            [('rate_limited', None, 1), ('share_access', None, len(ids))],
+            [('share_access', len(ids))]))
+        # Refusals never stop a valid request of the same source and session.
+        self.assertEqual(self.url_open(route % doc.id, headers=source).status_code, 200)
+
     def test_wrong_passwords_count_with_nul_in_the_user_agent(self):
         """Control characters in the User-Agent never keep a wrong password from counting.
 
