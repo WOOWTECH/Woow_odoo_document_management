@@ -62,7 +62,35 @@ class IrAttachment(models.Model):
                             vals['public'] if 'public' in vals else is_public) or (
                             vals['access_token'] if 'access_token' in vals else has_token):
                         raise AccessError(_('Document field attachments cannot be reassigned.'))
+        if self and {'res_model', 'res_id', 'res_field'}.intersection(vals) and (
+                'res_model' not in vals or vals['res_model'] in WOOW_MODELS):
+            self._woow_check_field_target(vals)
         return super().write(vals)
+
+    def _woow_check_field_target(self, vals):
+        """No write, the superuser's included, makes an attachment back a field of a module record.
+
+        Core moves a poster's pending attachments onto the record as superuser
+        (``mail.thread._process_attachments_for_post``, reached from ``message_post``
+        and from ``message_notify`` with any ``model`` and ``res_id``), so a pending
+        attachment that names a field would otherwise become a second file of a
+        document or folder. Binary fields create their attachments and never move
+        them: after this write every row that backs a field of a module record must
+        back the same field of the same record as before.
+        """
+        ids = [value for value in self.ids if type(value) is int]
+        if not ids:
+            return
+        self.flush_recordset(['res_model', 'res_id', 'res_field'])
+        self.env.cr.execute(  # sql-ok: Q6
+            'SELECT res_model, res_id, res_field FROM ir_attachment WHERE id = ANY(%s)',
+            (ids,))
+        for res_model, res_id, res_field in self.env.cr.fetchall():
+            before = (res_model or False, res_id or 0, res_field or False)
+            after = (vals.get('res_model', res_model) or False, vals.get('res_id', res_id) or 0,
+                     vals.get('res_field', res_field) or False)
+            if after[0] in WOOW_MODELS and after[2] and after != before:
+                raise AccessError(_('Document field attachments cannot be reassigned.'))
 
     @api.model
     def _woow_field_attachment_ids(self, attachment_ids):
@@ -76,18 +104,22 @@ class IrAttachment(models.Model):
         return [row[0] for row in self.env.cr.fetchall()]
 
     @api.model
-    def _woow_document_file_is_unique(self, document_id):
-        """True when exactly one binary attachment backs the document's file field.
+    def _woow_document_file_row(self, document_id):
+        """The stored file a document records, read without record rules, or None.
 
-        It must also be the attachment the document records, so a stream never
-        serves another attachment that claims the same field.
+        Only the document's own ``attachment_id`` qualifies, and only while it is a
+        binary attachment without a URL that backs that document's ``datas``. Any
+        other attachment that claims the same field is never returned. Returns
+        (name, mimetype, checksum, store_fname, db_datas, write_date).
         """
-        self.flush_model(['res_model', 'res_id', 'res_field', 'type'])
+        self.flush_model(['res_model', 'res_id', 'res_field', 'type', 'url', 'store_fname',
+                          'db_datas', 'mimetype', 'checksum', 'name'])
         self.env['woow.document'].flush_model(['attachment_id'])
         self.env.cr.execute(  # sql-ok: Q17
-            """SELECT count(*), COALESCE(bool_and(a.type = 'binary' AND a.id = d.attachment_id), FALSE)
-               FROM ir_attachment a JOIN woow_document d ON d.id = a.res_id
-               WHERE a.res_model = 'woow.document' AND a.res_field = 'datas' AND a.res_id = %s""",
+            """SELECT a.name, a.mimetype, a.checksum, a.store_fname, a.db_datas, a.write_date
+               FROM woow_document d JOIN ir_attachment a ON a.id = d.attachment_id
+               WHERE d.id = %s AND a.res_model = 'woow.document' AND a.res_id = d.id
+                 AND a.res_field = 'datas' AND a.type = 'binary'
+                 AND COALESCE(a.url, '') = ''""",
             (document_id,))
-        count, consistent = self.env.cr.fetchone()
-        return count == 1 and bool(consistent)
+        return self.env.cr.fetchone()
