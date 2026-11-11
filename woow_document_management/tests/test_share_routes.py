@@ -770,6 +770,45 @@ class TestShareHttp(HttpCase):
                 [('share_unlock_failed', share.id, 1)], [('share_unlock_failed', 1)]))
             self.assertEqual(self._capacity_used(), 2)
 
+    def test_refusals_from_one_ipv6_network_and_many_links_stay_bounded(self):
+        """A /64 is one source, and refusals on many links share the source's records."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.denied_rate_per_min', '3')
+        self._trust_forwarded_sources()
+        unknown = self._link('Network fixture')[0].id + 1000000
+        before = self._denied_rows()
+        statuses = [self.url_open('/woow-docs/s/%d' % unknown, headers={
+            'X-Real-IP': '2001:db8:0:1::%x' % number}).status_code for number in range(1, 33)]
+        self.assertEqual(statuses, [404] * 3 + [429] * 29)
+        self.assertEqual(self._refusals_of('2001:db8:0:1::1'), (
+            [('rate_limited', None, 29), ('share_access', None, 3)], [('share_access', 3)]))
+        after = self._denied_rows()
+        self.assertEqual((after[0] - before[0], after[1] - before[1]), (2, 1))
+        links = [self._link('Fan-out fixture %d' % number)[0] for number in range(5)]
+        statuses = [self.url_open('/woow-docs/s/%d' % link.id, headers={
+            'X-Real-IP': '198.51.100.77'}).status_code for _round in range(2) for link in links]
+        self.assertEqual(statuses, [404] * 3 + [429] * 7)
+        self.assertEqual(self._refusals_of('198.51.100.77'), (
+            [('rate_limited', None, 7), ('share_access', None, 3)], [('share_access', 3)]))
+        self.assertFalse(self._sql("""SELECT 1 FROM woow_document_log WHERE result = 'denied'
+                                      AND share_id = ANY(%s)""", ([link.id for link in links],)))
+
+    def test_forwarded_address_from_an_untrusted_peer_is_ignored(self):
+        params = self.env['ir.config_parameter'].sudo()
+        params.set_param('woow_document_management.denied_rate_per_min', '3')
+        params.set_param('woow_document_management.client_ip_header', 'X-Real-IP')
+        unknown = self._link('Untrusted peer fixture')[0].id + 1000000
+        for trusted in ('', '10.0.0.0/8'):
+            with self.subTest(trusted=trusted):
+                params.set_param('woow_document_management.trusted_proxies', trusted)
+                self.env.flush_all()
+                self.env.cr.execute('DELETE FROM woow_document_denied_counter')
+                statuses = [self.url_open('/woow-docs/s/%d' % unknown, headers={
+                    'X-Real-IP': '203.0.113.%d' % number}).status_code for number in range(1, 5)]
+                self.assertEqual(statuses, [404, 404, 404, 429])
+                self.assertEqual(self._refusals_of('127.0.0.1')[1], [('share_access', 3)])
+                self.assertEqual(self._refusals_of('203.0.113.1')[1], [])
+
     def test_denied_rate_limit_is_shared_by_unknown_and_valid_link_ids(self):
         self.env['ir.config_parameter'].sudo().set_param(
             'woow_document_management.denied_rate_per_min', '3')

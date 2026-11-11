@@ -62,3 +62,13 @@ class TestClientIp(TransactionCase):
         self.assertEqual(source_key('::ffff:192.0.2.42'), '192.0.2.42')
         self.assertEqual(source_key(''), '')
         self.assertEqual(source_key('invalid'), 'invalid')
+
+    def test_untrusted_peer_ignores_single_value_headers(self):
+        for header, key in (('X-Real-IP', 'HTTP_X_REAL_IP'),
+                            ('CF-Connecting-IP', 'HTTP_CF_CONNECTING_IP')):
+            env = {'REMOTE_ADDR': '198.51.100.10', key: '203.0.113.1'}
+            for trusted in ((), parse_trusted_proxies('10.0.0.0/8')):
+                with self.subTest(header=header, trusted=trusted):
+                    self.assertEqual(client_ip(env, trusted, header), '198.51.100.10')
+            self.assertEqual(client_ip(env, parse_trusted_proxies('198.51.100.0/24'), header),
+                             '203.0.113.1')
