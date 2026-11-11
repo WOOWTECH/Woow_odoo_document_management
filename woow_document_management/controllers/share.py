@@ -27,6 +27,15 @@ class ShareAccess(NamedTuple):
     grant: object
 
 
+def _session_grant(share_id):
+    """This session's live grant for one share id, or None (missing, expired or malformed)."""
+    grant = dict(request.session.get(SESSION_GRANTS_KEY) or {}).get(str(share_id))
+    if not isinstance(grant, dict) or type(grant.get('exp')) is not int \
+            or grant['exp'] <= int(time.time()) or not isinstance(grant.get('h'), str):
+        return None
+    return grant
+
+
 def _save_grant(share, grant):
     now = int(time.time())
     grants = {key: value for key, value in dict(request.session.get(SESSION_GRANTS_KEY) or {}).items()
@@ -85,29 +94,38 @@ class WoowDocShareController(http.Controller):
 
     def _share_entry(self, *, token=None, share_id=None, require_grant=True,
                      require_unlocked=True, resolve=True):
-        """Resolve a valid link and short-lived session grant, or return a refusal Response."""
+        """Resolve a valid link and short-lived session grant, or return a refusal Response.
+
+        An id route reads the session grant before anything about the share: a
+        request without a live grant for that id is refused at once, so an unknown,
+        a revoked and a valid id do the same work (the same queries, so the same
+        time) and get the same answer.
+        """
         if not resolve:
             return ShareAccess(request.env['woow.document.share'].browse(), None, '', '', None)
         try:
             settings = request.env['woow.document.settings']._get_settings()
             ip = request_client_ip(request.httprequest, settings)
             ip_hash = hmac_ip(request.env['woow.document.settings']._share_keys().k_ip, ip)
+            grant = None
             if token is not None:
                 code = tokens.extract_code(token)
                 if code is None:
                     return self._denied(ip)
                 share_sudo, scope_env = request.env['woow.document.share']._resolve_request_access(token=code)
+                if require_grant and share_sudo:
+                    grant = _session_grant(share_sudo.id)
             else:
+                if require_grant:
+                    grant = _session_grant(share_id)
+                    if grant is None:
+                        return self._denied(ip)
                 share_sudo, scope_env = request.env['woow.document.share']._resolve_request_access(
                     share_id=share_id)
             if not share_sudo or not share_sudo._validate_for_access(scope_env):
                 return self._denied(ip)
-            grant = None
             if require_grant:
-                grant = dict(request.session.get(SESSION_GRANTS_KEY) or {}).get(str(share_sudo.id))
-                if not isinstance(grant, dict) or type(grant.get('exp')) is not int \
-                        or grant['exp'] <= int(time.time()) or not isinstance(grant.get('h'), str) \
-                        or not hmac.compare_digest(grant['h'], share_sudo.token_hash[:16]):
+                if grant is None or not hmac.compare_digest(grant['h'], share_sudo.token_hash[:16]):
                     return self._denied(ip)
                 if require_unlocked and share_sudo.has_password and grant.get('pw') is not True:
                     return self._denied(ip)
