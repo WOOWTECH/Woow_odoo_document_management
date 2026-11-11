@@ -1,13 +1,13 @@
 {
   "batches": {
     "core": 122,
-    "files": 71,
+    "files": 83,
     "portal": 2,
-    "share": 33
+    "share": 34
   },
   "files": {
     "test_add_attachment.py": 4,
-    "test_attachment_guard.py": 6,
+    "test_attachment_guard.py": 12,
     "test_audit_log.py": 18,
     "test_backend_views.py": 2,
     "test_backend_wizards.py": 4,
@@ -32,9 +32,9 @@
     "test_record_rules.py": 4,
     "test_security_acl.py": 8,
     "test_settings_bounds.py": 9,
-    "test_share_routes.py": 32,
+    "test_share_routes.py": 33,
     "test_share_token.py": 3,
-    "test_trash_lifecycle.py": 18,
+    "test_trash_lifecycle.py": 25,
     "test_uninstall.py": 3,
     "test_upload_policy.py": 10,
     "test_url_policy.py": 4,
