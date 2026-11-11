@@ -331,6 +331,64 @@ class TestPurgeBatches(TransactionCase):
                 self.assertEqual(progress, {'done': 1, 'remaining': 0})
 
 
+    def _stored(self, folder, name):
+        """The stored value of a folder flag, read from the table."""
+        self.env.flush_all()
+        self.env.cr.execute(
+            'SELECT subtree_legal_hold IS TRUE, has_restricted_descendant IS TRUE '
+            'FROM woow_document_folder WHERE id = %s', (folder.id,))
+        hold, restricted = self.env.cr.fetchone()
+        return {'subtree_legal_hold': hold, 'has_restricted_descendant': restricted}[name]
+
+    def _separately_trashed(self, name):
+        """Root -> child trashed on its own first -> active leaf; then the root is trashed."""
+        root = self.folders.create({'name': '%s root' % name, 'owner_id': self.admin.id})
+        child = self.folders.create({'name': '%s child' % name, 'parent_id': root.id,
+                                     'owner_id': self.admin.id})
+        leaf = self.folders.create({'name': '%s leaf' % name, 'parent_id': child.id,
+                                    'owner_id': self.admin.id})
+        child.with_user(self.admin).action_trash()
+        root.with_user(self.admin).action_trash()
+        return root, child, leaf
+
+    def test_flags_below_a_separately_trashed_folder_reach_the_root(self):
+        """The stored subtree flags count trashed children in every context.
+
+        The hold is set, and the access changed, in the default context, where
+        reading ``child_ids`` drops inactive children.
+        """
+        root, child, leaf = self._separately_trashed('Flag')
+        folders = self.env['woow.document.folder']
+        for target in (child, leaf):
+            with self.subTest(target=target.name):
+                folders.with_user(self.admin).browse(target.id).action_set_legal_hold(True)
+                self.assertTrue(self._stored(root, 'subtree_legal_hold'))
+                folders.with_user(self.admin).browse(target.id).action_set_legal_hold(False)
+                self.assertFalse(self._stored(root, 'subtree_legal_hold'))
+                folders.sudo().browse(target.id).write({'inherit_access': False})
+                self.assertTrue(self._stored(root, 'has_restricted_descendant'))
+                folders.sudo().browse(target.id).write({'inherit_access': True})
+                self.assertFalse(self._stored(root, 'has_restricted_descendant'))
+
+    def test_module_update_recomputes_stale_subtree_flags(self):
+        """Rows stored before trashed children counted are fixed on each module update."""
+        root, child, _leaf = self._separately_trashed('Stale flag')
+        self.env.flush_all()
+        self.env.cr.execute(
+            'UPDATE woow_document_folder SET legal_hold = TRUE, subtree_legal_hold = TRUE, '
+            'inherit_access = FALSE, has_restricted_descendant = TRUE WHERE id = %s',
+            (child.id,))
+        self.env.cr.execute(
+            'UPDATE woow_document_folder SET subtree_legal_hold = FALSE, '
+            'has_restricted_descendant = FALSE WHERE id = %s', (root.id,))
+        self.env.invalidate_all()
+        self.env['woow.document.folder'].init()
+        self.assertTrue(self._stored(root, 'subtree_legal_hold'))
+        self.assertTrue(self._stored(root, 'has_restricted_descendant'))
+        self.folders.browse(root.id).invalidate_recordset()
+        self.assertTrue(self.folders.browse(root.id).subtree_legal_hold)
+
+
 @tagged('woow_docmgmt_trash')
 class TestPurgeRacesWithLegalHold(TransactionCase):
     """A legal hold committed while a purge batch runs is never bypassed.
@@ -387,6 +445,41 @@ class TestPurgeRacesWithLegalHold(TransactionCase):
             self._documents.append(document.id)
             return document.id
 
+    def _commit_separately_trashed_fixture(self, below=False):
+        """An expired root whose child was trashed on its own first, with four documents.
+
+        The child is trashed before the root and both have an old trashed date.
+        With ``below`` the documents sit in an active folder under that child.
+        Returns (folder ids deepest first, the folder that holds the documents,
+        document ids).
+        """
+        old = fields.Datetime.now() - timedelta(days=400)
+        with self.registry.cursor() as cr:
+            env = api.Environment(cr, SUPERUSER_ID, {
+                'tracking_disable': True, 'mail_create_nolog': True,
+                'mail_create_nosubscribe': True})
+            folders = env['woow.document.folder']
+            root = folders.create({'name': 'Race root %s' % secrets.token_hex(6),
+                                   'owner_id': self.admin_id, 'sequence': -1000})
+            child = folders.create({'name': 'Race trashed child', 'parent_id': root.id,
+                                    'owner_id': self.admin_id})
+            chain = [child, root]
+            holder = child
+            if below:
+                holder = folders.create({'name': 'Race active folder', 'parent_id': child.id,
+                                         'owner_id': self.admin_id})
+                chain.insert(0, holder)
+            documents = env['woow.document'].create([{
+                'name': 'race-%d.txt' % index, 'folder_id': holder.id,
+                'datas': base64.b64encode(b'race fixture %d' % index)} for index in range(4)])
+            child.with_user(self.admin_id).action_trash()
+            root.with_user(self.admin_id).action_trash()
+            (root | child).with_context(active_test=False).write({'trashed_date': old})
+            folder_ids = [folder.id for folder in chain]
+            self._folders += folder_ids
+            self._documents += documents.ids
+            return folder_ids, holder.id, documents.ids
+
     def _drop_committed(self):
         if not self._folders:
             return
@@ -431,6 +524,19 @@ class TestPurgeRacesWithLegalHold(TransactionCase):
         else:
             cr.commit()
         return progress, failure
+
+    def _kept(self, folder_ids, document_ids):
+        """(documents left, folders left, purge events) of one fixture."""
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT count(*) FROM woow_document WHERE id = ANY(%s)', (document_ids,))
+            documents = cr.fetchone()[0]
+            cr.execute('SELECT count(*) FROM woow_document_folder WHERE id = ANY(%s)',
+                       (folder_ids,))
+            folders = cr.fetchone()[0]
+            cr.execute("SELECT count(*) FROM woow_document_log WHERE event = 'purge' "
+                       "AND (document_id = ANY(%s) OR folder_id = ANY(%s))",
+                       (document_ids, folder_ids))
+            return documents, folders, cr.fetchone()[0]
 
     def _remaining(self, root_id, child_id, document_ids):
         with self.registry.cursor() as cr:
@@ -507,4 +613,69 @@ class TestPurgeRacesWithLegalHold(TransactionCase):
         with self.registry.cursor() as cr:
             cr.execute('SELECT legal_hold IS TRUE FROM woow_document_folder WHERE id = %s',
                        (child_id,))
+            self.assertEqual(cr.fetchone(), (False,))
+
+
+    def _race_separately_trashed(self, below, before_snapshot):
+        """T purges with room for two records while H holds the folder with the documents."""
+        folder_ids, held, document_ids = self._commit_separately_trashed_fixture(below=below)
+        if before_snapshot:
+            self._hold('woow.document.folder', held)
+        with self.registry.cursor() as cr_t:
+            cr_t.execute('SELECT 1')   # T's first statement takes its snapshot.
+            if not before_snapshot:
+                self._hold('woow.document.folder', held)
+            progress, failure = self._purge_batch(cr_t)
+        self.assertIsNone(failure, 'the batch failed instead of skipping the held root')
+        self.assertEqual(len(progress), 1)
+        self.assertEqual(self._kept(folder_ids, document_ids), (4, len(folder_ids), 0))
+
+    def test_hold_on_a_separately_trashed_child_after_the_snapshot_keeps_its_content(self):
+        """The child is its own trashed root too; neither purge may delete its documents."""
+        self._race_separately_trashed(below=False, before_snapshot=False)
+
+    def test_hold_below_a_separately_trashed_child_after_the_snapshot_keeps_its_content(self):
+        """The held folder is active, below a child that was trashed on its own."""
+        self._race_separately_trashed(below=True, before_snapshot=False)
+
+    def test_holds_committed_before_the_snapshot_keep_separately_trashed_content(self):
+        """Control: the same holds seen in T's snapshot keep the same content."""
+        for below in (False, True):
+            with self.subTest(below=below):
+                self._race_separately_trashed(below=below, before_snapshot=True)
+
+    def test_a_folder_row_changed_below_the_root_after_the_snapshot_skips_the_root(self):
+        """The barrier is the lock on every folder row of the subtree, not the stored flags.
+
+        H writes a hold on the deepest folder without the ORM, so no stored flag
+        above it changes; the purge must still skip the whole root.
+        """
+        folder_ids, held, document_ids = self._commit_separately_trashed_fixture(below=True)
+        with self.registry.cursor() as cr_t:
+            cr_t.execute('SELECT 1')   # T's first statement takes its snapshot.
+            with self.registry.cursor() as cr_h:
+                cr_h.execute('UPDATE woow_document_folder SET legal_hold = TRUE WHERE id = %s',
+                             (held,))
+            progress, failure = self._purge_batch(cr_t)
+        self.assertIsNone(failure)
+        self.assertEqual(len(progress), 1)
+        self.assertEqual(self._kept(folder_ids, document_ids), (4, len(folder_ids), 0))
+
+    def test_a_hold_below_a_separately_trashed_child_waits_for_the_batch(self):
+        """A hold that starts after T locked the root waits, wherever it is in the subtree."""
+        folder_ids, held, _document_ids = self._commit_separately_trashed_fixture(below=True)
+        root_id = folder_ids[-1]
+        with self.registry.cursor() as cr_t, self.registry.cursor() as cr_h:
+            cr_t.execute('SELECT 1')
+            api.Environment(cr_t, SUPERUSER_ID, {})['woow.document.folder'].browse(
+                root_id)._woow_lock_purge_root()
+            cr_h.execute("SET LOCAL lock_timeout = '300ms'")
+            folder = api.Environment(cr_h, self.admin_id, {})['woow.document.folder'].browse(held)
+            with mute_logger('odoo.sql_db'), self.assertRaises(errors.LockNotAvailable):
+                folder.action_set_legal_hold(True)
+            cr_h.rollback()
+            cr_t.rollback()
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT legal_hold IS TRUE FROM woow_document_folder WHERE id = %s',
+                       (held,))
             self.assertEqual(cr.fetchone(), (False,))
