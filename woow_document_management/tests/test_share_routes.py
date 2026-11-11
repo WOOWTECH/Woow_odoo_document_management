@@ -426,6 +426,49 @@ class TestShareHttp(HttpCase):
         self.assertEqual(outcomes[0], (
             maximum - 1, 404, ([('share_access', None, 2)], [('share_access', 2)]), maximum))
 
+    def test_refused_id_routes_do_the_same_work_for_unknown_revoked_and_live_ids(self):
+        """Without a session grant an id route is refused before the share is looked up.
+
+        An unknown id, a revoked link and a valid link get the same status and body
+        and run the same number of queries, so neither the answer nor the time it
+        takes tells whether an id names a live share.
+        """
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.denied_rate_per_min', '100')
+        live, _code, doc = self._link('Probe live fixture')
+        revoked, _code, _doc = self._link('Probe revoked fixture')
+        revoked.sudo().write({'revoked_at': fields.Datetime.now(), 'state': 'revoked'})
+        unknown = live.id + 1000000
+        landing = self.url_open('/woow-docs/s')
+        csrf = CSRF_RE.search(landing.content).group(1).decode()
+
+        def get(path):
+            return self.url_open(path, allow_redirects=False)
+
+        guess = secrets.token_urlsafe(12)
+
+        def unlock(path):
+            return self.url_open(path, data={'password': guess, 'csrf_token': csrf},
+                                 allow_redirects=False)
+
+        routes = ((get, '/woow-docs/s/%d'), (get, '/woow-docs/s/%d/file/' + str(doc.id)),
+                  (get, '/woow-docs/s/%d/zip'), (unlock, '/woow-docs/s/%d/unlock'))
+        for send, template in routes:
+            # Warm caches and this source's counter row of the minute first.
+            send(template % (unknown + 1))
+            results = {}
+            for name, share_id in (('unknown', unknown), ('revoked', revoked.id),
+                                   ('live', live.id)):
+                self.env.flush_all()
+                before = self.cr.sql_log_count
+                response = send(template % share_id)
+                results[name] = (response.status_code, response.content,
+                                 self.cr.sql_log_count - before)
+            with self.subTest(route=template):
+                self.assertEqual(results['unknown'][0], 404)
+                self.assertEqual(results['revoked'], results['unknown'])
+                self.assertEqual(results['live'], results['unknown'])
+
     def test_wrong_passwords_count_with_nul_in_the_user_agent(self):
         """Control characters in the User-Agent never keep a wrong password from counting.
 
