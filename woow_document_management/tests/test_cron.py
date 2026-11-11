@@ -2,12 +2,18 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Cron identities and schedule wiring."""
 import base64
+import secrets
 from datetime import timedelta
 from unittest.mock import patch
+
+from psycopg2 import errors
 
 from odoo import Command, fields
 from odoo.exceptions import AccessError
 from odoo.tests import TransactionCase, tagged
+
+from ..models import share_service
+from ..services.constants import SHARE_RECORD_RETENTION_DAYS
 
 
 @tagged('woow_docmgmt_cron')
@@ -108,6 +114,48 @@ class TestDocumentCron(TransactionCase):
         self.assertEqual(share.state, 'expired')
         self.env['woow.document'].sudo()._cron_log_retention()
         self.assertFalse(row.exists())
+
+    def test_share_maintenance_skips_a_link_the_database_refuses_to_delete(self):
+        """One link that cannot be deleted never stops the run or undoes its other work.
+
+        The refused delete is skipped and logged by id; the links before and after it
+        are still deleted, an expired link is still marked, and the next run, with
+        the database no longer refusing, deletes the skipped link.
+        """
+        admin = self.env.ref('base.user_admin')
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Maintenance skip folder', 'owner_id': admin.id})
+        service = self.env['woow.document.share']
+        issue = service.with_user(admin)._issue
+        old = fields.Datetime.now() - timedelta(days=SHARE_RECORD_RETENTION_DAYS + 1)
+        links = service
+        for _index in range(3):
+            share, _code = issue({
+                'share_type': 'folder', 'folder_id': folder.id,
+                'expire_at': fields.Datetime.now() + timedelta(days=1),
+                'password': secrets.token_urlsafe(16)})
+            share.sudo().write({'state': 'revoked', 'revoked_at': old})
+            links |= share
+        middle = links.sorted('id')[1]
+        lapsed, _code = issue({'share_type': 'folder', 'folder_id': folder.id,
+                               'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        lapsed.sudo().write({'expire_at': fields.Datetime.now() - timedelta(minutes=1)})
+        unlink = type(service).unlink
+
+        def refusing_unlink(records):
+            if middle.id in records.ids:
+                raise errors.UniqueViolation()
+            return unlink(records)
+
+        with patch.object(type(service), 'unlink', refusing_unlink), \
+                self.assertLogs(share_service.__name__, 'WARNING') as logs:
+            service.sudo()._maintenance_run()
+        self.assertEqual(links.exists(), middle)
+        self.assertEqual(lapsed.state, 'expired')
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn('id %d' % middle.id, logs.records[0].getMessage())
+        service.sudo()._maintenance_run()
+        self.assertFalse(links.exists())
 
     def test_share_and_quota_jobs_run_as_root(self):
         for xmlid in ('ir_cron_woow_document_share_maintenance',

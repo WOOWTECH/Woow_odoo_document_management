@@ -15,6 +15,7 @@ from odoo.tools import mute_logger
 
 from ..models import document_log as document_log_module
 from ..services.client_ip import hmac_ip, source_key
+from ..services.constants import SHARE_RECORD_RETENTION_DAYS
 
 
 def _minute(cr):
@@ -540,6 +541,138 @@ class TestDeniedConcurrency(TransactionCase):
                 self.assertEqual(full[0], maximum)
             return
         self.fail('no try stayed within one minute')
+
+
+@tagged('woow_docmgmt_core')
+class TestFailureBucketsOfDeletedLinks(TransactionCase):
+    """Buckets of counted wrong passwords never merge when their links are deleted.
+
+    Deleting a link clears ``share_id`` of its audit rows. The buckets of one source
+    and minute on two links differ only by that link, so a bucket key built on
+    ``share_id`` would make them equal once both links are gone, and the unique index
+    would refuse the delete of the second link (and with it the maintenance job and a
+    purge of the folder that holds the links).
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.admin = self.env.ref('base.user_admin')
+        self.log = self.env['woow.document.log']
+        self.folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Failure bucket folder', 'owner_id': self.admin.id})
+        self.keys = self.env['woow.document.settings']._share_keys()
+
+    def _link(self):
+        share, _code = self.env['woow.document.share'].with_user(self.admin)._issue({
+            'share_type': 'folder', 'folder_id': self.folder.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=1),
+            'password': secrets.token_urlsafe(16)})
+        return share
+
+    def _wrong_password(self, share, ip):
+        """What share_unlock records for a counted wrong password."""
+        return self.log._log_event('share_unlock_failed', result='denied', channel='share',
+                                   share_id=share.id, ip=ip)
+
+    def _rows(self, ip):
+        """The source's wrong password buckets as {link id: (live link id, count)}."""
+        self.env.flush_all()
+        self.env.invalidate_all()
+        digest = hmac_ip(self.keys.k_ip, source_key(ip))
+        rows = self.log.sudo().search([('event', '=', 'share_unlock_failed'),
+                                       ('ip_hash', '=', digest)])
+        self.assertEqual(len(rows), len(set(rows.mapped('link_ref'))))
+        return {row.link_ref: (row.share_id.id, row.count) for row in rows}
+
+    def _fixture(self, ip):
+        """Three links with buckets of one source in one minute, and a link that stays."""
+        shares = self._link() | self._link() | self._link()
+        for share in shares:
+            self.assertEqual(self._wrong_password(share, ip), 1)
+        self.assertEqual(self._wrong_password(shares[0], ip), 2)
+        bystander = self._link()
+        self.assertEqual(self._wrong_password(bystander, ip), 1)
+        self.log._log_event('upload', channel='backend', detail={'files': 1})
+        return shares, bystander
+
+    def _assert_buckets_kept(self, ip, shares, bystander, upload_rows):
+        self.assertFalse(shares.exists())
+        self.assertTrue(bystander.exists())
+        self.assertEqual(self._rows(ip), {
+            shares[0].id: (False, 2), shares[1].id: (False, 1), shares[2].id: (False, 1),
+            bystander.id: (bystander.id, 1)})
+        digest = hmac_ip(self.keys.k_ip, source_key(ip))
+        counter = self.env['woow.document.denied.counter'].sudo().search([
+            ('event', '=', 'share_unlock_failed'), ('ip_hash', '=', digest)])
+        self.assertEqual(counter.count, 5)
+        self.assertEqual(self.log.sudo().search([('event', '=', 'upload')]), upload_rows)
+
+    def test_deleting_links_that_share_a_failure_minute_keeps_their_buckets(self):
+        orders = {
+            'in order': lambda shares: [share.unlink() for share in shares],
+            'reversed': lambda shares: [share.unlink() for share in shares[::-1]],
+            'in one call': lambda shares: shares.unlink(),
+        }
+        for number, (name, delete) in enumerate(orders.items()):
+            with self.subTest(order=name):
+                ip = '198.51.100.%d' % (170 + number)
+                shares, bystander = self._fixture(ip)
+                upload_rows = self.log.sudo().search([('event', '=', 'upload')])
+                with self.cr.savepoint():
+                    delete(shares.sudo())
+                self._assert_buckets_kept(ip, shares, bystander, upload_rows)
+
+    def test_maintenance_deletes_old_links_that_share_a_failure_minute(self):
+        ip = '198.51.100.180'
+        shares, bystander = self._fixture(ip)
+        upload_rows = self.log.sudo().search([('event', '=', 'upload')])
+        old = fields.Datetime.now() - timedelta(days=SHARE_RECORD_RETENTION_DAYS + 1)
+        shares[0].sudo().write({'state': 'revoked', 'revoked_at': old})
+        shares[1].sudo().write({'state': 'expired', 'expire_at': old})
+        shares[2].sudo().write({'state': 'revoked', 'revoked_at': old})
+        self.env['woow.document.share'].sudo()._maintenance_run()
+        self._assert_buckets_kept(ip, shares, bystander, upload_rows)
+
+    def test_module_update_gives_earlier_denied_rows_their_link_key(self):
+        """Rows an earlier version wrote keep their link in ``link_ref`` and stay unique.
+
+        An earlier version keyed the buckets on ``share_id`` and had no ``link_ref``.
+        The update copies the link of every such denied row before the new index is
+        built, drops the old index, and a second update leaves everything as it is.
+        """
+        cr = self.env.cr
+        ip = '198.51.100.190'
+        digest = hmac_ip(self.keys.k_ip, source_key(ip))
+        shares = self._link() | self._link()
+        cr.execute('DROP INDEX woow_document_log_denied_link_bucket')
+        cr.execute("""CREATE UNIQUE INDEX woow_document_log_denied_bucket
+                      ON woow_document_log (event, (COALESCE(ip_hash, '')),
+                          (COALESCE(share_id, 0)), bucket_minute)
+                      WHERE result = 'denied'""")
+        for share in shares:
+            for event in ('share_access', 'share_unlock_failed'):
+                cr.execute("""INSERT INTO woow_document_log
+                                  (create_uid, create_date, write_uid, write_date, event, result,
+                                   channel, share_id, ip_hash, bucket_minute, count, detail)
+                              VALUES (1, now(), 1, now(), %s, 'denied', 'share', %s, %s,
+                                      date_trunc('minute', now() AT TIME ZONE 'UTC'), 1, '{}'::jsonb)""",
+                           (event, share.id, digest))
+        self.env.invalidate_all()
+        self.log.init()
+        cr.execute("SELECT to_regclass('woow_document_log_denied_bucket') IS NULL, "
+                   "to_regclass('woow_document_log_denied_link_bucket') IS NOT NULL")
+        self.assertEqual(cr.fetchone(), (True, True))
+        cr.execute("""SELECT event, share_id, link_ref FROM woow_document_log
+                      WHERE ip_hash = %s ORDER BY event, share_id""", (digest,))
+        expected = [(event, share, share) for event in ('share_access', 'share_unlock_failed')
+                    for share in shares.ids]
+        self.assertEqual(cr.fetchall(), expected)
+        self.log.init()
+        shares.sudo().unlink()
+        cr.execute("""SELECT event, share_id, link_ref FROM woow_document_log
+                      WHERE ip_hash = %s ORDER BY event, link_ref""", (digest,))
+        self.assertEqual(cr.fetchall(), [(event, None, share) for event in (
+            'share_access', 'share_unlock_failed') for share in shares.ids])
 
 
 @tagged('woow_docmgmt_core')
