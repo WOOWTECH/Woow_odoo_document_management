@@ -540,3 +540,51 @@ class TestDeniedConcurrency(TransactionCase):
                 self.assertEqual(full[0], maximum)
             return
         self.fail('no try stayed within one minute')
+
+
+@tagged('woow_docmgmt_core')
+class TestMemberChangeAudit(TransactionCase):
+    """Member changes are recorded once per folder, naming only that folder's lines."""
+
+    def test_each_folder_row_names_only_its_own_lines(self):
+        admin = self.env.ref('base.user_admin')
+        group = self.env.ref('woow_document_management.group_woow_document_user')
+        users = self.env['res.users'].sudo().create([{
+            'name': 'Audit member %d' % index, 'login': 'wdoc-audit-member-%d' % index,
+            'groups_id': [Command.set([group.id])]} for index in range(2)])
+        folders = self.env['woow.document.folder'].sudo().create([{
+            'name': 'Audit folder %d' % index, 'owner_id': admin.id} for index in range(3)])
+        lines = self.env['woow.document.folder.access'].sudo().create([{
+            'folder_id': folder.id, 'subject_type': 'user', 'user_id': user.id,
+            'level': 'read'} for folder in folders for user in users])
+        log = self.env['woow.document.log'].sudo()
+
+        def rows():
+            return {row.folder_id.id: row.detail['member_ids'] for row in log.search([
+                ('event', '=', 'access_change'), ('folder_id', 'in', folders.ids),
+                ('id', '>', mark)])}
+
+        expected = {folder.id: sorted(lines.filtered(lambda line: line.folder_id == folder).ids)
+                    for folder in folders}
+        mark = max(log.search([]).ids or [0])
+        lines.with_user(admin).write({'level': 'upload'})
+        self.assertEqual(rows(), expected)
+        mark = max(log.search([]).ids or [0])
+        moved = lines.filtered(lambda line: line.folder_id == folders[0])
+        target = self.env['woow.document.folder'].sudo().create({
+            'name': 'Audit target', 'owner_id': admin.id})
+        moved.with_user(admin).write({'folder_id': target.id})
+        self.assertEqual(log.search([('event', '=', 'access_change'), ('id', '>', mark)]).mapped(
+            lambda row: (row.folder_id.id, row.detail['member_ids'])),
+            [(target.id, sorted(moved.ids)), (folders[0].id, sorted(moved.ids))])
+        mark = max(log.search([]).ids or [0])
+        remaining = lines - moved
+        remaining.with_user(admin).unlink()
+        self.assertEqual(rows(), {folder.id: expected[folder.id] for folder in folders[1:]})
+
+    def test_audit_id_lists_are_bounded(self):
+        log = self.env['woow.document.log']
+        log._log_event('access_change', channel='backend', detail={'member_ids': list(range(500))})
+        with self.assertRaises(ValueError):
+            log._log_event('access_change', channel='backend',
+                           detail={'member_ids': list(range(501))})

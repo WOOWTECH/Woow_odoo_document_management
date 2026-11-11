@@ -4,6 +4,7 @@
 
 import base64
 import io
+import struct
 import zipfile
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -193,3 +194,66 @@ class TestUploadPolicy(TransactionCase):
                 self.policy._validate('too-many.docx', stream.getvalue())
             self.assertEqual(caught.exception.code, 'mime')
             parser.assert_not_called()
+
+    @staticmethod
+    def _office_zip(entries, *, zip64=None, classic_total=None, classic_size=None):
+        """A .docx-shaped ZIP whose end records can be made to disagree.
+
+        ``zip64`` inserts a ZIP64 end record and locator declaring that many headers
+        (they are all written); the classic end record keeps ``classic_total`` and
+        ``classic_size`` when given.
+        """
+        names = [b'[Content_Types].xml', b'word/document.xml'] + [
+            b'pad/%05d' % index for index in range(max(0, entries - 2))]
+        local, headers = b'', b''
+        for name in names:
+            offset = len(local)
+            local += struct.pack('<4s5H3I2H', b'PK\x03\x04', 20, 0, 0, 0, 0, 0, 0, 0,
+                                 len(name), 0) + name
+            headers += struct.pack('<4s6H3I5H2I', b'PK\x01\x02', 45, 20, 0, 0, 0, 0, 0, 0, 0,
+                                   len(name), 0, 0, 0, 0, 0, offset) + name
+        directory_at = len(local)
+        tail = b''
+        if zip64 is not None:
+            record_at = directory_at + len(headers)
+            tail = struct.pack('<4sQHHIIQQQQ', b'PK\x06\x06', 44, 45, 45, 0, 0, zip64, zip64,
+                               len(headers), directory_at)
+            tail += struct.pack('<4sIQI', b'PK\x06\x07', 0, record_at, 1)
+        total = len(names) if classic_total is None else classic_total
+        size = len(headers) if classic_size is None else classic_size
+        end = struct.pack('<4s4H2IH', b'PK\x05\x06', 0, 0, total, total, size,
+                          directory_at + len(headers) - size, 0)
+        return local + headers + tail + end
+
+    def test_zip64_end_record_cannot_lift_the_directory_bound(self):
+        crafted = self._office_zip(5000, zip64=5000, classic_total=1, classic_size=46 + 19)
+        self.assertEqual(len(zipfile.ZipFile(io.BytesIO(crafted)).infolist()), 5000)
+        for name in ('crafted.docx', 'crafted.odt', 'crafted.pdf', 'crafted.txt'):
+            with self.subTest(name=name), \
+                    patch.object(upload_policy.zipfile, 'ZipFile') as parser, \
+                    self.assertRaises(WoowUploadRejected) as caught:
+                self.policy._validate(name, crafted)
+            self.assertEqual(caught.exception.code, 'mime')
+            parser.assert_not_called()
+        # The classic record alone may not under-declare the headers ZipFile walks.
+        walked = self._office_zip(5000, classic_total=1)
+        self.assertEqual(len(zipfile.ZipFile(io.BytesIO(walked)).infolist()), 5000)
+        with patch.object(upload_policy.zipfile, 'ZipFile') as parser, \
+                self.assertRaises(WoowUploadRejected) as caught:
+            self.policy._validate('walked.docx', walked)
+        self.assertEqual(caught.exception.code, 'mime')
+        parser.assert_not_called()
+
+    def test_small_consistent_zip64_and_plain_archives_are_accepted(self):
+        for archive in (self._office_zip(10, zip64=10), self._office_zip(10)):
+            with self.subTest(zip64=b'PK\x06\x06' in archive):
+                self.assertEqual(len(zipfile.ZipFile(io.BytesIO(archive)).infolist()), 10)
+                self.assertEqual(
+                    self.policy._validate('consistent.docx', archive).mimetype,
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        dangling = self._office_zip(10)
+        end = dangling.rfind(b'PK\x05\x06')
+        dangling = dangling[:end] + struct.pack('<4sIQI', b'PK\x06\x07', 0, 0, 1) + dangling[end:]
+        with self.assertRaises(WoowUploadRejected) as caught:
+            self.policy._validate('dangling.docx', dangling)
+        self.assertEqual(caught.exception.code, 'mime')

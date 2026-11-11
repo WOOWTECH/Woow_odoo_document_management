@@ -31,8 +31,32 @@ REJECT_CODES = ('size', 'filename', 'extension', 'mime', 'content', 'pixels', 'q
                 'no_libmagic', 'channel', 'stub')   # 'stub' is day-0 only
 
 
+ZIP_MAX_ENTRIES = 4096
+ZIP_MAX_DIRECTORY = 1024 * 1024
+_ZIP_ENTRY = b'PK\x01\x02'
+
+
+def _zip_directory_ok(data: bytes, start: int, stop: int, entries: int) -> bool:
+    """A central directory region ZipFile may walk: in the file, small, few entry headers.
+
+    ZipFile creates one entry per header it reads in the region, whatever the
+    declared count; every header starts with the entry signature, so counting
+    signatures bounds the entries before any is allocated.
+    """
+    return (0 <= start <= stop <= len(data) and stop - start <= ZIP_MAX_DIRECTORY
+            and entries <= ZIP_MAX_ENTRIES
+            and data.count(_ZIP_ENTRY, start, stop) <= ZIP_MAX_ENTRIES)
+
+
 def _bounded_zip_directory(data: bytes) -> bool:
-    """Reject oversized ZIP directories before ZipFile allocates entry objects."""
+    """Reject oversized ZIP directories before ZipFile allocates entry objects.
+
+    The classic end record is checked first. When a ZIP64 locator precedes it,
+    ZipFile uses the ZIP64 record instead (found through the locator's offset,
+    or right before the locator, depending on the Python version), so each
+    record found there must pass the same limits; a locator without a record
+    is refused.
+    """
     if not data.startswith(b'PK\x03\x04'):
         return False
     # EOCD has a 22-byte fixed header and an optional 65535-byte comment.
@@ -41,12 +65,31 @@ def _bounded_zip_directory(data: bytes) -> bool:
         return False
     disk, disk_cd, on_disk, total, directory_size, directory_offset, comment_size = \
         struct.unpack_from('<HHHHIIH', data, end + 4)
-    return (disk == disk_cd == 0 and on_disk == total and total <= 4096
-            and directory_size <= 1024 * 1024
+    if not (disk == disk_cd == 0 and on_disk == total
             and directory_offset + directory_size <= end
             and end + 22 + comment_size == len(data)
             and total != 0xffff and directory_size != 0xffffffff
-            and directory_offset != 0xffffffff)
+            and directory_offset != 0xffffffff
+            and _zip_directory_ok(data, end - directory_size, end, total)):
+        return False
+    locator = end - 20
+    if locator < 0 or data[locator:locator + 4] != b'PK\x06\x07':
+        return True
+    _signature, locator_disk, record_at, disks = struct.unpack_from('<4sIQI', data, locator)
+    if locator_disk != 0 or disks > 1:
+        return False
+    records = {position for position in (record_at, locator - 56)
+               if 0 <= position <= locator - 56 and data[position:position + 4] == b'PK\x06\x06'}
+    if not records:
+        return False
+    for position in records:
+        (_signature, _size, _made, _needed, record_disk, record_disk_cd, record_on_disk,
+         record_total, record_size, record_offset) = struct.unpack_from('<4sQHHIIQQQQ', data, position)
+        if not (record_disk == record_disk_cd == 0 and record_on_disk == record_total
+                and record_offset + record_size <= position
+                and _zip_directory_ok(data, position - record_size, position, record_total)):
+            return False
+    return True
 
 
 def _office_zip_mimetype(data: bytes, ext: str) -> str:
@@ -56,7 +99,7 @@ def _office_zip_mimetype(data: bytes, ext: str) -> str:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             entries = archive.infolist()
-            if len(entries) > 4096:
+            if len(entries) > ZIP_MAX_ENTRIES:
                 return ''
             names = {entry.filename for entry in entries}
             ooxml = {'docx': ('word/', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
@@ -95,10 +138,13 @@ class WoowUploadRejected(UserError):
         elif code == 'mime':
             message = _("The file's content doesn't match its .%(ext)s extension.",
                         ext=params.get('ext', ''))
-        elif code == 'quota':
+        elif code == 'quota' and 'pct' in params:
             message = _('Document storage on this site is %(pct)s%% full, so new files '
                         "can't be added. Ask your administrator to free up space or raise "
-                        'the limit.', pct=params.get('pct', 100))
+                        'the limit.', pct=params['pct'])
+        elif code == 'quota':
+            message = _("Document storage on this site is full, so new files can't be added. "
+                        'Ask your administrator to free up space or raise the limit.')
         elif code == 'no_libmagic':
             message = _("Uploads are temporarily unavailable because file types can't be "
                         'verified on this server. Please contact the office.')

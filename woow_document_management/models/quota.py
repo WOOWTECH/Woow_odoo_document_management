@@ -40,7 +40,15 @@ class WoowDocumentQuota(models.AbstractModel):
         return 0 if self.env.cr.fetchone() else size
 
     def _check(self, checksum, size) -> None:
-        """Refuse uploads above quota_block_pct under lock('quota'); LockBusy on timeout."""
+        """Refuse uploads above quota_block_pct under lock('quota'); LockBusy on timeout.
+
+        A new upload always counts its own size. Only the attachment import wizard,
+        whose source the caller has read, is credited for content already stored:
+        crediting by a site-wide checksum match would tell any uploader whether a
+        file they cannot read exists (accepted or refused, and the percentage).
+        The exact percentage is only shown to document administrators.
+        """
+        from .document import SOURCE_CTX_KEY, _SOURCE_SENTINEL
         settings = self.env['woow.document.settings']._get_settings()
         if not settings.quota_mb:
             return
@@ -55,10 +63,15 @@ class WoowDocumentQuota(models.AbstractModel):
             'WHERE key = %s RETURNING id', (PARAM_PREFIX + 'quota_mb',))
         if not self.env.cr.fetchone():
             raise WoowUploadRejected('quota')
-        projected = self._usage_bytes() + self._bytes_if_new(checksum, size)
+        credited = self.env.context.get(SOURCE_CTX_KEY) is _SOURCE_SENTINEL
+        projected = self._usage_bytes() + (
+            self._bytes_if_new(checksum, size) if credited else size)
         capacity = settings.quota_mb * MIB
         if projected * 100 > capacity * settings.quota_block_pct:
-            raise WoowUploadRejected('quota', pct=math.ceil(projected * 100 / capacity))
+            if self.env.su or self.env.user.has_group(
+                    'woow_document_management.group_woow_document_manager'):
+                raise WoowUploadRejected('quota', pct=math.ceil(projected * 100 / capacity))
+            raise WoowUploadRejected('quota')
 
     def _cron_check_warn(self) -> None:
         """Daily: activity for document administrators when usage reaches quota_warn_pct."""

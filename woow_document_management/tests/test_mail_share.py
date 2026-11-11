@@ -5,6 +5,7 @@ import secrets
 from datetime import timedelta
 
 from odoo import Command, fields
+from odoo.addons.mail.tests.common import MockEmail
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import TransactionCase, tagged
 from odoo.tools.sql import column_exists
@@ -259,3 +260,64 @@ class TestShareMail(TransactionCase):
         event = self.env['woow.document.log'].sudo().search([
             ('share_id', '=', share.id), ('event', '=', 'share_expire')])
         self.assertEqual(len(event), 1)
+
+
+@tagged('woow_docmgmt_share_mail')
+class TestShareMailTokenCopies(TransactionCase, MockEmail):
+    """A share link exists only in the queued mail, which only system administrators read."""
+
+    def setUp(self):
+        super().setUp()
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.share_link_base_url', 'https://docs.example.test')
+        group = self.env.ref('woow_document_management.group_woow_document_user')
+        manager_group = self.env.ref('woow_document_management.group_woow_document_manager')
+        self.creator = self.env['res.users'].sudo().create({
+            'name': 'Token creator', 'login': 'wdoc-token-creator',
+            'email': 'token-creator@example.test', 'groups_id': [Command.set([group.id])]})
+        self.administrator = self.env['res.users'].sudo().create({
+            'name': 'Document administrator', 'login': 'wdoc-token-docadmin',
+            'email': 'token-docadmin@example.test',
+            'groups_id': [Command.set([manager_group.id])]})
+        self.assertFalse(self.administrator.has_group('base.group_system'))
+        self.folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Token folder', 'owner_id': self.creator.id})
+
+    def _send(self):
+        wizard = self.env['woow.document.share.wizard'].with_user(self.creator).create({
+            'share_type': 'folder', 'folder_id': self.folder.id,
+            'recipient_emails': 'token-reader@example.test',
+            'expire_at': fields.Datetime.now() + timedelta(days=2)})
+        link = wizard.action_create_links()['params']['links'][0]
+        share = self.env['woow.document.share'].sudo().search(
+            [('folder_id', '=', self.folder.id)], limit=1)
+        return share, link
+
+    def test_document_administrator_cannot_read_a_queued_link(self):
+        share, link = self._send()
+        token = link.split('#', 1)[1]
+        mail = self.env['mail.mail'].sudo().search([
+            ('model', '=', 'woow.document.share'), ('res_id', '=', share.id)])
+        self.assertEqual(len(mail), 1)
+        self.assertIn(token, mail.body_html)
+        for user in (self.administrator, self.creator):
+            with self.subTest(user=user.login):
+                rows = self.env['mail.message'].with_user(user).search_read(
+                    [('model', '=', 'woow.document.share'), ('res_id', '=', share.id)],
+                    ['body'])
+                self.assertNotIn(token, repr(rows))
+                self.assertNotIn('/woow-docs/s#', repr(rows))
+        self.assertNotIn(token, mail.mail_message_id.sudo().body or '')
+
+    def test_no_token_left_after_queue_processed(self):
+        share, link = self._send()
+        token = link.split('#', 1)[1]
+        mail = self.env['mail.mail'].sudo().search([
+            ('model', '=', 'woow.document.share'), ('res_id', '=', share.id)])
+        message = mail.mail_message_id
+        with self.mock_mail_gateway(mail_unlink_sent=True):
+            mail.send()
+        self.assertEqual(len(self._mails), 1)
+        self.assertIn(token, self._mails[0]['body'])
+        self.assertFalse(mail.exists())
+        self.assertFalse(message.exists())

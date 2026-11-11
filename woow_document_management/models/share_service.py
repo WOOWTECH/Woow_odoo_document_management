@@ -313,6 +313,12 @@ class WoowDocumentShareService(models.Model):
             email_values={'email_to': self.recipient_email, 'recipient_ids': [],
                           'email_from': sender, 'auto_delete': True},
             email_layout_xmlid='mail.mail_notification_light')
+        # Core copies the rendered mail into the queued mail's parent message, which
+        # anyone who reads the share may read. Only the system-only mail.mail keeps
+        # the link (HD-08); the sender is the author and may clear the copy.
+        self.env['mail.message'].search([
+            ('model', '=', self._name), ('res_id', '=', self.id),
+            ('message_type', '=', 'email_outgoing')]).write({'body': ''})
         self.env['woow.document.log']._log_event(
             'share_send', channel=self._woow_log_channel(), share_id=self.id,
             company_id=self.company_id.id)

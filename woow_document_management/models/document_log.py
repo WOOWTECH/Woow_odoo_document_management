@@ -22,6 +22,8 @@ SOURCE_LIMITED_EVENTS = ('share_access', 'share_unlock_failed')
 # event is kept per (event, source, minute), whichever share it names.
 UNBUDGETED_EVENTS = ('share_unlock_failed',)
 USER_AGENT_SIZE = 256
+# Longest id list one audit row may carry: a folder has at most this many members.
+DETAIL_LIST_MAX = 500
 _EVENT_LABELS = {
     'view': 'Previewed', 'download': 'Downloaded', 'zip': 'Downloaded as ZIP',
     'upload': 'Uploaded', 'replace': 'File replaced', 'trash': 'Moved to trash',
@@ -169,7 +171,8 @@ class WoowDocumentLog(models.Model):
         if not isinstance(detail, dict) or any(
                 not isinstance(key, str) or not key.isidentifier() or len(key) > 32 or
                 not (type(value) in (int, bool) or
-                     isinstance(value, list) and all(type(item) is int for item in value))
+                     isinstance(value, list) and len(value) <= DETAIL_LIST_MAX and
+                     all(type(item) is int for item in value))
                 for key, value in detail.items()):
             raise ValueError('audit detail must contain only numeric values')
         for value in (user_id, partner_id, share_id, document_id, folder_id, company_id):

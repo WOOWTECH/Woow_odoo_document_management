@@ -70,30 +70,40 @@ class WoowDocumentFolderAccess(models.Model):
                 detail={'member_id': line.id})
         return lines
 
+    def _members_by_folder(self):
+        """{folder: ids of the lines in self that belong to it}, in a stable order."""
+        members = {}
+        for line in self:
+            members.setdefault(line.folder_id, []).append(line.id)
+        return members
+
+    def _log_member_change(self, members):
+        """One access_change row per folder, naming only that folder's lines."""
+        for folder, line_ids in members.items():
+            self.env['woow.document.log']._log_event(
+                'access_change', channel=self._woow_log_channel(),
+                folder_id=folder.id, company_id=folder.company_id.id,
+                detail={'member_ids': sorted(set(line_ids))})
+
     def write(self, vals):
         if vals.get('folder_id'):
             self._lock_folders([vals['folder_id']])
             if not self.env.su:
                 self.env['woow.document.folder'].browse(vals['folder_id'])._woow_require_rank(4)
-        old_folders = self.mapped('folder_id') if vals else self.env['woow.document.folder']
+        before = self._members_by_folder() if vals else {}
         result = super().write(vals)
         if vals:
-            for folder in (old_folders | self.mapped('folder_id')):
-                self.env['woow.document.log']._log_event(
-                    'access_change', channel=self._woow_log_channel(),
-                    folder_id=folder.id, company_id=folder.company_id.id,
-                    detail={'member_ids': self.ids})
+            # A moved line is named on the folder it left and on the one it joined.
+            members = {folder: list(line_ids) for folder, line_ids in before.items()}
+            for folder, line_ids in self._members_by_folder().items():
+                members.setdefault(folder, []).extend(line_ids)
+            self._log_member_change(members)
         return result
 
     def unlink(self):
-        folders = self.mapped('folder_id')
-        line_ids = self.ids
+        members = self._members_by_folder()
         result = super().unlink()
-        for folder in folders:
-            self.env['woow.document.log']._log_event(
-                'access_change', channel=self._woow_log_channel(),
-                folder_id=folder.id, company_id=folder.company_id.id,
-                detail={'member_ids': line_ids})
+        self._log_member_change(members)
         return result
 
     def init(self):
