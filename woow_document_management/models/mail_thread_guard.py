@@ -43,7 +43,8 @@ def _deny_field_attachments(records, attachment_ids):
 def _recipient_scope(records):
     """Groups and companies the access rules need, for the accounts being notified."""
     env = records.env
-    return {'user': env.ref(_USER).id, 'manager': env.ref(_MANAGER).id}
+    return {'user': env.ref(_USER).id, 'manager': env.ref(_MANAGER).id,
+            'portal': env.ref('base.group_portal').id}
 
 
 def _readers_only(record, recipients, message, msg_vals):
@@ -140,15 +141,19 @@ class WoowDocumentThreadGuard(models.Model):
         return self.env['woow.document.folder']._woow_user_companies(user_ids)
 
     def _woow_recipient_reads(self, data, scope):
-        """Whether the notified account passes the document read rules (no identity switch)."""
+        """Whether the notified account passes the document read rules (no identity switch).
+
+        The company rule R-D0 has no groups, so portal accounts are held to it as
+        well; R-D5 is the portal group's rule.
+        """
         if scope.get('missing'):
             return False
         uid, groups = data['uid'], set(data.get('groups') or ())
-        if data.get('ushare'):
-            return scope['active'] and not scope['folder_in_trash'] and (
-                data['id'] in scope['read_partners'] or data['id'] in scope['shared_partners'])
         if scope['company'] and scope['company'] not in scope['companies'].get(uid, ()):
             return False
+        if data.get('ushare'):
+            return scope['portal'] in groups and scope['active'] and not scope['folder_in_trash'] \
+                and (data['id'] in scope['read_partners'] or data['id'] in scope['shared_partners'])
         if scope['manager'] in groups:
             return True
         if scope['user'] not in groups or scope['folder_in_trash']:
@@ -262,14 +267,19 @@ class WoowDocumentFolderThreadGuard(models.Model):
         return {user_id: set(companies) for user_id, companies in self.env.cr.fetchall()}
 
     def _woow_recipient_reads(self, data, scope):
-        """Whether the notified account passes the folder read rules (no identity switch)."""
+        """Whether the notified account passes the folder read rules (no identity switch).
+
+        The company rule R-F0 has no groups, so portal accounts are held to it as
+        well; R-F5 is the portal group's rule.
+        """
         if scope.get('missing'):
             return False
         uid, groups = data['uid'], set(data.get('groups') or ())
-        if data.get('ushare'):
-            return not scope['in_trash'] and data['id'] in scope['read_partners']
         if scope['company'] and scope['company'] not in scope['companies'].get(uid, ()):
             return False
+        if data.get('ushare'):
+            return scope['portal'] in groups and not scope['in_trash'] \
+                and data['id'] in scope['read_partners']
         if scope['manager'] in groups:
             return True
         if scope['user'] not in groups:

@@ -465,8 +465,50 @@ class TestRevokedFollowersAreNotNotified(TransactionCase, MockEmail):
         child.sudo().write({'parent_id': self.other.id})
         self.assertEqual(self._notified(child)[0], self.manager.partner_id | self.contact)
 
+    def _portal_user(self, login, **extra):
+        partner = self.env['res.partner'].sudo().create({
+            'name': login, 'email': '%s@example.test' % login})
+        return self.env['res.users'].sudo().create(dict({
+            'name': login, 'login': login, 'partner_id': partner.id,
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])]}, **extra))
+
+    def _other_company(self):
+        """A folder and a document of company B, granted to followers of both companies.
+
+        ``self.portal`` and ``self.member`` belong to company A only, so the company
+        rules R-F0 and R-D0 keep them out although they are folder members.
+        """
+        company_a = self.env.company
+        company_b = self.env['res.company'].sudo().create({'name': 'Follow company B'})
+        both = _document_user(self.env, 'wdoc-follow-both-companies', company_ids=[
+            Command.set([company_a.id, company_b.id])])
+        portal_b = self._portal_user('wdoc-follow-portal-b', company_id=company_b.id,
+                                     company_ids=[Command.set([company_b.id])])
+        folder_b = self.env['woow.document.folder'].sudo().create({
+            'name': 'Follow folder B', 'company_id': company_b.id, 'owner_id': False})
+        self.env['woow.document.folder.access'].sudo().create([
+            {'folder_id': folder_b.id, 'subject_type': 'partner',
+             'partner_id': self.portal_partner.id, 'level': 'read'},
+            {'folder_id': folder_b.id, 'subject_type': 'partner',
+             'partner_id': portal_b.partner_id.id, 'level': 'read'},
+            {'folder_id': folder_b.id, 'subject_type': 'user', 'user_id': self.member.id,
+             'level': 'read'},
+            {'folder_id': folder_b.id, 'subject_type': 'user', 'user_id': both.id,
+             'level': 'read'}])
+        document_b = self.env['woow.document'].sudo().create({
+            'name': 'follow-b.txt', 'folder_id': folder_b.id,
+            'datas': base64.b64encode(b'company B')})
+        document_b.sudo().write({'shared_partner_ids': [Command.set([self.portal_partner.id])]})
+        return company_b, both, portal_b, folder_b, document_b
+
     def test_follower_filter_matches_the_record_rules(self):
-        """The rule mirror used for notifications agrees with has_access for every account."""
+        """The rule mirror used for notifications agrees with has_access for every account.
+
+        Covers per-user and group grants, an archived document, a trashed folder and
+        its document, a document shared directly with a portal contact (and with the
+        contact of a public account, which no portal rule covers), and a second
+        company whose company rule also applies to portal accounts.
+        """
         from ..models.mail_thread_guard import _readers_only
         owner = _document_user(self.env, 'wdoc-follow-owner')
         editor = _document_user(self.env, 'wdoc-follow-editor')
@@ -475,6 +517,17 @@ class TestRevokedFollowersAreNotNotified(TransactionCase, MockEmail):
             'name': 'Follow plain', 'login': 'wdoc-follow-plain', 'email': 'plain@example.test',
             'groups_id': [Command.set([self.env.ref('base.group_user').id])]})
         stranger = _document_user(self.env, 'wdoc-follow-stranger')
+        groups = self.env['res.groups'].sudo()
+        readers, editors = groups.create({'name': 'Follow readers'}), groups.create(
+            {'name': 'Follow editors'})
+        user_group = self.env.ref('woow_document_management.group_woow_document_user')
+        group_reader = _document_user(self.env, 'wdoc-follow-group-reader', groups_id=[
+            Command.set([user_group.id, readers.id])])
+        group_editor = _document_user(self.env, 'wdoc-follow-group-editor', groups_id=[
+            Command.set([user_group.id, editors.id])])
+        portal_shared = self._portal_user('wdoc-follow-portal-shared')
+        public_shared = self._portal_user('wdoc-follow-public-shared', groups_id=[
+            Command.set([self.env.ref('base.group_public').id])])
         access = self.env['woow.document.folder.access'].sudo()
         access.create([
             {'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': owner.id,
@@ -489,13 +542,43 @@ class TestRevokedFollowersAreNotNotified(TransactionCase, MockEmail):
             'name': 'trashed.txt', 'folder_id': self.folder.id, 'owner_id': owner.id,
             'datas': base64.b64encode(b'trashed')})
         trashed.sudo().write({'active': False})
+        folders = self.env['woow.document.folder'].sudo()
+        group_folder = folders.create({'name': 'Follow group folder', 'owner_id': self.admin.id})
+        access.create({'folder_id': group_folder.id, 'subject_type': 'group',
+                       'group_id': readers.id, 'level': 'read'})
+        group_document = self.env['woow.document'].sudo().create({
+            'name': 'group.txt', 'folder_id': group_folder.id,
+            'datas': base64.b64encode(b'group')})
+        trashed_folder = folders.create({'name': 'Follow trashed folder',
+                                         'owner_id': self.admin.id})
+        access.create([
+            {'folder_id': trashed_folder.id, 'subject_type': 'user', 'user_id': self.member.id,
+             'level': 'read'},
+            {'folder_id': trashed_folder.id, 'subject_type': 'partner',
+             'partner_id': self.portal_partner.id, 'level': 'read'},
+            {'folder_id': trashed_folder.id, 'subject_type': 'group', 'group_id': editors.id,
+             'level': 'edit'}])
+        in_trashed_folder = self.env['woow.document'].sudo().create({
+            'name': 'in-trashed-folder.txt', 'folder_id': trashed_folder.id,
+            'datas': base64.b64encode(b'in trashed folder')})
+        trashed_folder.with_user(self.admin).action_trash()
+        shared_with_portal = self.env['woow.document'].sudo().create({
+            'name': 'shared-with-portal.txt', 'folder_id': self.other.id,
+            'datas': base64.b64encode(b'shared with portal')})
+        shared_with_portal.sudo().write({'shared_partner_ids': [Command.set([
+            portal_shared.partner_id.id, public_shared.partner_id.id])]})
+        _company_b, both, portal_b, folder_b, document_b = self._other_company()
+        self.assertTrue(trashed_folder.in_trash and in_trashed_folder.folder_in_trash)
         users = (self.member | self.manager | self.portal | owner | editor | shared | plain |
-                 stranger)
-        records = (self.folder, self.document, owned, trashed)
+                 stranger | group_reader | group_editor | portal_shared | public_shared | both |
+                 portal_b)
+        records = (self.folder, self.document, owned, trashed, group_folder, group_document,
+                   trashed_folder, in_trashed_folder, shared_with_portal, folder_b, document_b)
         for record in records:
             record.sudo().message_subscribe(partner_ids=users.partner_id.ids)
         self.env.flush_all()
         subtype = self.env.ref('mail.mt_comment').id
+        readable = set()
         for record in records:
             data = self.env['mail.followers']._get_recipient_data(
                 record, 'comment', subtype)[record.id]
@@ -504,7 +587,56 @@ class TestRevokedFollowersAreNotNotified(TransactionCase, MockEmail):
                 record.with_user(self.admin), recipients, self.env['mail.message'],
                 {'partner_ids': []})}
             for user in users:
+                reads = record.with_user(user).with_context(active_test=False).has_access('read')
+                if reads:
+                    readable.add((record, user))
                 with self.subTest(record=record.display_name, user=user.login):
-                    self.assertEqual(user.partner_id.id in kept,
-                                     record.with_user(user).with_context(
-                                         active_test=False).has_access('read'))
+                    self.assertEqual(user.partner_id.id in kept, reads)
+        # The fixtures reach both answers on every kind of grant.
+        for record, user, reads in (
+                (folder_b, both, True), (document_b, portal_b, True),
+                (folder_b, self.portal, False), (document_b, self.portal, False),
+                (folder_b, self.member, False), (folder_b, self.manager, False),
+                (group_folder, group_reader, True), (group_document, group_reader, True),
+                (trashed_folder, group_editor, True), (in_trashed_folder, group_editor, False),
+                (trashed_folder, self.member, False), (trashed_folder, self.portal, False),
+                (shared_with_portal, portal_shared, True), (shared_with_portal, self.portal, False),
+                (shared_with_portal, public_shared, False)):
+            with self.subTest(expected=record.display_name, user=user.login):
+                self.assertEqual((record, user) in readable, reads)
+
+    def test_followers_outside_the_record_company_are_not_notified(self):
+        """Posting on a company B folder or document mails no follower who is only in company A.
+
+        The company rule has no groups, so it applies to portal accounts as well: a
+        portal member of the folder (and the contact a document is shared with) whose
+        account is only in company A gets nothing, like internal members and
+        administrators of company A.
+        """
+        company_b, both, portal_b, folder_b, document_b = self._other_company()
+        poster = _document_user(self.env, 'wdoc-follow-poster', company_ids=[
+            Command.set([self.env.company.id, company_b.id])], groups_id=[Command.set([
+                self.env.ref('woow_document_management.group_woow_document_manager').id])])
+        followers = self.followers | both.partner_id | portal_b.partner_id
+        company_a_only = self.portal_partner | self.member.partner_id | self.manager.partner_id
+        for record in (folder_b, document_b):
+            record.sudo().message_subscribe(partner_ids=followers.ids)
+        self.env.flush_all()
+        for record in (folder_b, document_b):
+            with self.subTest(model=record._name):
+                self.assertFalse(record.with_user(self.portal).has_access('read'))
+                with self.mock_mail_gateway():
+                    message = record.with_user(poster).message_post(
+                        body='Company B update', message_type='comment',
+                        subtype_xmlid='mail.mt_comment')
+                self.env.flush_all()
+                mailed = {address for mail in self._mails for address in mail['email_to']}
+                self.assertFalse(self.env['mail.notification'].sudo().search_count([
+                    ('mail_message_id', '=', message.id),
+                    ('res_partner_id', 'in', company_a_only.ids)]))
+                self.assertEqual(message.sudo().notification_ids.res_partner_id,
+                                 both.partner_id | portal_b.partner_id | self.contact)
+                self.assertFalse(any('follow-portal@example.test' in address
+                                     for address in mailed))
+                self.assertTrue(any('wdoc-follow-portal-b@example.test' in address
+                                    for address in mailed))

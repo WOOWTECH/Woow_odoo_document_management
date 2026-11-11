@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 121,
+    "core": 122,
     "files": 71,
     "portal": 2,
     "share": 33
@@ -24,7 +24,7 @@
     "test_internal_routes.py": 5,
     "test_locks.py": 6,
     "test_mail_share.py": 6,
-    "test_mail_thread_guard.py": 17,
+    "test_mail_thread_guard.py": 18,
     "test_naming.py": 4,
     "test_native_routes.py": 3,
     "test_portal_routes.py": 2,
