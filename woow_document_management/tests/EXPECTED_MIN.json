@@ -1,14 +1,14 @@
 {
   "batches": {
-    "core": 122,
-    "files": 84,
+    "core": 123,
+    "files": 93,
     "portal": 2,
-    "share": 34
+    "share": 35
   },
   "files": {
     "test_add_attachment.py": 4,
     "test_attachment_guard.py": 13,
-    "test_audit_log.py": 18,
+    "test_audit_log.py": 25,
     "test_backend_views.py": 2,
     "test_backend_wizards.py": 4,
     "test_ca21_tour.py": 1,
@@ -17,7 +17,7 @@
     "test_core_assumptions_access.py": 9,
     "test_core_assumptions_http.py": 9,
     "test_core_models.py": 25,
-    "test_cron.py": 6,
+    "test_cron.py": 7,
     "test_display_name_folding.py": 2,
     "test_folding_service.py": 4,
     "test_i18n_complete.py": 1,
@@ -32,9 +32,9 @@
     "test_record_rules.py": 4,
     "test_security_acl.py": 8,
     "test_settings_bounds.py": 9,
-    "test_share_routes.py": 33,
+    "test_share_routes.py": 34,
     "test_share_token.py": 3,
-    "test_trash_lifecycle.py": 25,
+    "test_trash_lifecycle.py": 27,
     "test_uninstall.py": 3,
     "test_upload_policy.py": 10,
     "test_url_policy.py": 4,
