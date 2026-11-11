@@ -30,10 +30,17 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   *(text pending)*
 - **HD-05** The "restricted subfolder" flag is visible so that subtrees cannot be trashed blindly.
   *(text pending)*
-- **HD-06** Rate limiting depends on the client IP. Per-source limits count only refused requests,
-  so they never block a valid link or an unlocked session; when the site-wide per-minute capacity
-  for refused-request records is used up, every public share request is answered with 429 until
-  the minute ends. *(text pending)*
+- **HD-06** Rate limiting depends on the client IP; an IPv6 /64 counts as one source. Per-source
+  limits count refused link requests and wrong passwords, each up to the per-minute limit. They
+  never refuse opening a valid link or using an unlocked session, but once a source has used its
+  per-minute limit of wrong passwords, its password attempts on every link, including a correct
+  one, are answered with 429 until the minute ends. The site keeps a per-minute capacity for the
+  records of refused link requests: each new per-source counter and each new audit record (kept
+  per source, link and minute) uses one slot. Wrong passwords use none, since each link counts at
+  most 50 of them per hour. When the capacity is used up, a source's first refused request of the
+  minute is answered with 429 and not recorded, later refused requests of sources already counted
+  still count, and valid links, unlocked sessions and password attempts are not affected.
+  *(text pending)*
 - **HD-07** The portal folder write right is only an upload probe; real writes are refused.
   *(text pending)*
 - **HD-08** A queued share mail containing a link exists in the database until it is sent, or for
