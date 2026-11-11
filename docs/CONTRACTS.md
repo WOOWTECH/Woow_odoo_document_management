@@ -82,7 +82,7 @@
 | L2 upload-quota | `W/models/upload_policy.py`、`W/models/quota.py`、`W/services/naming.py`、`W/services/mime_map.py`、`W/services/locks.py`、`W/tests/test_upload_policy.py`、`test_naming.py`、`test_quota.py`、`test_locks.py` |
 | L3 core-models-acl | `W/models/guard_mixin.py`、`document_folder.py`、`folder_access.py`、`document.py`、`document_tag.py`、`document_share.py`、`document_log.py`、`ir_attachment.py`、`mail_thread_guard.py`、`W/hooks.py`、`W/services/constants.py`、`folding.py`、`url_policy.py`、`W/security/ir.model.access.csv`、`rules.xml`、`W/data/admin_assignment.xml`、`W/views/safe_url_templates.xml`、`W/tests/test_core_models.py`、`test_security_acl.py`、`test_multicompany.py`、`test_attachment_guard.py`、`test_mail_thread_guard.py`、`test_uninstall.py`、`test_display_name_folding.py`、`test_folding_service.py`、`test_url_policy.py`、`dev/sc/sc_uninstall.py` |
 | L4 internal-routes-zip | `W/controllers/streaming.py`、`W/controllers/main.py`、`W/services/zip_builder.py`、`W/models/zip_actions.py`、`W/views/common_templates.xml`、`W/tests/test_zip_builder.py`、`test_internal_routes.py`、`test_native_routes.py` |
-| L5 share | `W/models/share_service.py`、`W/services/tokens.py`、`W/wizards/share_wizard.py`、`W/views/wizards/share_wizard_views.xml`、`W/views/share_views.xml`、`W/views/share_templates.xml`、`W/controllers/share.py`、`W/static/src/share/**`、`W/static/src/share_result/**`、`W/static/tests/tours/share/**`、`W/data/mail_templates.xml`、`W/security/share_access.xml`、`W/tests/test_share_token.py`、`test_share_routes.py`、`test_mail_share.py`、`dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py` |
+| L5 share | `W/models/share_service.py`、`W/services/tokens.py`、`W/wizards/share_wizard.py`、`W/views/wizards/share_wizard_views.xml`、`W/views/share_views.xml`、`W/views/share_templates.xml`、`W/controllers/share.py`、`W/static/src/share/**`、`W/static/src/share_result/**`、`W/static/tests/tours/share/**`、`W/data/mail_templates.xml`、`W/security/share_access.xml`、`W/tests/test_share_token.py`、`test_share_routes.py`、`test_mail_share.py`、`dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py`、`dev/sc/sc_source_limit_two_links.py`、`dev/sc/sc_http_runtime.py` |
 | L6 trash-audit-cron | `W/models/trash_actions.py`、`W/models/cron_jobs.py`、`W/wizards/restore_wizard.py`、`purge_wizard.py`、`W/views/wizards/restore_wizard_views.xml`、`purge_wizard_views.xml`、`W/security/trash_access.xml`、`W/data/ir_cron.xml`、`W/tests/test_trash_lifecycle.py`、`test_audit_log.py`、`test_cron.py`、`dev/sc/sc_purge_skip_locked.py` |
 | L7 portal | `W/controllers/portal.py`、`W/views/portal_templates.xml`、`W/static/src/portal/**`、`W/tests/test_portal_routes.py`、`test_portal_upload.py` |
 | L8 backend-ui | `W/views/backend/{folder,document,tag,trash,log,attachment_overview}_views.xml`、`W/views/menus.xml`、`W/views/wizards/{move,add_attachment,notify}_wizard_views.xml`、`W/wizards/{move,add_attachment,notify}_wizard.py`、`W/models/backend_actions.py`、`W/security/backend_access.xml`、`W/static/src/{backend,scss,img}/**`、`W/static/description/**`、`W/static/tests/tours/backend/**`、`W/tests/test_attachment_overview.py`、`test_add_attachment.py`、`test_backend_views.py`、`test_backend_wizards.py` |
@@ -1341,7 +1341,7 @@ class WoowDocumentPortal(CustomerPortal):
    - 上線時間：在 GM7 的 `/approve` 之前，而且在 G6 之前。
 8. **`docs/release/v18.0.1.0.0.md` 欄位**：
    - G0～G5、G1-CA、G1-COV（`sha256:` digest、百分比、各目錄的數字）、G-IP、G-COOKIE、G-CACHE；
-   - SC 執行紀錄：T-SHARE-32、44（L5），T-TRASH-10（L6），T-UNINST-03、05（L3），sc_ca*（L11）。
+   - SC 執行紀錄：T-SHARE-32、44、45（L5），T-TRASH-10（L6），T-UNINST-03、05（L3），sc_ca*（L11）。
    - 不寫站名、筆數和主機名稱；registry 只寫 `sha256:` 開頭的 digest（ER-47.9）。
 9. **repo 外的檔案**：`ops/release/{owner-actions,g6-runbook,g6-record}.md`、`site-values.patch`、`ops/g-cache/{ruleset.json,apply.sh,verify.sh}`、`ops/g-ip/verify.sh`、`ops/g-cookie/verify.sh`、`ops/residual-check/**`（T-REL-06，唯讀，只印計數）。
 
@@ -1772,7 +1772,7 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | test_share_token.py | L5 | T-SHARE-01～11 |
 | test_share_routes.py | L5 | T-SHARE-20～31、33～43；T-MC-04 |
 | test_mail_share.py | L5 | T-SHARE-12、50～57 |
-| `dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py` | L5 | T-SHARE-32、44 |
+| `dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py`、`dev/sc/sc_source_limit_two_links.py` | L5 | T-SHARE-32、44、45 |
 | test_trash_lifecycle.py | L6 | T-TRASH-01～08、13 |
 | test_cron.py | L6 | T-TRASH-09、11、12 |
 | `dev/sc/sc_purge_skip_locked.py` | L6 | T-TRASH-10 |
@@ -1928,3 +1928,6 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-10 | G4 修正 | **分享精靈密碼**：`password` 改為不儲存的 compute 欄位，create / write 立即雜湊到 `password_hash`；`_issue` 接受精靈已雜湊的值，不重複 hash；`init()` 以固定 DDL（Q3）刪除舊 schema 的明文欄。 |
 | 2026-11-10 | G4 修正 | **改名政策**：`WoowDocument.write` 只改 `name` 時呼叫 `upload_policy._validate_rename`：所有文件套 `sanitize_filename`；binary 文件另要求副檔名在允許清單、不在禁用清單且與儲存的 MIME 一致；url 文件只套名稱規則。名稱未變或寫入其他欄位不檢查，既有資料不批次更名。 |
 
+| 2026-11-11 | G4 修正 | **拒絕紀錄容量**：每分鐘新增的拒絕紀錄列（事件 bucket 與來源計數列合計）最多 `MAX_DENIED_ROWS_PER_MIN`（1024）列，由 `woow.document.denied.budget` 的分鐘列以 upsert 配給（Q14）；已存在的列不再占用。本分鐘容量用盡時，分享入口一律回 429（Q15），直到下一分鐘，這段時間有效連結也收到 429（HD-06）。`_cron_log_retention` 一併刪除兩天前的分鐘計數列。 |
+| 2026-11-11 | G4 修正 | **來源限流計數**：`_count_denied_across_shares` 改讀 `woow.document.denied.counter` 的（事件、IP 摘要、分鐘）列，先 `INSERT … ON CONFLICT DO NOTHING` 再 `SELECT … FOR UPDATE` 鎖定（Q13）。Repeatable Read 下，若另一交易在本交易快照之後建立或改了這一列，本交易會得到 serialization_failure，由 Odoo 以新快照重試，不會用舊的計數放行；新來源已無容量時回傳 None，呼叫端回 429。`_log_event` 記 `share_access`、`share_unlock_failed` 的 denied 時在同一交易內把計數加一，計數恆等於該來源各 bucket 的 count 總和。限流判斷（取代 §8.4「限流判斷」與 §10.3 `_share_entry` 第一點）：`_denied` 先讀來源計數，已達 `denied_rate_per_min` 就記一筆不帶 share_id 的 `rate_limited` 並回 429，不再新增事件 bucket；未達才記 denied 並回 404。 |
+| 2026-11-11 | G4 修正 | **密碼解鎖**：`share_unlock` 先以 `_lock_password_attempts` 取 `share:<id>` 鎖並更新 share 列（Q12 列版本屏障），再鎖來源計數；來源跨分享上限、同分享同 IP 冷卻、同分享每小時上限都在比對密碼之前判斷。列鎖順序：share 列 → 來源計數列 → 全域容量列 → 事件 bucket。SC：T-SHARE-44 改為先在複製的 DB 安裝模組，期望 10 次 404、1 次 429、share_access bucket 10、`rate_limited` 1、來源計數 10；新增 T-SHARE-45（`dev/sc/sc_source_limit_two_links.py`）：同一來源兩個用戶端同時對兩個連結猜密碼，比對過的猜測恰為上限 3。真 HTTP 的 SC 以資料庫時鐘對齊分鐘，跨分鐘的那一輪清空計數後重跑一次。 |

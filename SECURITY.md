@@ -30,8 +30,10 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   *(text pending)*
 - **HD-05** The "restricted subfolder" flag is visible so that subtrees cannot be trashed blindly.
   *(text pending)*
-- **HD-06** Rate limiting depends on the client IP; valid links are never rate limited.
-  *(text pending)*
+- **HD-06** Rate limiting depends on the client IP. Per-source limits count only refused requests,
+  so they never block a valid link or an unlocked session; when the site-wide per-minute capacity
+  for refused-request records is used up, every public share request is answered with 429 until
+  the minute ends. *(text pending)*
 - **HD-07** The portal folder write right is only an upload probe; real writes are refused.
   *(text pending)*
 - **HD-08** A queued share mail containing a link exists in the database until it is sent, or for
