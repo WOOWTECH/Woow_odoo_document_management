@@ -18,6 +18,9 @@ from ..services.locks import LockBusy
 from ..services.zip_builder import ZipLimitExceeded
 from . import streaming
 
+# The largest value of a PostgreSQL integer column such as ``id``.
+_MAX_DB_ID = 2**31 - 1
+
 
 class ShareAccess(NamedTuple):
     share_sudo: object
@@ -191,7 +194,13 @@ class WoowDocShareController(http.Controller):
             return access
         try:
             share = access.share_sudo
-            docs = share._scope_documents(access.scope_env, [('id', '=', document_id)])
+            # The id comes from the URL, and a search compares it with an integer
+            # column: past the column's range the database fails and the request
+            # would answer 500. Such an id matches nothing, so it is refused and
+            # counted like any other id the link does not cover.
+            docs = access.scope_env['woow.document']
+            if 0 < document_id <= _MAX_DB_ID:
+                docs = share._scope_documents(access.scope_env, [('id', '=', document_id)])
             if len(docs) != 1 or docs.document_type != 'binary':
                 return self._denied(access.ip)
             if not share._download_slot_available(access.scope_env):
