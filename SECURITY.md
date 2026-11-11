@@ -42,7 +42,9 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   link counts at most 50 of them per hour. When the capacity is used up, a source's first refused
   request of the minute is answered with 429 and not recorded, later refused requests of sources
   already counted still count, and valid links, unlocked sessions and password attempts are not
-  affected.
+  affected. The same applies when the second database connection that reserves a slot cannot be
+  had in time (a full connection pool or a long wait, see Deployment notes): the answer is 429,
+  never a server error.
   *(text pending)*
 - **HD-07** The portal folder write right is only an upload probe; real writes are refused.
   *(text pending)*
@@ -58,6 +60,23 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   *(text pending)*
 - **HD-12** Chatter attachments keep Odoo's native content-type rules; every streamed response
   carries a `default-src 'none'` content security policy. *(text pending)*
+
+## Deployment notes
+
+- **Database connections.** Reserving a capacity slot for a refused link request (HD-06) uses a
+  short second database transaction, so such a request can need two connections of the
+  `db_maxconn` pool at the same moment. The addon keeps at most `db_maxconn // 32` of these
+  reservations (at least one) open at a time in a process and makes the others wait up to half
+  a second, so they cannot take the connections that the other requests need. Run Odoo with
+  prefork workers (`workers` greater than 0), where each worker serves one request at a time.
+  With `workers = 0`, limit the threads: set `ODOO_MAX_HTTP_THREADS` in the server's environment
+  to an integer of at most `(db_maxconn - max_cron_threads) // 2`, or to any non-integer value
+  such as `auto`, which makes Odoo use that number. Without a limit a threaded server accepts
+  more simultaneous requests than the pool has connections, and a burst of requests can leave
+  any route, valid share links included, without a connection (a limit of Odoo itself, not
+  specific to this addon). When the second connection or its turn is not available the addon
+  answers a new source's first refused request of the minute with 429 and records nothing; it
+  does not answer with a server error.
 
 ## Known limitations (pending owner decisions)
 
