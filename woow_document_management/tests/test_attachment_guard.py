@@ -252,6 +252,20 @@ class TestDocumentFileAttachment(TransactionCase):
         with self.assertRaises(MissingError):
             self._streamed_bytes(self.reader)
 
+    def test_a_file_kept_in_the_database_streams_from_its_own_row(self):
+        """Sites that store attachments in the database stream the recorded row as data."""
+        self.env['ir.config_parameter'].sudo().set_param('ir_attachment.location', 'db')
+        self.document = self.env['woow.document'].sudo().create({
+            'name': 'kept-in-db.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(b'DATABASE-BYTES')})
+        self.env.flush_all()
+        recorded = self.document.sudo().attachment_id
+        self.assertFalse(recorded.store_fname)
+        stream = self.env['ir.binary'].with_user(self.reader)._record_to_stream(
+            self.document.with_user(self.reader), 'datas')
+        self.assertEqual((stream.type, stream.data, stream.size, stream.etag),
+                         ('data', b'DATABASE-BYTES', 14, recorded.checksum))
+
 
 @tagged('woow_docmgmt_core')
 class TestDocumentFileRoutes(HttpCase):
