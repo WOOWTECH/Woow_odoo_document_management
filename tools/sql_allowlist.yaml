@@ -64,7 +64,7 @@ entries:
 - id: Q14
   file: woow_document_management/models/document_log.py
   functions: [_take_slot]
-  note: per-minute denied record capacity with a saturated counter, reserved in its own short read committed transaction for the calling transaction's minute
+  note: per-minute denied record capacity; refused at once when the calling transaction's snapshot shows the minute full, otherwise one slot reserved in its own short read committed transaction for the calling transaction's minute, never past the maximum
 - id: Q16
   file: woow_document_management/models/document_log.py
   functions: [_denied_bucket_exists]
