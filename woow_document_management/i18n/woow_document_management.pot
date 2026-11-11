@@ -179,6 +179,11 @@ msgid "Activities"
 msgstr ""
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_mail_activity
+msgid "Activity"
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_exception_decoration
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_exception_decoration
 msgid "Activity Exception Decoration"
@@ -230,6 +235,14 @@ msgstr ""
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Allow document users to create root folders"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid ""
+"Another folder in this location already uses this name. Pick a different "
+"name."
 msgstr ""
 
 #. module: woow_document_management
@@ -727,6 +740,14 @@ msgid ""
 msgstr ""
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid ""
+"Document storage on this site is full, so new files can't be added. Ask "
+"your administrator to free up space or raise the limit."
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_quota
 msgid "Document storage quota"
 msgstr ""
@@ -762,6 +783,18 @@ msgstr ""
 #. module: woow_document_management
 #: model:ir.module.category,name:woow_document_management.module_category_woow_document
 msgid "Documents (WoowTech)"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "Documents and folders do not accept this email."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "Documents cannot be created from email."
 msgstr ""
 
 #. module: woow_document_management
@@ -886,6 +919,11 @@ msgid "Effective Restored At"
 msgstr ""
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_mail_thread
+msgid "Email Thread"
+msgstr ""
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/share_wizard.py:0
 msgid "Enter valid email addresses."
@@ -941,6 +979,11 @@ msgid "File replaced"
 msgstr ""
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_ir_binary
+msgid "File streaming helper model for controllers"
+msgstr ""
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Files per request"
 msgstr ""
@@ -992,6 +1035,12 @@ msgid "Folders"
 msgstr ""
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "Folders cannot be created from email."
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_follower_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_follower_ids
 msgid "Followers"
@@ -1034,6 +1083,14 @@ msgstr ""
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__has_restricted_descendant
 msgid "Has Restricted Descendant"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid ""
+"Header in which the trusted proxy names the client address. The proxy must "
+"set it on every request and drop any value the client sent; the address "
+"limits failed share link attempts and appears in the audit log."
 msgstr ""
 
 #. module: woow_document_management
@@ -1253,6 +1310,11 @@ msgid "Members changed"
 msgstr ""
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_mail_message
+msgid "Message"
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_error
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_has_error
 msgid "Message Delivery error"
@@ -1308,6 +1370,14 @@ msgstr ""
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__name
 msgid "Name"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid ""
+"Networks of the reverse proxy that connects to Odoo. Only a request coming "
+"directly from one of them may name the client address in the header below. "
+"Leave empty to use the connecting address."
 msgstr ""
 
 #. module: woow_document_management
@@ -1645,6 +1715,12 @@ msgstr ""
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__restored_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__restored_date
 msgid "Restored Date"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "Restricted document"
 msgstr ""
 
 #. module: woow_document_management
@@ -2028,6 +2104,12 @@ msgstr ""
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/ir_binary.py:0
+msgid "The document is unavailable."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/share_service.py:0
 msgid "The documents are unavailable."
 msgstr ""
@@ -2125,6 +2207,12 @@ msgstr ""
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "This attachment cannot be added to the discussion."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "This document field is not available to portal users."
 msgstr ""
@@ -2159,6 +2247,12 @@ msgstr ""
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
 msgid "This folder is empty."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/trash_actions.py:0
+msgid "This item cannot be deleted permanently."
 msgstr ""
 
 #. module: woow_document_management

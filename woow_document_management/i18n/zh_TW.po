@@ -193,6 +193,11 @@ msgid "Activities"
 msgstr "活動"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_mail_activity
+msgid "Activity"
+msgstr "活動"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_exception_decoration
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_exception_decoration
 msgid "Activity Exception Decoration"
@@ -245,6 +250,14 @@ msgstr "允許 HTTP 文件連結"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Allow document users to create root folders"
 msgstr "允許文件使用者建立最上層資料夾"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid ""
+"Another folder in this location already uses this name. Pick a different "
+"name."
+msgstr "這一層已經有同名的資料夾，請換一個名稱。"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_ir_attachment
@@ -741,6 +754,14 @@ msgid ""
 msgstr "本站文件儲存空間已使用 %(pct)s%%，因此無法新增檔案。請管理員釋放空間或提高配額。"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid ""
+"Document storage on this site is full, so new files can't be added. Ask "
+"your administrator to free up space or raise the limit."
+msgstr "本站文件儲存空間已滿，因此無法新增檔案。請管理員釋放空間或提高配額。"
+
+#. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_quota
 msgid "Document storage quota"
 msgstr "文件儲存空間配額"
@@ -777,6 +798,18 @@ msgstr "文件"
 #: model:ir.module.category,name:woow_document_management.module_category_woow_document
 msgid "Documents (WoowTech)"
 msgstr "文件（WoowTech）"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "Documents and folders do not accept this email."
+msgstr "文件和資料夾不接受這封電子郵件。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "Documents cannot be created from email."
+msgstr "無法從電子郵件建立文件。"
 
 #. module: woow_document_management
 #: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_quota_ir_actions_server
@@ -900,6 +933,11 @@ msgid "Effective Restored At"
 msgstr "有效還原時間"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_mail_thread
+msgid "Email Thread"
+msgstr "電子郵件討論串"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/share_wizard.py:0
 msgid "Enter valid email addresses."
@@ -955,6 +993,11 @@ msgid "File replaced"
 msgstr "已取代檔案"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_ir_binary
+msgid "File streaming helper model for controllers"
+msgstr "控制器檔案串流輔助模型"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Files per request"
 msgstr "每次請求的檔案數"
@@ -1006,6 +1049,12 @@ msgid "Folders"
 msgstr "資料夾"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "Folders cannot be created from email."
+msgstr "無法從電子郵件建立資料夾。"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_follower_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_follower_ids
 msgid "Followers"
@@ -1049,6 +1098,15 @@ msgstr "已設定密碼"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__has_restricted_descendant
 msgid "Has Restricted Descendant"
 msgstr "有受限制的下層項目"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid ""
+"Header in which the trusted proxy names the client address. The proxy must "
+"set it on every request and drop any value the client sent; the address "
+"limits failed share link attempts and appears in the audit log."
+msgstr ""
+"受信任的代理伺服器用來標示用戶端位址的標頭。代理伺服器必須在每個請求都設定它，並丟棄用戶端自行送來的值；這個位址用來限制分享連結的失敗嘗試，也會記在稽核紀錄中。"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -1267,6 +1325,11 @@ msgid "Members changed"
 msgstr "成員已變更"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_mail_message
+msgid "Message"
+msgstr "訊息"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_error
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_has_error
 msgid "Message Delivery error"
@@ -1323,6 +1386,14 @@ msgstr "我的活動截止時間"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__name
 msgid "Name"
 msgstr "名稱"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid ""
+"Networks of the reverse proxy that connects to Odoo. Only a request coming "
+"directly from one of them may name the client address in the header below. "
+"Leave empty to use the connecting address."
+msgstr "連線到 Odoo 的反向代理所在的網段。只有直接來自這些網段的請求，才能用下方的標頭指定用戶端位址。留空則使用連線端位址。"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
@@ -1660,6 +1731,12 @@ msgstr "已還原"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__restored_date
 msgid "Restored Date"
 msgstr "還原日期"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "Restricted document"
+msgstr "受限制的文件"
 
 #. module: woow_document_management
 #. odoo-python
@@ -2046,6 +2123,12 @@ msgstr "所選附件無法使用。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/ir_binary.py:0
+msgid "The document is unavailable."
+msgstr "這份文件無法使用。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/share_service.py:0
 msgid "The documents are unavailable."
 msgstr "文件無法使用。"
@@ -2143,6 +2226,12 @@ msgstr "目標資料夾無法使用。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "This attachment cannot be added to the discussion."
+msgstr "這個附件不能加入討論。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "This document field is not available to portal users."
 msgstr "入口網站使用者無法使用此文件欄位。"
@@ -2178,6 +2267,12 @@ msgstr "這個資料夾有入口網站成員。用「傳送訊息」發出的內
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
 msgid "This folder is empty."
 msgstr "此資料夾是空的。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/trash_actions.py:0
+msgid "This item cannot be deleted permanently."
+msgstr "這個項目無法永久刪除。"
 
 #. module: woow_document_management
 #. odoo-python
