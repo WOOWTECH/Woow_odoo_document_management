@@ -8,6 +8,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
 
 from ..services import url_policy
+from ..services.constants import PORTAL_DESCRIPTION_MAX_CHARS
 from .ir_attachment import NO_INDEX_CTX_KEY
 from .quota import LEDGER_KEY, QuotaLedger
 from .upload_policy import WoowUploadRejected
@@ -180,6 +181,11 @@ class WoowDocument(models.Model):
                     raise AccessError(_('File metadata is set by the server.'))
                 if not internal and set(vals) - portal_fields:
                     raise AccessError(_('This document field is not available to portal users.'))
+                if not internal and isinstance(vals.get('description'), str) \
+                        and len(vals['description']) > PORTAL_DESCRIPTION_MAX_CHARS:
+                    # core sanitises the HTML twice per create, and for some markup the cost
+                    # grows with the square of its length
+                    raise WoowUploadRejected('content')
                 if {'source_res_model', 'source_res_id'}.intersection(vals) and not self.env.su \
                         and self.env.context.get(SOURCE_CTX_KEY) is not _SOURCE_SENTINEL:
                     raise AccessError(_('A source can only be set by the attachment wizard.'))

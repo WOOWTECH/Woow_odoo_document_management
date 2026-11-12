@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 212,
+    "core": 217,
     "files": 135,
     "portal": 3,
     "share": 57
@@ -38,6 +38,7 @@
     "test_reg_document_file_not_indexed.py": 1,
     "test_reg_notification_label.py": 4,
     "test_reg_notify_attachments_need_write.py": 8,
+    "test_reg_portal_description_cap.py": 5,
     "test_reg_server_columns_ignore_defaults.py": 22,
     "test_reg_wizard_owner_scope.py": 2,
     "test_rpc_exposure.py": 3,

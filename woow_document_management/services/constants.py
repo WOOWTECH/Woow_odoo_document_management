@@ -54,6 +54,7 @@ ZIP_DEADLINE_S = 90
 ZIP_SPOOL_MAX_BYTES = 32 * MIB
 PIXEL_LIMIT = 50_000_000
 FILENAME_MAX_CHARS = 200
+PORTAL_DESCRIPTION_MAX_CHARS = 2000        # description of a file that a portal contact sends
 SEGMENT_MAX_BYTES = 255
 URL_MAX_LEN = 2048
 LINK_MAX_LEN = 2048                        # ER-12
