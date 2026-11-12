@@ -295,7 +295,7 @@
 | Q5 | `models/quota.py::_bytes_if_new` | arch §6.4 Q5 |
 | Q6 | `models/ir_attachment.py`（守衛） | arch §6.4 Q6 |
 | Q7 | `models/folder_access.py::_check_member` | 在存取交易鎖之下，不經 record rule 數這個資料夾的全部授權列（授權上限的判斷） |
-| Q8 | `models/folder_access.py::_lock_folders` | 新增授權之前，在 Repeatable Read 下強制列版本衝突，讓並行的授權變更序列化 |
+| Q8 | `models/folder_access.py::_lock_folders` | 新增授權之前，在 Repeatable Read 下強制列版本衝突，讓並行的授權變更序列化；非 su 的呼叫者要先過 model 權限、id 的形式與 manage 權限（`_woow_manageable_folders`），之後才取鎖 |
 | Q9 | `models/document_log.py::_count_share_unlock_failures` | 建立者範圍內的分享解鎖失敗次數彙總，不暴露受限的來源雜湊 |
 | Q11 | `models/share_service.py::_woow_send_link` | 每小時寄信次數計數之前，在 Repeatable Read 下先寫寄件者那一列的版本（屏障） |
 | Q12 | `models/share_service.py::_woow_lock_share_row`、`::_woow_count_on_share_row` | 下載次數與錯誤密碼次數計數之前先鎖 share 列（Repeatable Read）；只有計入下載或錯誤密碼時才寫列版本 |
@@ -489,7 +489,7 @@ class WoowDocumentSettings(models.AbstractModel):
 
 | 鍵 | 型別（dataclass） | 預設 | 範圍 | 讀取失敗時 |
 |---|---|---|---|---|
-| trash_retention_days | int | 30 | 0～3650（0＝不自動清除） | 30 |
+| trash_retention_days | int | 30 | 0～3650（0＝不自動清除；core 把設定表單的整數 0 存成沒有值，所以 `set_values` 以字串 `'0'` 寫回） | 30 |
 | share_default_days | int | 14 | 1～share_max_days | 14 |
 | share_max_days | int | 90 | 1～90（ER-17） | 90 |
 | share_link_policy | str | folder_managers | folder_managers、managers_only | managers_only |
@@ -611,7 +611,7 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
 - 驗證不通過 → `WoowUploadRejected`。它是 UserError 的子類別，所以 RPC 會顯示訊息，controller 會接住，再 return 400 JSON。
 - 圖片的寬 × 高超過 `PIXEL_LIMIT` → `'pixels'`。Pillow 開啟圖片時會拿宣告的尺寸和自己的上限比對：超過兩倍上限丟 `Image.DecompressionBombError`（是 `Exception`，不是 `OSError` 或 `ValueError`），超過一倍只警告（警告被設成錯誤時是 `Image.DecompressionBombWarning`）。這兩個也一律是 `'pixels'`，不可往外丟成 500；Pillow 讀不懂的圖片是 `'content'`。
 - 配額鎖逾時 → `locks.LockBusy` 原樣往外丟，由 controller 轉成 503。
-- PNG、JPEG、GIF 的標頭結構在 Pillow 開啟之前先計數（Pillow 以 Python 逐一讀取，有些結構的成本比大小高：GIF 逐段串接註解、JPEG 保留每個應用程式區段、PNG 保留每個私有 chunk）：PNG 計到第一個 IDAT 為止的 chunk、JPEG 計到 SOS 為止的區段、GIF 計到第一個圖像之前的擴充區塊與其子區塊，超過 `IMAGE_MAX_STRUCTURES`（4096），或結構之外的雜訊位元組超過 `IMAGE_MAX_JUNK`（4096）→ `'content'`，不呼叫 `Image.open`。
+- PNG、JPEG、GIF 的標頭結構在 Pillow 開啟之前先計數（Pillow 以 Python 逐一讀取，有些結構的成本比大小高：GIF 逐段串接註解、JPEG 保留每個應用程式區段、PNG 保留每個私有 chunk）：PNG 計到第一個 IDAT 為止的 chunk、JPEG 計到影像結束（EOI）為止的區段與 scan（SOS）、GIF 計到第一個圖像之前的擴充區塊與其子區塊，超過 `IMAGE_MAX_STRUCTURES`（4096），或結構之外的雜訊位元組超過 `IMAGE_MAX_JUNK`（4096）→ `'content'`，不呼叫 `Image.open`。JPEG 的 scan 另有上限 `JPEG_MAX_SCANS`（64；編碼器寫 1、6、10 或 18 個）：解碼器對每個 scan 走過整張圖，Odoo 儲存與縮圖時都會解碼；scan 的資料以一次搜尋跳到下一個標記，EOI 之後的位元組不看。
 - PNG 另有更緊的限制，因為有些 chunk 的成本遠高於大小：Pillow 會解壓色彩設定檔（`iCCP`）和壓縮文字（`zTXt`，以及壓縮的 `iTXt`），每個最多 1 MiB，而幾百位元組就能解成 1 MiB（約 1000 倍），又只限制文字 chunk 的總量（64 MiB，`iCCP` 沒有累計上限）；4000 個約 1 KB 的 `iCCP`（約 4 MB，在每個大小上限之內）會讓 `Image.open` 跑十幾秒。`Image.open` 只讀到第一個 IDAT 為止的 chunk，但 `load()` 讀到 IEND，而 Odoo 儲存附件時會載入 PNG（`ir.attachment` 的後處理讀它的方向或縮圖），所以 IDAT 之後的 chunk 一樣有成本。因此 `_png_structure_ok` 走過整個檔案到 IEND：不是影像資料的 chunk 最多 `PNG_MAX_CHUNKS`（256；一般檔案不到 20 個）個、色彩設定檔最多 `PNG_MAX_PROFILES`（1，PNG 規格只允許一個）個、`zTXt` 加 `iTXt` 最多 `PNG_MAX_COMPRESSED_TEXTS`（16）個；影像資料的 chunk（`IDAT`，動畫的 `fdAT` 與 `fcTL`）沒有固定的個數上限，但函式庫以 Python 逐個讀它們，空的或很小的 chunk 成本遠高於大小，所以個數上限是 `PNG_FREE_IMAGE_CHUNKS`（4096）加上檔案大小每 `PNG_IMAGE_CHUNK_BYTES`（256）位元組一個（額度隨檔案大小成長：一張大圖重切成幾千個小 chunk 仍被接受，同樣個數的空 chunk 放在小檔案裡則被拒絕；這也讓檢查本身走過的 chunk 數有上限）。任何一項超過 → `'content'`，不呼叫 `Image.open`（JPEG 與 GIF 仍用 `IMAGE_MAX_STRUCTURES`）。`tEXt` 的成本等於它的大小（4000 個約 10 毫秒），只受 chunk 總數限制。
 
 ### 7.2 IF-QUOTA：`W/models/quota.py`
@@ -840,7 +840,7 @@ class WoowDocumentGuardMixin(models.AbstractModel):
         """I-10 的唯一入口：
         - vals 有 datas → data = base64.b64decode(datas) → upload.policy._validate(name, data) → 寫入 name 和 mimetype；
         - 非 su 時，client 帶 mimetype、attachment_id、checksum、file_size → AccessError；
-        - 非內部使用者只接受 name、folder_id、datas、description，伺服器設定 uploaded_by_partner_id，強制 tracking_disable；
+        - 非內部使用者只接受 name、folder_id、datas、description，伺服器設定 uploaded_by_partner_id，強制 tracking_disable；description 最多 `PORTAL_DESCRIPTION_MAX_CHARS`（2000）字元，超過 → `WoowUploadRejected('content')`，在配額鎖與寫入之前拒絕（core 對這個 HTML 欄位 sanitize 兩次）；
         - 內部使用者帶 mail_create_nolog 和 mail_create_nosubscribe；
         - 每份文件用 S1 記一筆 upload；
         - _woow_own_default_fields（見上）：上面的檢查只看明確帶入的鍵，沒帶入時一律是欄位自己的 default；
@@ -991,6 +991,8 @@ class _Guard(models.AbstractModel):   # 實際上分別 _inherit woow.document �
     @api.model
     def message_new(self, msg_dict, custom_values=None):   # 一律 AccessError：不從信件建立記錄
     def _process_attachments_for_post(self, ...):   # attachment_ids 有 res_field 的 → AccessError（Q17）
+    # mail.thread（WoowMailThreadRoute）的同名方法：message_type 是 user_notification（message_notify）、帶附件、model 在 WOOW_MODELS 時，
+    #   非 su 的呼叫者要能 write 該記錄（記錄必須存在、id 必須是整數），否則 AccessError；其他訊息類型（message_post）不檢查。
     def _notify_get_recipients(self, message, msg_vals, **kwargs):
         """follower 有帳號、又不是這則訊息明確指定的收件者時，依 Q18 的儲存欄位重驗讀取規則
         （R-F0～R-F5、R-D0～R-D5 的鏡像，不切換身分）；讀不到就不通知。沒有帳號的聯絡人照 core（HD-10）。"""
@@ -1163,7 +1165,8 @@ def extract_code(raw: str) -> str | None:
     """ER-12：len(raw) > 2048 → None；有 '#' → 取最後一個 '#' 後面那段；strip；
     不 fullmatch TOKEN_RE → None。'#' 前面的主機或路徑一律不看。"""
 def hash_password(password: str) -> str:   # CryptContext(['pbkdf2_sha512'])；長度不在 8～128 → ValueError
-def check_password(password: str, stored: str) -> bool: ...
+def check_password(password: str, stored: str) -> bool:   # stored 不是 rounds 在 1～PASSWORD_ROUNDS_MAX（200000）的 pbkdf2_sha512 → False，不呼叫 verify
+def is_acceptable_hash(stored: str) -> bool: ...          # 同一個檢查；passlib 的 verify 會跑完雜湊內寫的全部 rounds
 ```
 
 ### 10.2 IF-SHARE：`W/models/share_service.py`（ER-44）
@@ -1220,7 +1223,7 @@ class WoowDocumentShareButtons(models.Model):   # 兩個類別，分別 _inherit
 
 **精靈 `woow.document.share.wizard`（`wizards/share_wizard.py`）**
 - `action_create_links(self) -> dict` 回傳 `{'type': 'ir.actions.client', 'tag': 'woow_document_share_result', 'params': {'links': [...]}}`。
-- 明文 token 只放在回應的 params 裡。password 不儲存：精靈列 create / write 時立即以 `tokens.hash_password` 存成 `password_hash`（長度 8～128 於儲存時以 UserError 檢查），成功後清空，不記 log；呼叫端不得直接提供 `password_hash`（AccessError）。
+- 明文 token 只放在回應的 params 裡。password 不儲存：精靈列 create / write 時立即以 `tokens.hash_password` 存成 `password_hash`（長度 8～128 於儲存時以 UserError 檢查），成功後清空，不記 log；呼叫端不得直接提供 `password_hash`（AccessError）；`_issue` 對收到的 `password_hash` 套用 `tokens.is_acceptable_hash`，不合 → UserError。
 
 ### 10.3 IF-ROUTE-SHARE：`W/controllers/share.py`（7 個 decorated 函式，全部 `auth='public'`、`type='http'`）
 - **提供者**：L5。
@@ -2108,3 +2111,9 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-13 | 審查修正（第十輪） | **伺服器設定的欄位與預設值**：create 只檢查明確帶入的鍵，沒帶入的欄位由呼叫者存的 `ir.default`（`sudo()` 保留呼叫者的 uid，也保留他存的預設值）或 context 的 `default_*` 補上，伺服器設定的欄位因此可以由預設值決定（稽核列的 `count`、資料夾的 `eff_*`、分享的狀態與密碼雜湊、文件檔案附件的 `public`）。現在每個 model 宣告 `_woow_own_default_fields`，由 `woow.document.server.fields.mixin` 在 create 對這些欄位只取欄位自己的 default，不論呼叫者是不是 su（§8.1）。測試：`test_reg_server_columns_ignore_defaults.py`。 |
 | 2026-11-13 | 審查修正（第十輪） | **宣告的檢查**：`woow.document.log` 與兩個 denied model 的清單是全部欄位，`_log_event` 自己寫稽核列的每一欄（`count` 是分享信與下載次數限制的加總依據）；`ir.attachment` 對本模組 binary 欄位的附件用同一個 helper；`tools/tests` 的 `TestServerFieldsDeclared` 在新 model 沒有宣告時失敗，`TestTestFilesAreRegistered` 檢查每個 `test_reg_<slug>.py` 都在 `tests/__init__.py`、`.security/sweep.yaml` 與 `EXPECTED_MIN.json`。 |
 | 2026-11-13 | 審查修正（第十輪） | **其他**：補上成員列同時搬到另一個資料夾時以目標資料夾的公司為準（`test_reg_access_company_locked.py`），以及只有資料夾與文件的訊息會折疊標籤（`test_reg_notification_label.py`）的測試；`services/client_ip.py` 以 IPv4 位址比對 IPv4-mapped 的 peer 與 X-Forwarded-For 位址（`test_client_ip.py`）。 |
+| 2026-11-13 | 審查修正（第十一輪） | **通知的附件**：core 的 `message_notify` 是公開方法，可指定任何 model 與 id，並以 su 建立或改掛檔案而不檢查該記錄，任何內部使用者因此能把檔案放到本模組的記錄上。現在 `mail.thread._process_attachments_for_post`（`mail_thread_guard.py`）對本模組 model 上、帶附件的 `user_notification` 要求非 su 的呼叫者能 write 該記錄，`message_post` 不檢查（唯讀 follower 照常發文）；CA-36 釘住 core 的行為。測試：`test_reg_notify_attachments_need_write.py`、`test_core_assumptions_access.py`。 |
+| 2026-11-13 | 審查修正（第十一輪） | **分享密碼的雜湊**：雜湊內寫了 rounds，passlib 驗證時全部照跑，所以寫入者指定的雜湊會讓公開的解鎖路由做不受限的運算（`tokens.check_password`）。現在 rounds 超過 `PASSWORD_ROUNDS_MAX`（200000）或不是 pbkdf2_sha512 的雜湊不呼叫 verify，`_issue` 對收到的雜湊套同一個檢查（`tokens.is_acceptable_hash`）；由預設值填入 `password_hash` 的部分已由第十輪的 `_woow_own_default_fields` 擋住（精靈與分享都有宣告）。測試：`test_share_token.py`、`test_mail_share.py`、`test_reg_server_columns_ignore_defaults.py`。 |
+| 2026-11-13 | 審查修正（第十一輪） | **成員列的鎖**：`woow.document.folder.access` 的 create 與 write 先對請求內每個 folder id 取鎖並更新資料夾列，之後才檢查權限，任何登入帳號都走得到這段。現在非 su 的呼叫者先過 model 權限，folder id 必須是純整數（`'7'` 與 `'07'` 不再是兩個資料夾），且對每個資料夾有 manage 權限，之後才取鎖；su 不變。測試：`test_reg_access_create_authorizes_before_locking.py`。 |
+| 2026-11-13 | 審查修正（第十一輪） | **portal 的 description**：portal 聯絡人可在 `woow.document.create` 帶 `description`（HTML），core 對它 sanitize 兩次，對某些標記成本隨長度平方成長。現在非內部使用者的 description 超過 `PORTAL_DESCRIPTION_MAX_CHARS`（2000）字元 → `WoowUploadRejected('content')`，在配額鎖與寫入之前拒絕。測試：`test_reg_portal_description_cap.py`。 |
+| 2026-11-13 | 審查修正（第十一輪） | **JPEG 的 scan**：`_jpeg_structure_ok` 在第一個 SOS 就放行，之後的 scan 個數沒有上限，而 Odoo 儲存與縮圖時會解碼整張圖。現在走到 EOI 為止，scan 最多 `JPEG_MAX_SCANS`（64），scan 的資料以一次搜尋跳到下一個標記，EOI 之後的位元組不看（§7.1）。測試：`test_upload_policy.py`。 |
+| 2026-11-13 | 審查修正（第十一輪） | **回收桶保留天數 0**：core 把設定表單的整數 0 存成沒有值（刪掉參數），讀回是預設的 30 天，每日 purge 因此照常刪除。現在 `res.config.settings.set_values` 在 core 之後把 0 以字串 `'0'` 寫回。測試：`test_settings_bounds.py`。 |
