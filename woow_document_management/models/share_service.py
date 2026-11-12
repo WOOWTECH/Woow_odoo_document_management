@@ -105,12 +105,17 @@ class WoowDocumentShareService(models.Model):
             return False
         return self._woow_download_count(scope_env) < self.max_downloads
 
-    def _record_download(self, scope_env, ip, detail):
-        """Log one share download; for a limited link also update the share row."""
+    def _record_download(self, scope_env, log_env, ip, detail):
+        """Log one share download; for a limited link also update the share row.
+
+        ``scope_env`` is the creator's environment (the link's scope and the count of its
+        downloads); the event is recorded in ``log_env``, the environment of the request,
+        so that it names the visitor and not the creator.
+        """
         self._woow_check_scope_env(scope_env)
         if self.max_downloads:
             self._woow_count_on_share_row(scope_env)
-        scope_env['woow.document.log']._log_event(
+        log_env['woow.document.log']._log_event(
             'share_download', channel='share', share_id=self.id,
             company_id=self.company_id.id, ip=ip, detail=detail)
 
@@ -214,6 +219,10 @@ class WoowDocumentShareService(models.Model):
         if token and not tokens.verify(self.env['woow.document.settings']._share_keys().k_share,
                                        token, share_sudo.token_hash):
             return self.browse(), None
+        if not share_sudo.create_uid:
+            # The creator was deleted. ``with_user`` of no user keeps the superuser
+            # environment, which would run the link's scope without any record rule.
+            return self.browse(), None
         scope_env = share_sudo.with_user(share_sudo.create_uid).with_context(allowed_company_ids=[share_sudo.company_id.id]).env  # sudo-drop: S2
         return share_sudo, scope_env
 
@@ -221,6 +230,11 @@ class WoowDocumentShareService(models.Model):
         """Re-evaluate expiry, creator, company and current document scope."""
         try:
             self.ensure_one()
+            if scope_env is None:
+                return False
+            # The creator's own environment, never a superuser one: the checks below
+            # take the user of ``scope_env`` for the creator.
+            self._woow_check_scope_env(scope_env)
             now = fields.Datetime.to_datetime(fields.Datetime.now())
             creator = scope_env.user
             if self.revoked_at or self.state != 'active' or self.expire_at <= now:

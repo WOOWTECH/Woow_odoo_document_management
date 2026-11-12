@@ -20,6 +20,7 @@ from psycopg2.pool import PoolError
 from odoo import Command, SUPERUSER_ID, api, fields, sql_db
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, TransactionCase, tagged
+from odoo.tests.common import TEST_CURSOR_COOKIE_NAME, Opener
 from odoo.tools import mute_logger
 
 from ..models import document_log as document_log_module
@@ -30,6 +31,46 @@ from ..services.zip_builder import ZipLimitExceeded
 from ..controllers import streaming
 
 CSRF_RE = re.compile(rb'name="csrf_token"[^>]*value="([^"]+)"')
+
+
+def _deleted_creator_link(test, password=None):
+    """A folder link whose creator was deleted afterwards, and a signed-in visitor.
+
+    The visitor manages one subfolder of the link's folder and cannot read the other
+    one, which holds the document that only the creator may read.
+    """
+    group = test.env.ref('woow_document_management.group_woow_document_user')
+    creator = test.env['res.users'].sudo().create({
+        'name': 'Vanishing creator', 'login': 'wdoc-vanishing-creator',
+        'groups_id': [Command.set([group.id])]})
+    visitor_vals = {
+        'name': 'Signed-in visitor', 'login': 'wdoc-signed-in-visitor',
+        'groups_id': [Command.set([group.id])]}
+    if password:
+        visitor_vals['password'] = password
+    visitor = test.env['res.users'].sudo().create(visitor_vals)
+    folders = test.env['woow.document.folder'].sudo()
+    root = folders.create({'name': 'Vanishing creator folder', 'owner_id': creator.id})
+    shared = folders.create({'name': 'Visitor managed', 'parent_id': root.id,
+                             'owner_id': creator.id})
+    hidden = folders.create({'name': 'Creator only', 'parent_id': root.id,
+                             'owner_id': creator.id})
+    test.env['woow.document.folder.access'].sudo().create({
+        'folder_id': shared.id, 'subject_type': 'user', 'user_id': visitor.id,
+        'level': 'manage'})
+    documents = test.env['woow.document'].sudo()
+    documents.create({'name': 'visitor-managed.txt', 'folder_id': shared.id,
+                      'datas': base64.b64encode(b'the visitor may read this')})
+    documents.create({'name': 'creator-only.txt', 'folder_id': hidden.id,
+                      'datas': base64.b64encode(b'only the creator may read this')})
+    share, code = test.env['woow.document.share'].with_user(creator)._issue({
+        'share_type': 'folder', 'folder_id': root.id,
+        'expire_at': fields.Datetime.now() + timedelta(days=1)})
+    test.env.flush_all()
+    creator.sudo().unlink()
+    test.env.invalidate_all()
+    test.assertFalse(share.sudo().create_uid)
+    return share, code, visitor
 
 
 @tagged('woow_docmgmt_share_scope')
@@ -119,6 +160,25 @@ class TestShareScope(TransactionCase):
                                    max_candidates=2)
         self.assertEqual(len(share._scope_documents(
             self.env['woow.document'].with_user(admin).env, max_candidates=3)), 3)
+
+    def test_link_of_a_deleted_creator_has_no_scope_for_a_signed_in_visitor(self):
+        """Without its creator a link must not run in an environment without record rules.
+
+        ``with_user`` of no user keeps the superuser environment, whose user is the
+        visitor of the request: the checks would then take the visitor for the creator
+        and list the documents of the link's whole scope.
+        """
+        share, code, visitor = _deleted_creator_link(self)
+        service = self.env['woow.document.share'].with_user(visitor)
+        for arguments in ({'token': code}, {'share_id': share.id}):
+            with self.subTest(**arguments):
+                found, scope_env = service._resolve_request_access(**arguments)
+                self.assertFalse(found)
+                self.assertIsNone(scope_env)
+        visitor_su = share.with_user(visitor).sudo().env
+        self.assertTrue(visitor_su.su)
+        self.assertFalse(share.sudo()._validate_for_access(visitor_su))
+        self.assertFalse(share.sudo()._validate_for_access(None))
 
     def test_unlock_counter_is_creator_scoped_and_counts_only_matching_ip(self):
         group = self.env.ref('woow_document_management.group_woow_document_user')
@@ -266,7 +326,7 @@ class TestShareScope(TransactionCase):
         share_id, scope = self._committed_link(max_downloads=1)
         with self.registry.cursor() as cr:
             share, scope_env = scope(cr)
-            share._record_download(scope_env, '192.0.2.10', {'files': 1})
+            share._record_download(scope_env, scope_env, '192.0.2.10', {'files': 1})
         with self.registry.cursor() as cr_o, self.registry.cursor() as cr_x:
             cr_o.execute('SELECT 1')   # the owner's snapshot
             share_x, scope_x = scope(cr_x)
@@ -289,7 +349,7 @@ class TestShareScope(TransactionCase):
             cr_b.execute('SELECT 1')   # B's first statement takes its snapshot.
             share_a, scope_a = scope(cr_a)
             self.assertTrue(share_a._download_slot_available(scope_a))
-            share_a._record_download(scope_a, '192.0.2.11', {'files': 1})
+            share_a._record_download(scope_a, scope_a, '192.0.2.11', {'files': 1})
             cr_a.commit()
             share_b, scope_b = scope(cr_b)
             with mute_logger('odoo.sql_db'), self.assertRaises(errors.SerializationFailure):
@@ -332,6 +392,20 @@ class TestShareHttp(HttpCase):
             'share_type': 'folder', 'folder_id': folder.id,
             'expire_at': fields.Datetime.now() + timedelta(days=1), **vals})
         return share, code, doc
+
+    def _sign_in(self, user, password):
+        """Sign in with one cookie per name.
+
+        Opening a link rotates the session, and the cookie that ``authenticate`` sets has
+        no domain, so it would shadow the rotated cookie the server sets afterwards.
+        """
+        self.opener = Opener(self.cr)
+        self.opener.cookies[TEST_CURSOR_COOKIE_NAME] = self.http_request_key
+        self.authenticate(user.login, password)
+        values = {cookie.name: cookie.value for cookie in self.opener.cookies}
+        self.opener.cookies.clear()
+        for name, value in values.items():
+            self.opener.cookies.set(name, value, domain='127.0.0.1', path='/')
 
     def _open(self, code, headers=None):
         # Opening a link rotates the session, so every POST needs a fresh token.
@@ -398,6 +472,18 @@ class TestShareHttp(HttpCase):
         return self._sql("""SELECT COALESCE(SUM(count), 0) FROM woow_document_log
                             WHERE share_id = %s AND event = 'share_unlock_failed'
                               AND result = 'denied'""", (share.id,))[0][0]
+
+    def test_link_of_a_deleted_creator_is_refused_to_a_signed_in_visitor(self):
+        """The page must not list documents that neither the visitor nor the creator may read."""
+        password = secrets.token_urlsafe(16)
+        share, code, visitor = _deleted_creator_link(self, password)
+        self._sign_in(visitor, password)
+        opened = self._open(code)
+        self.assertEqual(opened.status_code, 404)
+        page = self.url_open('/woow-docs/s/%d' % share.id)
+        self.assertEqual(page.status_code, 404)
+        self.assertNotIn(b'creator-only.txt', page.content)
+        self.assertNotIn(b'visitor-managed.txt', page.content)
 
     def test_refusal_records_do_not_tell_whether_a_share_exists(self):
         """A live id without a grant and an unknown id use the same records and capacity.
@@ -1194,6 +1280,56 @@ class TestShareHttp(HttpCase):
         share.sudo().write({'revoked_at': fields.Datetime.now(), 'state': 'revoked'})
         revoked = self.url_open('/woow-docs/s/%d' % share.id)
         self.assertEqual(revoked.status_code, 404)
+
+    def _visitor_events(self, share):
+        """(event, user, created by) of the events of a link, oldest first."""
+        return self._sql("""SELECT event, user_id, create_uid FROM woow_document_log
+                            WHERE share_id = %s AND result = 'ok' ORDER BY id""", (share.id,))
+
+    def _use_link(self, share, code, doc):
+        """Open a link, view its page, download one file and the whole link as a ZIP."""
+        self.assertEqual(self._open(code).status_code, 303)
+        self.assertEqual(self.url_open('/woow-docs/s/%d' % share.id).status_code, 200)
+        self.assertEqual(self.url_open(
+            '/woow-docs/s/%d/file/%d' % (share.id, doc.id)).status_code, 200)
+        self.assertEqual(self.url_open('/woow-docs/s/%d/zip' % share.id).status_code, 200)
+
+    def test_events_of_a_link_are_recorded_as_the_visitor_not_the_creator(self):
+        """The creator's environment decides the scope; it must not sign what visitors do."""
+        admin = self.env.ref('base.user_admin')
+        share, code, doc = self._link('Visitor identity fixture', max_downloads=2)
+        self.env.flush_all()
+        self._use_link(share, code, doc)
+        events = self._visitor_events(share)
+        self.assertEqual([event[0] for event in events],
+                         ['share_create', 'share_open', 'share_access', 'share_download',
+                          'share_download'])
+        created, visits = events[0], events[1:]
+        self.assertEqual(created[1:], (admin.id, admin.id))
+        for event, user_id, creator in visits:
+            with self.subTest(event=event):
+                self.assertIsNone(user_id)           # an anonymous visitor names nobody
+                self.assertNotEqual(creator, admin.id)
+        # The creator reads them (R-L1), and the limited link still counts its downloads.
+        log = self.env['woow.document.log'].with_user(admin)
+        self.assertEqual(log.search_count([
+            ('share_id', '=', share.id), ('event', '=', 'share_download')]), 2)
+        self.assertEqual(share.with_user(admin).download_count, 2)
+        self.assertEqual(self.url_open('/woow-docs/s/%d/file/%d' % (share.id, doc.id)
+                                       ).status_code, 404)
+
+        # A signed-in visitor is recorded as that visitor.
+        password = secrets.token_urlsafe(16)
+        visitor = self.env['res.users'].sudo().create({
+            'name': 'Identity visitor', 'login': 'wdoc-identity-visitor', 'password': password,
+            'groups_id': [Command.set([self.env.ref('base.group_user').id])]})
+        other, other_code, other_doc = self._link('Visitor identity second link')
+        self.env.flush_all()
+        self._sign_in(visitor, password)
+        self._use_link(other, other_code, other_doc)
+        for event, user_id, creator in self._visitor_events(other)[1:]:
+            with self.subTest(event=event, visitor='signed in'):
+                self.assertEqual((user_id, creator), (visitor.id, visitor.id))
 
     def test_log_retention_never_reopens_an_exhausted_limited_share(self):
         """the weekly audit retention keeps the counted download of a live share."""

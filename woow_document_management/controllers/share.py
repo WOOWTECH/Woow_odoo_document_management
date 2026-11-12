@@ -153,7 +153,9 @@ class WoowDocShareController(http.Controller):
             'woow.document.settings']._get_settings().share_session_minutes * 60,
             int(fields.Datetime.to_datetime(share.expire_at).replace(tzinfo=timezone.utc).timestamp()))
         _save_grant(share, {'exp': expiry, 'h': share.token_hash[:16], 'pw': False})
-        access.scope_env['woow.document.log']._log_event(
+        # Recorded as the visitor of this request (nobody for an anonymous one), never as
+        # the creator, whose environment only decides the scope of the link.
+        request.env['woow.document.log']._log_event(
             'share_open', channel='share', share_id=share.id,
             company_id=share.company_id.id, ip=access.ip)
         return streaming.apply_common_headers(
@@ -180,7 +182,7 @@ class WoowDocShareController(http.Controller):
             {'share_id': share_id, 'docs': docs,
              'company_name': access.scope_env['res.company'].browse(
                  access.share_sudo.company_id.id).name})
-        access.scope_env['woow.document.log']._log_event(
+        request.env['woow.document.log']._log_event(
             'share_access', channel='share', share_id=share_id,
             company_id=access.share_sudo.company_id.id, ip=access.ip)
         return streaming.apply_common_headers(
@@ -210,7 +212,7 @@ class WoowDocShareController(http.Controller):
             # releasing the share lock so one-use links cannot be replayed with
             # Range requests; 304/416 responses do not transfer content.
             if response.status_code in (200, 206):
-                share._record_download(access.scope_env, access.ip,
+                share._record_download(access.scope_env, request.env, access.ip,
                                        {'files': 1, 'bytes': docs.file_size})
             return response
         except LockBusy:
@@ -283,7 +285,7 @@ class WoowDocShareController(http.Controller):
                 return streaming.uniform_404('share')
 
         def before_stream(stats):
-            share._record_download(access.scope_env, access.ip,
+            share._record_download(access.scope_env, request.env, access.ip,
                                    {'zip': 1, 'files': stats.files, 'bytes': stats.bytes})
 
         return streaming.zip_response(docs, root_folder=share.folder_id if share.share_type == 'folder' else None,
