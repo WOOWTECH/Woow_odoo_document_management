@@ -17,6 +17,7 @@ from ..models import quota as quota_module
 from ..models.quota import LEDGER_KEY, QuotaLedger
 from ..models.upload_policy import WoowUploadRejected
 from ..services import locks
+from ..services.constants import MIB
 from ..services.locks import LockBusy, try_lock
 
 
@@ -292,6 +293,52 @@ class TestQuotaRuns(TransactionCase):
             # A call that shares no ledger measures for itself and knows only what is stored.
             self.quota._check_many([('four', 300_000)])
             self.assertEqual(measure.call_count, 2)
+
+    def _holds_the_quota_lock(self):
+        """Whether this transaction holds the site's quota lock right now."""
+        self.env.cr.execute("""SELECT 1 FROM pg_locks WHERE pid = pg_backend_pid()
+                               AND locktype = 'advisory' AND granted AND objsubid = 1
+                               AND ((classid::bigint << 32) | objid::bigint) = %s""",
+                            (locks.advisory_key('quota'),))
+        return self.env.cr.fetchone() is not None
+
+    def test_a_refused_first_call_does_not_keep_a_measurement_that_no_lock_protects(self):
+        """The measurement of a run is kept only while the run still holds the quota lock.
+
+        The first call of a run takes the lock and measures. When it is refused its caller rolls
+        it back to a savepoint, which releases the lock (the import wizard does this for every
+        source), and other uploads may commit before the next call. That call has to measure
+        again, after taking the lock: with the old measurement it would accept bytes that no
+        longer fit, and the block limit could be passed by whatever others committed meanwhile.
+        """
+        self.params.set_param('woow_document_management.quota_mb', '1000')
+        self.params.set_param('woow_document_management.quota_block_pct', '95')
+        capacity = 1000 * MIB
+        limit = capacity * 95 // 100
+        committed = 100_000_000
+        run = self.quota.with_context(**{LEDGER_KEY: QuotaLedger()})
+        used = self.quota._usage_bytes()
+        self.assertFalse(self._holds_the_quota_lock())
+        with self.assertRaises(WoowUploadRejected):
+            with self.env.cr.savepoint():
+                run._check_many([('big', capacity)])
+        self.assertFalse(self._holds_the_quota_lock(), 'the rolled back call kept the lock')
+        name = 'quota-after-refusal-%s' % id(self)
+
+        def remove():
+            with self.env.registry.cursor() as cr:
+                cr.execute('DELETE FROM ir_attachment WHERE name = %s', (name,))
+        self.addCleanup(remove)
+        with self.env.registry.cursor() as other:
+            other.execute("""INSERT INTO ir_attachment (name, type, store_fname, file_size)
+                             VALUES (%s, 'binary', %s, %s)""", (name, 'zz/' + name, committed))
+        # It fits the bytes that were measured first, but not the ones stored now.
+        size = limit - used - committed // 5
+        self.assertLessEqual((used + size) * 100, capacity * 95)
+        self.assertGreater((used + committed + size) * 100, capacity * 95)
+        with self.assertRaises(WoowUploadRejected) as caught:
+            run._check_many([('next', size)])
+        self.assertEqual(caught.exception.code, 'quota')
 
     def test_a_missing_connection_for_the_measurement_asks_to_try_again(self):
         for error in (PoolError('the pool is full'), OperationalError('too many connections')):

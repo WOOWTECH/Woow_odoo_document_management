@@ -27,9 +27,17 @@ class QuotaLedger:
     A run that stores files with several ``create`` or ``write`` calls in one transaction
     (the attachment import wizard) measures the stored bytes once, after it took the quota
     lock, and adds the bytes it accepted since: the files it has written are not
-    committed, so no measurement made through another connection counts them. The run
-    holds the lock until its transaction ends, so no other upload can change the stored
-    bytes meanwhile.
+    committed, so no measurement made through another connection counts them. The
+    measurement is kept only while the lock the run took is still held, because only that
+    lock keeps other uploads from changing the stored bytes meanwhile.
+
+    The lock is held until the transaction ends, unless the call that took it is rolled
+    back to a savepoint, which releases the locks taken inside it. A call that is refused
+    while the run has accepted nothing may be that call, and its caller may roll it back and
+    go on with the next file (the import wizard does, for every source). Such a call
+    therefore forgets the measurement, and the next call measures again after taking the
+    lock. After an accepted call the lock is still held, so the measurement stays; a caller
+    must not roll back a call that was accepted and then use the ledger again.
     """
     __slots__ = ('base', 'added')
 
@@ -92,6 +100,10 @@ class WoowDocumentQuota(models.AbstractModel):
         its own lock and not for the site lock, so one account cannot queue its requests
         in front of everyone else's.
 
+        A ``QuotaLedger`` keeps its measurement only while the lock the run took is still
+        held: a call that is refused before the run accepted any bytes drops it, because its
+        caller may roll the call back to a savepoint and so release the lock it took.
+
         A new upload always counts its own size. Only the attachment import wizard,
         whose source the caller has read, is credited for content already stored:
         crediting by a site-wide checksum match would tell any uploader whether a
@@ -116,6 +128,12 @@ class WoowDocumentQuota(models.AbstractModel):
         for checksum, size in items:
             projected += self._bytes_if_new(checksum, size) if credited else size
             if projected * 100 > capacity * settings.quota_block_pct:
+                if not ledger.added:
+                    # Nothing was accepted yet, so this call may be the one that took the
+                    # lock, and its caller may roll it back, which releases the lock: the
+                    # measurement would no longer be protected. After an accepted call the
+                    # lock is still held and the measurement stays.
+                    ledger.base = None
                 if self.env.su or self.env.user.has_group(
                         'woow_document_management.group_woow_document_manager'):
                     raise WoowUploadRejected('quota', pct=math.ceil(projected * 100 / capacity))
