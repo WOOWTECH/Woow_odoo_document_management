@@ -25,6 +25,10 @@ class WoowDocument(models.Model):
     _order = 'create_date desc, id desc'
     _check_company_auto = True
     _woow_allowed_defaults = frozenset({'default_folder_id'})
+    _woow_own_default_fields = frozenset({
+        'document_type', 'datas', 'url', 'mimetype', 'owner_id', 'uploaded_by_partner_id',
+        'shared_user_ids', 'shared_partner_ids', 'source_res_model', 'source_res_id',
+        'legal_hold', 'active', 'trashed_date', 'trashed_by_id', 'restored_date'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,

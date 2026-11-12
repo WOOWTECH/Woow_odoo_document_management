@@ -11,6 +11,28 @@ class WoowDocumentGuardMixin(models.AbstractModel):
 
     # each model overrides this, e.g. frozenset({'default_folder_id'})
     _woow_allowed_defaults = frozenset()
+    # fields that create refuses or checks when the caller passes them, or that the server sets
+    _woow_own_default_fields = frozenset()
+
+    @api.model
+    def _add_missing_default_values(self, values):
+        """A field of ``_woow_own_default_fields`` that was not passed takes its own default.
+
+        ``default_get`` also reads the stored defaults of the caller (``ir.default``). Every
+        internal user may store their own, an administrator may store them for the whole site,
+        field groups do not apply to them, and ``create`` only checks the keys it was given.
+        Such a field is completed from the field's own default, or left out when it has none.
+        """
+        completed = super()._add_missing_default_values(values)
+        if not self.env.su:
+            for name in self._woow_own_default_fields.intersection(completed).difference(values):
+                field = self._fields[name]
+                if field.default:
+                    completed[name] = field.convert_to_write(
+                        field.convert_to_cache(field.default(self), self, validate=False), self)
+                else:
+                    del completed[name]
+        return completed
 
     @api.model_create_multi
     def create(self, vals_list):

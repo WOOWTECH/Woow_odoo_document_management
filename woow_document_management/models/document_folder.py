@@ -64,6 +64,9 @@ class WoowDocumentFolder(models.Model):
     _check_company_auto = True
     _rec_names_search = ['name']
     _woow_allowed_defaults = frozenset({'default_parent_id'})
+    _woow_own_default_fields = frozenset({
+        'company_id', 'legal_hold', 'inherit_access', 'active', 'trashed_date', 'trashed_by_id',
+        'restored_date'})
 
     name = fields.Char(required=True, tracking=True)
     complete_name = fields.Char(compute='_compute_complete_name', store=True, recursive=True,
