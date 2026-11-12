@@ -12,8 +12,9 @@ What it provides (design scope):
 - expiring, revocable share links under `/woow-docs/s` (the token lives only in the URL fragment);
 - trash, legal hold, scheduled clean-up and an attachment overview for selected internal users.
 
-> Status: under construction. The current tree is the day-0 skeleton: models and services are
-> fail-closed stubs marked `WOOW-STUB` that the implementation lanes replace one by one.
+> Status: implemented and under review before release. The checks and the gates that a release has
+> to pass (static tools, the sandbox suite with its browser tour, coverage) are described in
+> `dev/README.md`.
 
 ## Repository layout
 
@@ -42,7 +43,7 @@ Every tool is `python3 -I tools/check_<name>.py [--g1] [--root <repo>]`, prints
 | `check_sudo.py` | the three allowed privilege escalations S1-S3, aliases, S2 shape, cron su checks |
 | `check_routes.py` | route rules R1-R13 against `tools/routes.lock.json`; `--emit-entry-points` |
 | `check_forbidden.py` | forbidden Python, QWeb and JS constructs |
-| `check_sql.py` | raw SQL only at Q1-Q6 (`tools/sql_allowlist.yaml`); advisory locks only in `services/locks.py` |
+| `check_sql.py` | raw SQL only at the statements of `tools/sql_allowlist.yaml`; advisory locks only in `services/locks.py` |
 | `check_sweep_config.py` | `.security/sweep.yaml`, CI workflow and repository hygiene |
 | `check_security_matrix.py` | ACL, record rules and groups against `tools/security_matrix.yaml` |
 | `check_public_methods.py` | RPC-callable methods against `tools/public_methods.txt` |

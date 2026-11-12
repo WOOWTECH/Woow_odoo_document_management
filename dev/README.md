@@ -6,9 +6,16 @@ launcher. `coverage.sh` produces the release coverage result.
 `SLOT=<slot> WOOW_SBX=<absolute launcher> WOOW_SBX_BASE_DB=<existing sandbox DB>
 sh dev/sc/run_sc.sh share-max-downloads-race` runs T-SHARE-32 through two real
 HTTP clients in a copied sandbox database. The runner checks that the selected
-test actually ran and drops its database. The other `sc_*.py` entries and
-`sandbox_test.sh` exit with an error until they are implemented. A scenario
-result must not be reported as passing unless its runner was executed.
+test actually ran and drops its database. That test is an `HttpCase`: its requests
+share the test cursor and are served one after another, so the runner does not
+race two real Repeatable Read transactions; that mechanism is covered by the
+two-real-cursor tests `test_download_barrier_rejects_a_stale_snapshot` and
+`test_password_attempt_barrier_rejects_a_stale_snapshot`, and by the real HTTP
+runners below. `sandbox_test.sh` runs the whole addon suite (the G1 gate: the
+floors of `woow_document_management/tests/EXPECTED_MIN.json`, no skipped test, and
+the success line of the browser tour); only the runners listed here are registered in
+`run_sc.sh`. A scenario result must not be reported as passing unless its runner
+was executed.
 
 The real HTTP runners below install the addon into a copied database, start a
 temporary Odoo server bound to container loopback (every request then runs in

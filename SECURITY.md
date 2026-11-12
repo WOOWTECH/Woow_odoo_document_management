@@ -80,6 +80,10 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   specific to this addon). When the second connection or its turn is not available the addon
   answers the refused request with 429 and records nothing; it does not answer with a server
   error.
+- **Trusted proxies.** Behind a reverse proxy, set the trusted proxy networks and the client IP
+  header in the settings. Without them every visitor counts as one source, the address of the
+  proxy, so their refused requests share one per-minute limit (HD-06) and their audit records
+  carry that address.
 - **Quota.** With a storage quota set, the files of one upload are checked together, last, and
   the stored bytes are measured once through a database connection of their own after the
   upload took the quota lock. One account has one upload transaction at a time: its other

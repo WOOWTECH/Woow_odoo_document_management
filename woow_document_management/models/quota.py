@@ -58,8 +58,9 @@ class WoowDocumentQuota(models.AbstractModel):
         before it got the quota lock, so it would miss the uploads that committed while
         it waited; reading it there made every concurrent upload fail with a
         serialization error and retry after a pause instead. What the caller itself has
-        written is not committed: see ``QuotaLedger``. When no connection is available
-        the caller is told to try again (``LockBusy``).
+        written is not committed: see ``QuotaLedger``, which a caller that stores files with
+        several ``create`` or ``write`` calls in one transaction has to share. When no
+        connection is available the caller is told to try again (``LockBusy``).
         """
         self.env['ir.attachment'].flush_model(['store_fname', 'file_size'])
         try:
