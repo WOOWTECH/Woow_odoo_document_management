@@ -39,3 +39,4 @@ from . import test_core_assumptions_access
 from . import test_rpc_exposure
 from . import test_escaping
 from . import test_perf
+from . import test_reg_wizard_owner_scope

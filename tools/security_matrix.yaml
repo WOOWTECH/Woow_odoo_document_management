@@ -185,6 +185,43 @@ rules:
   groups: [manager]
   perms: '1000'
   domain: "[(1, '=', 1)]"
+# R-W1..R-W6: a wizard row is its creator's alone (core has no owner rule for transient models).
+- id: rule_woow_document_share_wizard_owner
+  ref: R-W1
+  model: woow.document.share.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_move_wizard_owner
+  ref: R-W2
+  model: woow.document.move.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_restore_wizard_owner
+  ref: R-W3
+  model: woow.document.restore.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_purge_wizard_owner
+  ref: R-W4
+  model: woow.document.purge.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_add_attachment_wizard_owner
+  ref: R-W5
+  model: woow.document.add.attachment.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_notify_wizard_owner
+  ref: R-W6
+  model: woow.document.notify.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
 # R-M0 is a global rule on a core model (mail.message): share users (portal / public) never
 # read, write, create or unlink this module's chatter; internal users are unaffected (DEC-11).
 - id: rule_woow_mail_message_share_users
