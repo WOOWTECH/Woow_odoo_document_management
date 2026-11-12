@@ -85,6 +85,10 @@ class ResConfigSettings(models.TransientModel):
             PARAM_PREFIX + key for key in _PARAM_KEYS)
         changed = sum(old.get(PARAM_PREFIX + key) != str(raw[key]) for key in _PARAM_KEYS)
         result = super().set_values()
+        if not raw['trash_retention_days']:
+            # Core stores an integer 0 as no value and deletes the parameter, which then reads back
+            # as the default of 30 days; 0 is the value that turns the automatic purge off.
+            self.env['ir.config_parameter'].set_param(PARAM_PREFIX + 'trash_retention_days', '0')
         self.env['woow.document.log']._log_event(
             'settings_change', channel='backend', detail={'changed': changed})
         return result
