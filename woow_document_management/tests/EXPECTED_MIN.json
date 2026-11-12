@@ -1,7 +1,7 @@
 {
   "batches": {
-    "core": 139,
-    "files": 116,
+    "core": 141,
+    "files": 118,
     "portal": 3,
     "share": 42
   },
@@ -26,7 +26,7 @@
     "test_mail_share.py": 6,
     "test_mail_thread_guard.py": 20,
     "test_multicompany.py": 4,
-    "test_naming.py": 5,
+    "test_naming.py": 7,
     "test_native_routes.py": 5,
     "test_portal_routes.py": 3,
     "test_quota.py": 14,
@@ -40,7 +40,7 @@
     "test_share_token.py": 3,
     "test_trash_lifecycle.py": 30,
     "test_uninstall.py": 3,
-    "test_upload_policy.py": 19,
+    "test_upload_policy.py": 21,
     "test_url_policy.py": 4,
     "test_zip_builder.py": 5
   },
