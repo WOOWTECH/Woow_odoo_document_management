@@ -187,20 +187,22 @@ class TestDocumentFileAttachment(TransactionCase):
         """``message_notify`` links pending attachments to any model and id it is given.
 
         The notification is created on an empty recordset of another model, so the
-        module's chatter overrides never run; the attachment guard stops the move
-        that core makes as superuser.
+        module's chatter overrides never run. A caller who may write the record gets as far as
+        the attachment guard, which stops the move that core makes as superuser; one who may
+        not is stopped before (``test_reg_notify_attachments_need_write.py``).
         """
-        partners = self.env['res.partner'].with_user(self.reader)
-        for model, record_id, field in (('woow.document', self.document.id, 'datas'),
-                                        ('woow.document.folder', self.folder.id, 'image_128')):
-            with self.subTest(model=model):
-                pending = self._pending(self.reader, res_field=field)
-                with self.assertRaises(AccessError):
-                    partners.message_notify(
-                        model=model, res_id=record_id, body='notice',
-                        partner_ids=[self.reader.partner_id.id], attachment_ids=[pending.id])
-                self.assertEqual(pending.sudo().res_model, 'mail.compose.message')
-                self._assert_original_file()
+        for user in (self.reader, self.editor):
+            partners = self.env['res.partner'].with_user(user)
+            for model, record_id, field in (('woow.document', self.document.id, 'datas'),
+                                            ('woow.document.folder', self.folder.id, 'image_128')):
+                with self.subTest(user=user.login, model=model):
+                    pending = self._pending(user, res_field=field)
+                    with self.assertRaises(AccessError):
+                        partners.message_notify(
+                            model=model, res_id=record_id, body='notice',
+                            partner_ids=[user.partner_id.id], attachment_ids=[pending.id])
+                    self.assertEqual(pending.sudo().res_model, 'mail.compose.message')
+                    self._assert_original_file()
 
     def test_superuser_moves_never_add_a_field_attachment_to_a_module_record(self):
         """The rule holds in sudo: only binary fields themselves create their attachments."""

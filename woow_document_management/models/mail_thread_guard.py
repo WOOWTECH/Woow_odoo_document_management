@@ -12,6 +12,8 @@ read the record is not notified, and folder chatter only ever names the folder i
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError
 
+from ..services.constants import WOOW_MODELS
+
 _THREAD_MODELS = ('woow.document', 'woow.document.folder')
 _USER = 'woow_document_management.group_woow_document_user'
 _MANAGER = 'woow_document_management.group_woow_document_manager'
@@ -309,6 +311,24 @@ class WoowDocumentFolderThreadGuard(models.Model):
 
 class WoowMailThreadRoute(models.AbstractModel):
     _inherit = 'mail.thread'
+
+    def _process_attachments_for_post(self, attachments, attachment_ids, message_values):
+        """Notifications attach files to a record of this module only for those who may write it.
+
+        ``message_notify`` is open to every signed-in user and takes any model and id (also on an
+        empty recordset of another model, so the overrides of the module's own models never run).
+        Core then creates the files, or links the pending ones, as superuser and looks neither at
+        the record nor at its rules. Posts are not touched: a follower who can only read a record
+        may still post a comment with a file.
+        """
+        if (attachments or attachment_ids) and not self.env.su \
+                and message_values.get('message_type') == 'user_notification' \
+                and message_values.get('model') in WOOW_MODELS and message_values.get('res_id'):
+            res_id = message_values['res_id']
+            record = self.env[message_values['model']].browse(res_id if type(res_id) is int else [])
+            if not record.exists() or not record.has_access('write'):
+                raise AccessError(_('This attachment cannot be added to the discussion.'))
+        return super()._process_attachments_for_post(attachments, attachment_ids, message_values)
 
     @api.model
     def _message_route_process(self, message, message_dict, routes):

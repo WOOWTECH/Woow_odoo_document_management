@@ -46,3 +46,4 @@ from . import test_reg_notification_label
 from . import test_reg_access_company_locked
 from . import test_reg_document_file_not_indexed
 from . import test_reg_server_columns_ignore_defaults
+from . import test_reg_notify_attachments_need_write

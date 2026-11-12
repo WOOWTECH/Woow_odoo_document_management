@@ -229,3 +229,25 @@ class TestCoreAssumptionsAccess(TransactionCase):
         self.assertFalse(self.env['mail.message'].sudo().search([
             ('model', '=', folder._name), ('res_id', '=', folder.id),
         ]))
+
+    def test_ca36_message_notify_stores_files_without_a_write_check(self):
+        """CA-36: a notification stores its files on any record, whatever the caller may write.
+
+        ``message_notify`` is public, takes a model and an id, and core creates the files as
+        superuser without a look at the right to write the record. The module checks that right for
+        its own models (``mail.thread._process_attachments_for_post``); a core that checks it
+        makes that override redundant.
+        """
+        user = self.env['res.users'].sudo().create({
+            'name': 'CA notify user', 'login': 'wdoc-ca-notify-user',
+            'email': 'ca-notify@example.test',
+            'groups_id': [Command.set([self.env.ref('base.group_user').id])],
+        })
+        country = self.env['res.country'].search([], limit=1)
+        self.assertFalse(country.with_user(user).has_access('write'))
+        message = self.env['res.partner'].with_user(user).message_notify(
+            model=country._name, res_id=country.id, body='CA notify probe',
+            partner_ids=[user.partner_id.id], attachments=[('ca36.txt', b'CA-36 payload')])
+        attachment = message.sudo().attachment_ids
+        self.assertEqual((attachment.name, attachment.res_model, attachment.res_id),
+                         ('ca36.txt', country._name, country.id))

@@ -165,8 +165,8 @@ else:
     if not expected['files']:
         errors.append('per-file floors empty')
     required = expected.get('required_ca_methods')
-    if not isinstance(required, dict) or set(required) != {f'{i:02d}' for i in range(1, 36) if i not in (6, 23, 24, 28)}:
-        errors.append('CA method map must cover the 31 Odoo CA cases')
+    if not isinstance(required, dict) or set(required) != {f'{i:02d}' for i in range(1, 37) if i not in (6, 23, 24, 28)}:
+        errors.append('CA method map must cover the 32 Odoo CA cases')
     else:
         for ca, method in required.items():
             if not isinstance(method, str) or not re.fullmatch(r'test_ca[0-3][0-9]_[A-Za-z0-9_]+', method) or f'ca{ca}_' not in method:
