@@ -820,6 +820,167 @@ class TestDeniedConcurrency(TransactionCase):
             return
         self.fail('no try stayed within one minute')
 
+    def _db_minute(self):
+        """The minute of the database clock now, read on a connection of its own."""
+        with self.registry.cursor() as cr:
+            cr.execute("SELECT date_trunc('minute', clock_timestamp() AT TIME ZONE 'UTC')")
+            return cr.fetchone()[0]
+
+    def _used_slots(self, minute):
+        """The capacity slots reserved in one minute, read on a connection of its own."""
+        with self.registry.cursor() as cr:
+            row = _budget_version(cr, minute)
+        return row[0] if row else 0
+
+    def _between_statements(self, call, hooks):
+        """Run ``call(env)`` with other requests running in the middle of its short transaction.
+
+        ``call`` is one request and gets an environment of its own; its short transaction
+        (``_short_transaction``) is the first connection that ``registry.cursor()`` hands out
+        meanwhile. ``hooks`` are ``(fragment, action)`` pairs: right after the next statement
+        of that transaction whose text holds the fragment, ``action()`` runs (another request,
+        complete, committed at once) and the pair is used up. Returns the answer of ``call``
+        and the ``rowcount`` of each hooked statement, which says what it found.
+        """
+        original = self.registry.cursor
+        borrowed = []
+        pending = list(hooks)
+        matched = []
+
+        def cursor(*args, **kwargs):
+            side = original(*args, **kwargs)
+            borrowed.append(side)
+            if len(borrowed) == 1:
+                execute = side.execute
+
+                def execute_then_run_the_others(query, params=None, log_exceptions=True):
+                    result = execute(query, params, log_exceptions)
+                    if pending and pending[0][0] in str(query):
+                        _fragment, action = pending.pop(0)
+                        matched.append(side.rowcount)
+                        action()
+                    return result
+                side.execute = execute_then_run_the_others
+            return side
+
+        # The others borrow turns of their own, whatever db_maxconn the server runs with.
+        with self.registry.cursor() as request_cr, \
+                patch.object(self.registry, 'cursor', cursor), \
+                patch.object(document_log_module, '_SLOT_GATE', threading.BoundedSemaphore(2)):
+            answer = call(api.Environment(request_cr, SUPERUSER_ID, {}))
+        self.assertEqual(pending, [], 'the other requests did not run in the middle of the call')
+        return answer, matched
+
+    def _race_count_below(self, limit, fragments):
+        """``_count_below`` of a new source with other requests of the source in the middle of it.
+
+        After each statement of its short transaction named by ``fragments`` (in this order),
+        another request of the source runs ``_count_below`` in full. Returns the answer of the
+        call, the answers of the others, the rows each hooked statement found, the committed
+        counter rows of the source and the slots that were reserved; None when a minute
+        boundary fell inside (the counters are per minute), so that the caller tries again.
+        """
+        self._inside_one_minute()
+        digest = self._source(self._new_source())
+        minute = self._db_minute()
+        slots = self._used_slots(minute)
+        others = []
+        with self.registry.cursor() as cr_other:
+            env_other = api.Environment(cr_other, SUPERUSER_ID, {})
+
+            def another_request():
+                others.append(env_other['woow.document.denied.counter']._count_below(
+                    'share_access', digest, limit))
+
+            answer, matched = self._between_statements(
+                lambda env: env['woow.document.denied.counter']._count_below(
+                    'share_access', digest, limit),
+                [(fragment, another_request) for fragment in fragments])
+        if self._db_minute() != minute:
+            return None
+        with self.registry.cursor() as check:
+            check.execute('SELECT count FROM woow_document_denied_counter '
+                          'WHERE event = %s AND ip_hash = %s', ('share_access', digest))
+            stored = check.fetchall()
+        return answer, others, matched, stored, self._used_slots(minute) - slots
+
+    def test_a_row_that_another_request_creates_during_the_count_is_counted_on(self):
+        """A row that another request creates in the middle of the count is counted on.
+
+        The statement that raises the source's row while it is below the limit matches no row
+        both when the source has none yet and when its row is at the limit. A and B are two
+        requests of a source with no row this minute: A's statement finds nothing, B then
+        inserts the row, takes its slot and commits, and the next statement of A sees that row.
+        It stands below the limit, so A counts on it. Answering 0 (the limit is used) turns away
+        a refusal that the source still had within its limit and leaves its counter one short,
+        against the exact count that ``_count_below`` promises however requests interleave.
+        """
+        self._keep_capacity_rows()
+        update = 'UPDATE woow_document_denied_counter'
+        select = 'SELECT count FROM woow_document_denied_counter'
+        cases = (
+            # name, limit, the statements of A after which another request of the source runs
+            # in full, and what comes out: the answer of A, the answers of the others, the rows
+            # those statements found, the counter rows left, the slots used (the first
+            # other request's row, once)
+            ('the first statement found no row, the limit is far', 10, [update],
+             (2, [1], [0], [(2,)], 1)),
+            ('the row B created is at the limit', 1, [update],
+             (0, [1], [0], [(1,)], 1)),
+            ('the limit is used between A reading the row and counting on it', 2,
+             [update, select], (0, [1, 2], [0, 1], [(2,)], 1)),
+            ('A read no row and B created it before A inserted its own', 10, [select],
+             (2, [1], [0], [(2,)], 1)),
+        )
+        for name, limit, fragments, expected in cases:
+            with self.subTest(name):
+                for _try in range(3):
+                    result = self._race_count_below(limit, fragments)
+                    if result is not None:
+                        break   # else a minute boundary fell inside this try; use a new source
+                else:
+                    self.fail('no try stayed within one minute')
+                self.assertEqual(result, expected)
+
+    def test_a_refusal_that_races_the_first_of_its_source_is_counted_not_limited(self):
+        """The same race through ``_refuse``: both requests are answered 404 and recorded.
+
+        A source far below ``denied_rate_per_min`` is answered 'counted' by both requests and
+        has its two refusals in the counter row and in the one bucket. No ``rate_limited``
+        event, and no capacity slot for it, is written for a source that is not at its limit.
+        """
+        self._keep_capacity_rows()
+        limit = 10
+        for _try in range(3):
+            self._inside_one_minute()
+            ip = self._new_source()
+            digest = self._source(ip)
+            minute = self._db_minute()
+            slots = self._used_slots(minute)
+            others = []
+            with self.registry.cursor() as cr_other:
+                env_other = api.Environment(cr_other, SUPERUSER_ID, {})
+                answer, matched = self._between_statements(
+                    lambda env: env['woow.document.log']._refuse('share_access', ip, limit=limit),
+                    [('UPDATE woow_document_denied_counter', lambda: others.append(
+                        env_other['woow.document.log']._refuse(
+                            'share_access', ip, limit=limit)))])
+            if self._db_minute() != minute:
+                continue   # a minute boundary fell inside this try; start a new source
+            self.assertEqual((answer, others, matched), ('counted', ['counted'], [0]))
+            with self.registry.cursor() as check:
+                check.execute('SELECT event, count FROM woow_document_denied_counter '
+                              'WHERE ip_hash = %s', (digest,))
+                self.assertEqual(check.fetchall(), [('share_access', 2)])
+                check.execute("SELECT event, count FROM woow_document_log "
+                              "WHERE result = 'denied' AND ip_hash = %s ORDER BY event",
+                              (digest,))
+                self.assertEqual(check.fetchall(), [('share_access', 2)])
+            # The counter row and the bucket, one slot each; nothing for a refusal turned away.
+            self.assertEqual(self._used_slots(minute) - slots, 2)
+            return
+        self.fail('no try stayed within one minute')
+
 
 @tagged('woow_docmgmt_core')
 class TestFailureBucketsOfDeletedLinks(TransactionCase):
