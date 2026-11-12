@@ -12,7 +12,7 @@ from odoo import Command, fields
 from odoo.exceptions import AccessError
 from odoo.tests import TransactionCase, tagged
 
-from ..models import share_service
+from ..models import cron_jobs, share_service
 from ..services.constants import SHARE_RECORD_RETENTION_DAYS
 
 
@@ -99,6 +99,49 @@ class TestDocumentCron(TransactionCase):
         self.assertFalse(counted.exists())
         self.assertEqual(self.env['woow.document.log'].sudo().search_count([
             ('share_id', '=', limited.id), ('event', '=', 'share_download')]), 0)
+
+    def test_log_retention_takes_the_oldest_rows_first_and_does_not_count_the_rest(self):
+        """A batch is the oldest rows in id order, and a full batch is the sign that more are due.
+
+        The model order is newest first, so a batch taken in it is found only after walking
+        the primary key backwards through every live row (the expired rows have the lowest
+        ids), and counting the rows that are left reads the whole table (``create_date`` has
+        no index), in every batch. At the inflow that the denied bucket capacity permits that
+        keeps the weekly clean-up from keeping up with it.
+        """
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.log_retention_days', '30')
+        log = self.env['woow.document.log'].sudo()
+        values = {'event': 'upload', 'result': 'ok', 'channel': 'backend'}
+        expired = log.create([dict(values) for _index in range(3)]).sorted('id')
+        fresh = log.create(dict(values))
+        self.env.cr.execute('UPDATE woow_document_log SET create_date = %s WHERE id IN %s',
+                            (fields.Datetime.now() - timedelta(days=31), tuple(expired.ids)))
+        self.env.invalidate_all()
+        progress = []
+        cron = type(self.env['ir.cron'])
+
+        def count_the_rest(_self, *_args, **_kwargs):
+            raise AssertionError('the rows that are left were counted')
+
+        # A plain function: the ORM collects the methods of a model that have an ``_ondelete``
+        # attribute once per class, and a mock answers to every attribute name.
+        with patch.object(cron, '_notify_progress',
+                          lambda _self, *, done, remaining: progress.append((done, remaining))), \
+                patch.object(cron_jobs, 'LOG_RETENTION_BATCH', 2), \
+                patch.object(type(log), 'search_count', count_the_rest):
+            self.env['woow.document'].sudo()._cron_log_retention()
+            # The two oldest rows are the batch and the batch is full: another one is due.
+            self.assertEqual(expired.exists(), expired[2])
+            self.assertEqual(len(progress), 1)
+            self.assertEqual(progress[0][0], 2)
+            self.assertGreater(progress[0][1], 0)
+            self.env['woow.document'].sudo()._cron_log_retention()
+            self.assertFalse(expired.exists())
+            self.assertEqual(progress[1], (1, 0))
+            self.env['woow.document'].sudo()._cron_log_retention()
+            self.assertEqual(progress[2], (0, 0))
+        self.assertEqual(fresh.exists(), fresh)
 
     def test_log_retention_still_removes_fresh_counter_rows_once_they_age_out_after_expiry(self):
         """An expired-by-state share keeps nothing: the maintenance job and retention agree."""
