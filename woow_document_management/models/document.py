@@ -8,6 +8,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
 
 from ..services import url_policy
+from .quota import LEDGER_KEY, QuotaLedger
 from .upload_policy import WoowUploadRejected
 
 _MANAGER = 'woow_document_management.group_woow_document_manager'
@@ -161,6 +162,9 @@ class WoowDocument(models.Model):
                      'uploaded_by_partner_id', 'folder_in_trash', 'company_id'}
         docs = self.browse()
         with self.env.cr.savepoint():
+            policy = self.env['woow.document.upload.policy']
+            prepared = []
+            files = []
             for incoming in vals_list:
                 vals = dict(incoming)
                 if not self.env.su and protected.intersection(vals):
@@ -188,6 +192,7 @@ class WoowDocument(models.Model):
                 if {'shared_user_ids', 'shared_partner_ids'}.intersection(vals) and not self.env.su:
                     folder._woow_require_rank(4)
                 kind = vals.get('document_type', 'binary')
+                size = 0
                 if kind == 'binary':
                     if vals.get('url'):
                         raise UserError(_('A file cannot also be a link.'))
@@ -198,9 +203,10 @@ class WoowDocument(models.Model):
                         data = base64.b64decode(encoded, validate=True)
                     except (binascii.Error, TypeError, ValueError):
                         raise WoowUploadRejected('content') from None
-                    checked = self.env['woow.document.upload.policy']._validate(
-                        vals.get('name'), data)
+                    checked = policy._validate(vals.get('name'), data, quota=False)
                     vals['name'], vals['mimetype'] = checked.name, checked.mimetype
+                    files.append((checked.checksum, checked.size))
+                    size = len(data)
                 elif kind == 'url':
                     if vals.get('datas'):
                         raise UserError(_('A link cannot also contain a file.'))
@@ -214,6 +220,12 @@ class WoowDocument(models.Model):
                     vals['url'] = safe_url
                 else:
                     raise UserError(_('Unknown document type.'))
+                prepared.append((vals, folder, size))
+            # The quota is checked last, for all the files together: the lock that orders
+            # the uploads is then held only while the files are written, and the stored
+            # bytes are measured once.
+            self.env['woow.document.quota']._check_many(files)
+            for vals, folder, size in prepared:
                 context = ({'tracking_disable': True} if not internal else
                            {'mail_create_nolog': True, 'mail_create_nosubscribe': True})
                 created = super(WoowDocument, self.with_context(**context)).create([vals])
@@ -222,9 +234,8 @@ class WoowDocument(models.Model):
                     'upload', channel='portal' if not internal else self._woow_log_channel(),
                     document_id=created.id, folder_id=folder.id,
                     partner_id=self.env.user.partner_id.id if not internal else None,
-                    company_id=folder.company_id.id, detail={'bytes': len(data) if kind == 'binary' else 0})
-                # The next policy check must see the previous file in this batch.
-                self.env.flush_all()
+                    company_id=folder.company_id.id, detail={'bytes': size})
+            self.env.flush_all()
         return docs
 
     def write(self, vals):
@@ -262,6 +273,9 @@ class WoowDocument(models.Model):
                 doc.document_type != vals['document_type'] for doc in self):
             raise UserError(_('Changing the document type is not supported.'))
         result = True
+        # The replaced files of one call share the stored-bytes measurement of the quota.
+        policy = self.env['woow.document.upload.policy'].with_context(
+            **{LEDGER_KEY: QuotaLedger()})
         with self.env.cr.savepoint():
             for doc in self:
                 if target and doc.company_id != target.company_id:
@@ -276,8 +290,7 @@ class WoowDocument(models.Model):
                         data = base64.b64decode(update['datas'], validate=True)
                     except (binascii.Error, TypeError, ValueError):
                         raise WoowUploadRejected('content') from None
-                    checked = self.env['woow.document.upload.policy']._validate(
-                        update.get('name', doc.name), data)
+                    checked = policy._validate(update.get('name', doc.name), data)
                     update['name'], update['mimetype'] = checked.name, checked.mimetype
                 elif 'name' in update and update['name'] != doc.name:
                     # A rename follows the upload name policy against the stored type.

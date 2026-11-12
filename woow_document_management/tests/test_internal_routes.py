@@ -4,13 +4,17 @@
 import base64
 import hmac
 import io
+import json
 import time
 import zipfile
 from unittest.mock import patch
 
+from werkzeug.datastructures import FileStorage
+
 from odoo import Command
 from odoo.tests import HttpCase, tagged
 
+from ..controllers.streaming import create_batch
 from .common import png_declaring
 
 
@@ -90,6 +94,24 @@ class TestInternalRoutes(HttpCase):
         with zipfile.ZipFile(io.BytesIO(accepted.content)) as zipped:
             self.assertEqual(len(zipped.namelist()), 6)
             self.assertEqual(zipped.read('HTTP folder/stored-3.txt')[:2], b'3x')
+
+    def test_a_batch_that_runs_again_reads_every_upload_from_its_start(self):
+        """After a concurrency error the framework runs the request again.
+
+        It only rewinds the first upload, so the others must be rewound where they are
+        read: an upload that was read before would be stored as an empty file.
+        """
+        uploads = [FileStorage(stream=io.BytesIO(b'first file'), filename='first.txt'),
+                   FileStorage(stream=io.BytesIO(b'second file'), filename='second.txt')]
+        for upload in uploads:
+            upload.read()                         # the first run read them to the end
+        folder = self.folder.with_user(self.env.ref('base.user_admin'))
+        response = create_batch(folder, uploads, channel='backend')
+        body = json.loads(response.get_data(as_text=True))
+        self.assertEqual((response.status_code, body['ok']), (200, True), body)
+        stored = self.env['woow.document'].sudo().browse(body['document_ids'])
+        self.assertEqual(sorted(base64.b64decode(doc.datas) for doc in stored),
+                         [b'first file', b'second file'])
 
     def test_hidden_and_missing_documents_have_the_same_response(self):
         self.doc.write({'active': False})

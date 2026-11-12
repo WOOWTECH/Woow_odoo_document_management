@@ -23,7 +23,8 @@ class LockBusy(Exception):
 
 
 RANK: dict[str, int] = {'zip': 1, 'share': 2, 'quota': 3, 'access': 4}
-NAME_RE = re.compile(r'^(zip:u:\d+|zip:slot:[1-4]|zip:s:\d+:[0-9a-f]{16}|share:\d+|quota(?::warn)?|access:\d+)$')
+NAME_RE = re.compile(
+    r'^(zip:u:\d+|zip:slot:[1-4]|zip:s:\d+:[0-9a-f]{16}|share:\d+|quota(?::warn|:u:\d+)?|access:\d+)$')
 _TRACKER = weakref.WeakKeyDictionary()
 _HELD_QUERY = """SELECT (classid::bigint << 32) | objid::bigint
                  FROM pg_locks WHERE pid = pg_backend_pid() AND locktype = 'advisory'

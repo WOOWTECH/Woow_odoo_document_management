@@ -7,6 +7,7 @@ from odoo import _, fields, models
 from odoo.exceptions import AccessError, UserError
 
 from ..models.document import SOURCE_CTX_KEY, _SOURCE_SENTINEL
+from ..models.quota import LEDGER_KEY, QuotaLedger
 from ..models.upload_policy import WoowUploadRejected
 
 
@@ -47,6 +48,9 @@ class WoowDocumentAddAttachmentWizard(models.TransientModel):
 
         created = self.env['woow.document']
         rejected = {}
+        # One quota measurement for the whole import, and the bytes it adds as it goes.
+        imports = self.env['woow.document'].with_context(
+            **{SOURCE_CTX_KEY: _SOURCE_SENTINEL, LEDGER_KEY: QuotaLedger()})
         for source in sources:
             data = source.raw if source.type == 'binary' else b''
             if not data:
@@ -59,8 +63,7 @@ class WoowDocumentAddAttachmentWizard(models.TransientModel):
                 vals.update(source_res_model=source.res_model, source_res_id=source.res_id)
             try:
                 with self.env.cr.savepoint():
-                    created |= self.env['woow.document'].with_context(
-                        **{SOURCE_CTX_KEY: _SOURCE_SENTINEL}).create(vals)
+                    created |= imports.create(vals)
             except WoowUploadRejected as error:
                 reason = str(error)
                 rejected[reason] = rejected.get(reason, 0) + 1

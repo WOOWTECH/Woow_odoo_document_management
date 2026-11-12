@@ -5,13 +5,19 @@
 import base64
 from unittest.mock import patch
 
+from psycopg2 import OperationalError
+from psycopg2.pool import PoolError
+
 from odoo import Command
 from odoo.exceptions import AccessError
 from odoo.tests import TransactionCase, tagged
+from odoo.tools import mute_logger
 
+from ..models import quota as quota_module
+from ..models.quota import LEDGER_KEY, QuotaLedger
 from ..models.upload_policy import WoowUploadRejected
 from ..services import locks
-from ..services.locks import try_lock
+from ..services.locks import LockBusy, try_lock
 
 
 @tagged('woow_docmgmt_files')
@@ -187,3 +193,109 @@ class TestQuotaAnswersDoNotDependOnOtherContent(TransactionCase):
         self.assertEqual(result['params']['type'], 'success')
         self.assertEqual(self.env['woow.document'].sudo().search_count([
             ('folder_id', '=', self.folder.id), ('source_res_id', '=', importer.partner_id.id)]), 1)
+
+
+@tagged('woow_docmgmt_files')
+class TestQuotaRuns(TransactionCase):
+    """An upload measures the stored bytes once, last, and never waits behind its own account."""
+
+    def setUp(self):
+        super().setUp()
+        self.params = self.env['ir.config_parameter'].sudo()
+        self.params.set_param('woow_document_management.quota_mb', '1000')
+        self.quota = self.env['woow.document.quota']
+        self.admin = self.env.ref('base.user_admin')
+        self.folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Quota run folder', 'owner_id': self.admin.id})
+        locks._reset_tracker(self.env.cr)
+
+    def _files(self, count, prefix='run'):
+        return [{'name': '%s-%d.txt' % (prefix, index), 'folder_id': self.folder.id,
+                 'datas': base64.b64encode(b'%s %d' % (prefix.encode(), index))}
+                for index in range(count)]
+
+    def test_a_batch_is_validated_first_and_measures_the_stored_bytes_once(self):
+        events = []
+        quota_model = type(self.quota)
+        policy_model = type(self.env['woow.document.upload.policy'])
+        usage, validate = quota_model._usage_bytes, policy_model._validate
+
+        def measuring(model):
+            events.append('measure')
+            return usage(model)
+
+        def validating(model, name, data, **kwargs):
+            events.append('validate')
+            return validate(model, name, data, **kwargs)
+
+        with patch.object(quota_model, '_usage_bytes', measuring), \
+                patch.object(policy_model, '_validate', validating):
+            created = self.env['woow.document'].with_user(self.admin).create(self._files(10))
+        self.assertEqual(len(created), 10)
+        self.assertEqual(events, ['validate'] * 10 + ['measure'])
+
+    def test_the_quota_check_writes_no_row_that_other_transactions_could_collide_on(self):
+        key = 'woow_document_management.quota_mb'
+        self.env.flush_all()
+        self.env.cr.execute('SELECT ctid::text FROM ir_config_parameter WHERE key = %s', (key,))
+        before = self.env.cr.fetchone()
+        self.env['woow.document'].with_user(self.admin).create(self._files(2, 'barrier'))
+        self.env.flush_all()
+        self.env.cr.execute('SELECT ctid::text FROM ir_config_parameter WHERE key = %s', (key,))
+        self.assertEqual(self.env.cr.fetchone(), before)
+
+    def test_the_stored_bytes_include_uploads_committed_after_the_snapshot_of_the_caller(self):
+        """Every upload waits for the quota lock after its transaction began, so it must see
+        what the uploads before it committed meanwhile: the count is read afresh."""
+        self.env.cr.execute('SELECT 1')    # the snapshot of this transaction
+        size = 7_000_003
+        name = 'quota-committed-%s' % id(self)
+
+        def remove():
+            with self.env.registry.cursor() as cr:
+                cr.execute('DELETE FROM ir_attachment WHERE name = %s', (name,))
+        self.addCleanup(remove)
+        before = self.quota._usage_bytes()
+        with self.env.registry.cursor() as other:
+            other.execute("""INSERT INTO ir_attachment (name, type, store_fname, file_size)
+                             VALUES (%s, 'binary', %s, %s)""", (name, 'zz/' + name, size))
+        self.assertEqual(self.quota._usage_bytes(), before + size)
+
+    def test_one_account_waits_for_its_own_lock_and_other_accounts_do_not(self):
+        other_user = self.env['res.users'].sudo().create({
+            'name': 'Quota other account', 'login': 'wdoc-quota-other',
+            'groups_id': [Command.set([self.env.ref('base.group_user').id])]})
+        real_lock = locks.lock
+
+        def quick(cr, name, timeout_ms=50):
+            return real_lock(cr, name, timeout_ms)
+
+        with self.env.registry.cursor() as account, \
+                patch.object(quota_module, 'lock', quick):
+            self.assertTrue(try_lock(account, 'quota:u:%d' % self.admin.id))
+            with mute_logger('odoo.sql_db'), self.assertRaises(LockBusy):
+                self.quota.with_user(self.admin)._check_many([('checksum', 10)])
+            self.quota.with_user(other_user)._check_many([('checksum', 10)])
+
+    def test_files_of_one_run_count_the_bytes_the_run_has_already_accepted(self):
+        self.params.set_param('woow_document_management.quota_mb', '1')
+        capacity = 1024 * 1024
+        accepted = capacity * 95 // 100 - 400_000
+        run = self.quota.with_context(**{LEDGER_KEY: QuotaLedger()})
+        with patch.object(type(self.quota), '_usage_bytes', return_value=accepted) as measure:
+            run._check_many([('one', 300_000)])
+            with self.assertRaises(WoowUploadRejected) as caught:
+                run._check_many([('two', 300_000)])
+            self.assertEqual(caught.exception.code, 'quota')
+            run._check_many([('three', 50_000)])
+            self.assertEqual(measure.call_count, 1)
+            # A call that shares no ledger measures for itself and knows only what is stored.
+            self.quota._check_many([('four', 300_000)])
+            self.assertEqual(measure.call_count, 2)
+
+    def test_a_missing_connection_for_the_measurement_asks_to_try_again(self):
+        for error in (PoolError('the pool is full'), OperationalError('too many connections')):
+            with self.subTest(error=type(error).__name__), \
+                    patch.object(self.env.registry, 'cursor', side_effect=error):
+                with self.assertRaises(LockBusy):
+                    self.quota._usage_bytes()

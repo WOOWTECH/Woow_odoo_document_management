@@ -251,8 +251,12 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
     _name = 'woow.document.upload.policy'
     _description = 'Document upload policy'
 
-    def _validate(self, name, data) -> ValidatedFile:
-        """Every check of arch section 11; the channel comes from env.user. Ends with quota._check."""
+    def _validate(self, name, data, *, quota=True) -> ValidatedFile:
+        """Every check of arch section 11; the channel comes from env.user. Ends with quota._check.
+
+        A caller that stores several files in one call passes ``quota=False`` and checks the
+        quota of all of them together, last (``quota._check_many``).
+        """
         user = self.env.user
         if self.env.su or user._is_internal():
             channel = 'internal'
@@ -310,7 +314,8 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
             if pixels > PIXEL_LIMIT:
                 raise WoowUploadRejected('pixels')
         checksum = self.env['ir.attachment']._compute_checksum(data)
-        self.env['woow.document.quota']._check(checksum, len(data))
+        if quota:
+            self.env['woow.document.quota']._check(checksum, len(data))
         return ValidatedFile(safe_name, mimetype, len(data), checksum)
 
     def _validate_rename(self, name, document_type, mimetype) -> str:

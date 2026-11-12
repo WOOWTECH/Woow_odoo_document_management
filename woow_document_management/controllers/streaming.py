@@ -134,6 +134,9 @@ def create_batch(folder, uploads, *, channel):
                                   'errors': []}, 400)
         vals = []
         for upload in uploads:
+            # A request that is run again after a concurrency error has only the first
+            # upload rewound by the framework; the others would read as empty files.
+            upload.stream.seek(0)
             vals.append({'name': upload.filename, 'folder_id': folder.id,
                          'datas': base64.b64encode(upload.read()).decode('ascii')})
         with folder.env.cr.savepoint():

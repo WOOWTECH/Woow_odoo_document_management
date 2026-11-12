@@ -66,6 +66,34 @@ class Client:
             raise RuntimeError('page without form token')
         return match.group(1)
 
+    def login(self, login, password):
+        token = self.csrf('/web/login')
+        status, _ = self.send('POST', '/web/login', {
+            'login': login, 'password': password, 'csrf_token': token, 'redirect': '/my'})
+        if status not in (302, 303):
+            raise RuntimeError('login refused')
+
+    def upload(self, path, token, filename, content):
+        """POST one file as multipart form data; returns (status, seconds)."""
+        boundary = '----woowsc%x' % int(time.time() * 1000000)
+        body = (('--%s\r\nContent-Disposition: form-data; name="csrf_token"\r\n\r\n%s\r\n'
+                 '--%s\r\nContent-Disposition: form-data; name="files"; filename="%s"\r\n'
+                 'Content-Type: text/plain\r\n\r\n') % (boundary, token, boundary, filename)
+                ).encode() + content + ('\r\n--%s--\r\n' % boundary).encode()
+        headers = dict(self.headers)
+        headers['Content-Type'] = 'multipart/form-data; boundary=' + boundary
+        if self.sid:
+            headers['Cookie'] = 'session_id=' + self.sid
+        started = time.monotonic()
+        connection = http.client.HTTPConnection('127.0.0.1', PORT, timeout=120)
+        try:
+            connection.request('POST', path, body=body, headers=headers)
+            response = connection.getresponse()
+            response.read()
+            return response.status, time.monotonic() - started
+        finally:
+            connection.close()
+
 
 def ready():
     deadline = time.monotonic() + 120
@@ -205,8 +233,60 @@ def refuse_many(spec):
     return result
 
 
+def quota_contention(spec):
+    """One account uploads without pause while another one uploads at a steady rhythm."""
+    spec = json.loads(spec)
+    accounts = {}
+    for name in ('attacker', 'victim'):
+        client = Client()
+        client.login(*spec[name]['credentials'])
+        folder = spec[name]['folder']
+        path = '/my/docs/folder/%d' % folder
+        accounts[name] = (client, '/my/docs/folder/%d/upload' % folder, client.csrf(path))
+    stop = threading.Event()
+    result = {'attacker': [], 'victim': [], 'errors': []}
+
+    def attack():
+        client, path, token = accounts['attacker']
+        count = 0
+        try:
+            while not stop.is_set():
+                count += 1
+                status, seconds = client.upload(
+                    path, token, 'attack-%d.txt' % count, ('attack %d' % count).encode())
+                result['attacker'].append(status)
+        except Exception as exc:  # reported to the runner, which fails closed
+            result['errors'].append('attacker_' + type(exc).__name__)
+
+    def victim():
+        client, path, token = accounts['victim']
+        try:
+            for count in range(1, spec['uploads'] + 1):
+                started = time.monotonic()
+                status, seconds = client.upload(
+                    path, token, 'victim-%d.txt' % count, ('victim %d' % count).encode())
+                result['victim'].append([status, round(seconds * 1000)])
+                pause = spec['period'] - (time.monotonic() - started)
+                if pause > 0:
+                    time.sleep(pause)
+        except Exception as exc:  # reported to the runner, which fails closed
+            result['errors'].append('victim_' + type(exc).__name__)
+
+    attacker = threading.Thread(target=attack)
+    attacker.start()
+    time.sleep(spec['head_start'])
+    victim_thread = threading.Thread(target=victim)
+    victim_thread.start()
+    victim_thread.join(timeout=300)
+    stop.set()
+    attacker.join(timeout=300)
+    if victim_thread.is_alive() or attacker.is_alive():
+        result['errors'].append('timeout')
+    return result
+
+
 COMMANDS = {'ready': ready, 'denied': denied, 'unlock-race': unlock_race, 'sources': sources,
-            'refuse-many': refuse_many}
+            'refuse-many': refuse_many, 'quota-contention': quota_contention}
 sys.stdout.write(json.dumps(COMMANDS[sys.argv[1]](*sys.argv[3:])) + '\n')
 '''
 
