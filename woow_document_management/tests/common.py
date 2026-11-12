@@ -63,12 +63,44 @@ def png_with_image_chunks(count):
 
 
 def png_of_noise(side):
-    """A valid PNG of ``side`` x ``side`` pixels of noise: large, in many IDAT chunks."""
+    """A valid PNG of ``side`` x ``side`` pixels of noise: large, in a few IDAT chunks of 64 KB."""
     import random
     from PIL import Image
 
     pixels = random.Random(20261112).randbytes(side * side * 3)
     return _png_bytes(Image.frombytes('RGB', (side, side), pixels))
+
+
+def png_chunks_of(data):
+    """The (type, payload) of every chunk of a PNG, in file order, found by walking the file."""
+    chunks, position = [], 8
+    while position + 8 <= len(data):
+        length = struct.unpack('>I', data[position:position + 4])[0]
+        chunks.append((data[position + 4:position + 8], data[position + 8:position + 8 + length]))
+        position += 12 + length
+    return chunks
+
+
+def png_with_image_data_pieces(data, piece):
+    """The same PNG with its image data re-cut into IDAT chunks of ``piece`` bytes.
+
+    The compressed image data is one stream however it is cut into chunks, so the result
+    decodes to the same picture; only the number of chunks changes (the last one is shorter).
+    Every other chunk stays where it was.
+    """
+    assert piece > 0
+    chunks = png_chunks_of(data)
+    stream = b''.join(payload for kind, payload in chunks if kind == b'IDAT')
+    pieces = [png_chunk(b'IDAT', stream[start:start + piece])
+              for start in range(0, len(stream), piece)]
+    cut, placed = [data[:8]], False
+    for kind, payload in chunks:
+        if kind != b'IDAT':
+            cut.append(png_chunk(kind, payload))
+        elif not placed:
+            cut.extend(pieces)
+            placed = True
+    return b''.join(cut)
 
 
 def apng_with_frames(count):

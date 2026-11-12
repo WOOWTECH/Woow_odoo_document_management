@@ -19,8 +19,9 @@ from ..models import upload_policy
 from ..models.upload_policy import WoowUploadRejected
 from ..services.constants import PIXEL_LIMIT
 from .common import (apng_with_frames, gif_with_comments, jpeg_with_segments, png_chunk,
-                     png_declaring, png_of_noise, png_profile_payload, png_with_chunk_list,
-                     png_with_chunks, png_with_image_chunks)
+                     png_chunks_of, png_declaring, png_of_noise, png_profile_payload,
+                     png_with_chunk_list, png_with_chunks, png_with_image_chunks,
+                     png_with_image_data_pieces)
 
 
 @tagged('woow_docmgmt_files')
@@ -308,7 +309,10 @@ class TestUploadPolicy(TransactionCase):
 
         The library reads each chunk in Python, so empty chunks cost it far more than their size,
         and the walk over them costs this check the same. Past a free allowance they must be
-        as large as the encoders write them (kilobytes), or the file is refused.
+        as large as the encoders write them (kilobytes), or the file is refused. The allowance
+        grows with the size of the file: one large picture cut into thousands of small chunks is
+        accepted up to a bound and refused beyond it, where as many empty chunks in a tiny file
+        are refused.
         """
         check = upload_policy._png_structure_ok
         free = upload_policy.PNG_FREE_IMAGE_CHUNKS
@@ -324,6 +328,28 @@ class TestUploadPolicy(TransactionCase):
         animation = apng_with_frames(upload_policy.PNG_MAX_CHUNKS + 44)
         self.assertGreater(animation.count(b'fcTL'), upload_policy.PNG_MAX_CHUNKS)
         self.assertTrue(check(animation))
+        # The same large picture in more image data chunks than the free allowance: 1.6 times as
+        # many, a valid file that is accepted, and twice as many, a valid file that is refused.
+        # A flat limit of PNG_FREE_IMAGE_CHUNKS would refuse both.
+        picture = png_of_noise(512)
+        stream = sum(len(payload) for kind, payload in png_chunks_of(picture) if kind == b'IDAT')
+        pixels = Image.open(io.BytesIO(picture)).tobytes()
+        many = png_with_image_data_pieces(picture, stream // (free * 8 // 5))
+        too_many = png_with_image_data_pieces(picture, stream // (free * 2))
+        counts = {}
+        for label, content in (('many', many), ('too many', too_many)):
+            counts[label] = sum(kind == b'IDAT' for kind, _payload in png_chunks_of(content))
+            self.assertEqual(Image.open(io.BytesIO(content)).tobytes(), pixels, label)
+        self.assertGreater(counts['many'], free)
+        self.assertGreater(counts['too many'], counts['many'])
+        self.assertIs(check(many), True)
+        self.assertEqual(self.policy._validate('many.png', many).mimetype, 'image/png')
+        self.assertIs(check(too_many), False)
+        with patch.object(upload_policy.Image, 'open',
+                          side_effect=AssertionError('the image was opened')):
+            with self.assertRaises(WoowUploadRejected) as caught:
+                self.policy._validate('too-many.png', too_many)
+        self.assertEqual(caught.exception.code, 'content')
 
     def test_images_with_ordinary_headers_are_still_accepted(self):
         within = upload_policy.IMAGE_MAX_STRUCTURES // 8
@@ -343,7 +369,9 @@ class TestUploadPolicy(TransactionCase):
                 # What editors and cameras write: a profile, the resolution, a few texts.
                 ('profile.png', png_with_chunk_list(ordinary), 'image/png'),
                 ('trailing.png', png_with_chunk_list(ordinary, after_image_data=True), 'image/png'),
-                # A large picture is in many image data chunks, but fewer than one per 256 bytes.
+                # A large picture as an encoder writes it: its image data is in chunks of 64 KB.
+                # (The test of the image data chunks cuts such a picture into thousands of
+                # small ones.)
                 ('noise.png', png_of_noise(512), 'image/png'),
                 ('split.png', png_with_image_chunks(50), 'image/png')):
             with self.subTest(file=name):
