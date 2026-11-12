@@ -126,6 +126,14 @@ class WoowDocumentCron(models.Model):
         share that is still active, not yet expired and limited (``max_downloads`` > 0)
         are its download counter and stay until the share expires or is revoked; from
         then on they follow the ordinary retention period.
+
+        A batch is the oldest rows, taken in ascending id order, and the run does not count
+        what is left. ``create_date`` has no index and the model order is newest first, so a
+        batch taken in that order is found only after walking the primary key backwards
+        through every live row (the expired rows have the lowest ids), and counting the rest
+        reads the whole table: both in every batch, which at the inflow that the denied
+        bucket capacity permits keeps the clean-up from keeping up. A full batch is the sign
+        that another one is due; a smaller one has read to the end of the table.
         """
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
@@ -137,10 +145,11 @@ class WoowDocumentCron(models.Model):
             ('share_id', 'any', [('state', '=', 'active'), ('expire_at', '>', now),
                                  ('max_downloads', '>', 0)])]
         domain = ['&', ('create_date', '<', cutoff), '!', *counted_by_live_share]
-        rows = self.env['woow.document.log'].search(domain, limit=LOG_RETENTION_BATCH)
+        rows = self.env['woow.document.log'].search(
+            domain, order='id', limit=LOG_RETENTION_BATCH)
         done = len(rows)
         rows.unlink()
-        remaining = self.env['woow.document.log'].search_count(domain)
+        remaining = 1 if done == LOG_RETENTION_BATCH else 0
         # Minute counters only decide requests of their own minute.
         minute_domain = [('bucket_minute', '<', now - timedelta(days=2))]
         for model in ('woow.document.denied.budget', 'woow.document.denied.counter'):
