@@ -9,7 +9,7 @@ and only the superuser or a system administrator may route email to them. Attach
 back a binary field never become chatter attachments. A follower whose account can no longer
 read the record is not notified, and folder chatter only ever names the folder itself.
 """
-from odoo import _, api, models
+from odoo import _, api, fields, models
 from odoo.exceptions import AccessError
 
 _THREAD_MODELS = ('woow.document', 'woow.document.folder')
@@ -73,6 +73,15 @@ def _readers_only(record, recipients, message, msg_vals):
 
 class WoowDocumentThreadGuard(models.Model):
     _inherit = 'woow.document'
+
+    # A domain term that starts at one of these fields (``message_ids.body``, say) is
+    # answered by a sub-select on mail_message that skips the message record rules
+    # (R-M0), so a share user could test the text of a log note. Core checks field
+    # groups for the first segment of a term before it searches (guard_mixin), which
+    # refuses these fields to everyone outside the internal group.
+    message_ids = fields.One2many(groups='base.group_user')
+    website_message_ids = fields.One2many(groups='base.group_user')
+    has_message = fields.Boolean(groups='base.group_user')
 
     @api.model
     def _get_thread_with_access(self, thread_id, mode="read", **kwargs):
@@ -169,6 +178,10 @@ class WoowDocumentThreadGuard(models.Model):
 
 class WoowDocumentFolderThreadGuard(models.Model):
     _inherit = 'woow.document.folder'
+
+    message_ids = fields.One2many(groups='base.group_user')
+    website_message_ids = fields.One2many(groups='base.group_user')
+    has_message = fields.Boolean(groups='base.group_user')
 
     @api.model
     def _get_thread_with_access(self, thread_id, mode="read", **kwargs):

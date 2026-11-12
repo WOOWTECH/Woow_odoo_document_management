@@ -119,6 +119,51 @@ class TestMailThreadGuardOrm(TransactionCase):
         messages.browse(self.message_ids).check_access('read')
         self.assertTrue(messages.browse(self.message_ids).has_access('read'))
 
+    def _note(self, record, text):
+        """An internal log note on ``record`` (never sent to followers)."""
+        return record.with_user(self.env.ref('base.user_admin')).message_post(
+            body=text, message_type='comment', subtype_xmlid='mail.mt_note')
+
+    def test_portal_reader_cannot_test_chatter_text_through_the_message_fields(self):
+        """A term that starts at a message field must not answer for the note's text.
+
+        ``message_ids`` and ``website_message_ids`` are auto-join one2many fields:
+        core answers a term such as ``message_ids.body`` with a sub-select on the
+        message table that skips the message record rules (R-M0), so a share user
+        who may read the record could test whether its internal notes contain a
+        string. The fields follow the internal group, like the other chatter fields.
+        """
+        secret = 'ledger-%s' % secrets.token_hex(6)
+        notes = {'woow.document': self._note(self.document, 'Internal note %s' % secret),
+                 'woow.document.folder': self._note(self.folder, 'Folder note %s' % secret)}
+        self.env.flush_all()
+        for model, record in (('woow.document', self.document),
+                              ('woow.document.folder', self.folder)):
+            records = self.env[model].with_user(self.portal)
+            self.assertEqual(records.search_count([('id', '=', record.id)]), 1)
+            internal = self.env[model].with_user(self.member)
+            for field in ('message_ids', 'website_message_ids'):
+                domain = [('id', '=', record.id), ('%s.body' % field, 'ilike', secret)]
+                probes = {
+                    'search': lambda: records.search(domain),
+                    'search_count': lambda: records.search_count(domain),
+                    'read_group': lambda: records.read_group(domain, ['__count'], []),
+                    'any': lambda: records.search_count([
+                        ('id', '=', record.id),
+                        (field, 'any', [('body', 'ilike', secret)])]),
+                }
+                for name, probe in probes.items():
+                    with self.subTest(model=model, field=field, probe=name), \
+                            self.assertRaises(AccessError):
+                        probe()
+                # Internal readers keep the core behaviour of the same terms.
+                self.assertEqual(internal.search_count(domain), 1, (model, field))
+            has_message = [('id', '=', record.id), ('has_message', '=', True)]
+            with self.subTest(model=model, field='has_message'), self.assertRaises(AccessError):
+                records.search_count(has_message)
+            self.assertEqual(internal.search_count(has_message), 1)
+        self.assertEqual(notes['woow.document'].model, 'woow.document')
+
     def test_portal_keeps_reading_messages_outside_module_models(self):
         """The rule only hides this module's models; the portal user's own thread stays readable."""
         partner = self.portal.partner_id
@@ -164,6 +209,34 @@ class TestMailThreadGuardRpc(HttpCase):
         found = self._call_kw('mail.message', 'search_read',
                               [[['id', 'in', ids]]], {'fields': ['body']})
         self.assertEqual(sorted(row['id'] for row in found['result']), sorted(ids))
+
+    def test_portal_rpc_cannot_test_chatter_text_through_the_message_fields(self):
+        password = secrets.token_urlsafe(16)
+        portal, _member, folder, document, _document_message, _folder_message = _chatter_fixture(
+            self.env, 'probe', password=password)
+        secret = 'ledger-%s' % secrets.token_hex(6)
+        document.with_user(self.env.ref('base.user_admin')).message_post(
+            body='Internal note %s' % secret, message_type='comment',
+            subtype_xmlid='mail.mt_note')
+        self.env.flush_all()
+        for model, record in (('woow.document', document), ('woow.document.folder', folder)):
+            for field in ('message_ids', 'website_message_ids'):
+                domain = [['id', '=', record.id], ['%s.body' % field, 'ilike', secret]]
+                for method, args, kwargs in (
+                        ('search_count', [domain], {}), ('search', [domain], {}),
+                        ('search_read', [domain], {'fields': ['id']}),
+                        ('read_group', [domain, ['__count'], []], {})):
+                    with self.subTest(user='portal', model=model, field=field, method=method):
+                        self.authenticate(portal.login, password)
+                        answer = self._call_kw(model, method, args, kwargs)
+                        self.assertIn('error', answer)
+                        self.assertEqual(answer['error']['data']['name'],
+                                         'odoo.exceptions.AccessError')
+                        self.assertNotIn(secret, json.dumps(answer))
+        self.authenticate('admin', 'admin')
+        found = self._call_kw('woow.document', 'search_count',
+                              [[['id', '=', document.id], ['message_ids.body', 'ilike', secret]]])
+        self.assertEqual(found.get('result'), 1)
 
 
 def _raw_email(sender, subject):
