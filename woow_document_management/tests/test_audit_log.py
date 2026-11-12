@@ -5,6 +5,7 @@ import secrets
 import threading
 import time
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from psycopg2 import OperationalError, errors
@@ -15,6 +16,8 @@ from odoo.exceptions import AccessError
 from odoo.tests import TransactionCase, tagged
 from odoo.tools import mute_logger
 
+from ..controllers import share as share_controller
+from ..controllers import streaming
 from ..models import document_log as document_log_module
 from ..services.client_ip import hmac_ip, source_key
 from ..services.constants import SHARE_RECORD_RETENTION_DAYS
@@ -738,6 +741,82 @@ class TestDeniedConcurrency(TransactionCase):
             with self.registry.cursor() as check:
                 self.assertEqual(_budget_version(check, minute), full)
                 self.assertEqual(full[0], maximum)
+            return
+        self.fail('no try stayed within one minute')
+
+    def test_unlock_refused_for_the_source_limit_neither_waits_for_nor_fails_on_other_requests(self):
+        """share_unlock turns away a source that used its limit without a lock or a retry.
+
+        The source's counter row stands at its limit. B, a request of the source, takes its
+        snapshot first. A, another request of the source, is refused and commits the source's
+        bucket of rate-limited requests. A refusal that locked the counter row again and wrote
+        the bucket inside B's own Repeatable Read transaction would fail on A's bucket with
+        serialization_failure, and Odoo would sleep and run the request again with the worker
+        and its connection (T-SHARE-49 shows it over real HTTP). The refusal adds to the bucket
+        with a statement of its own that commits at once, and B holds no lock when it is done.
+        """
+        self._keep_capacity_rows()
+        limit = self.env['woow.document.settings']._get_settings().denied_rate_per_min
+        controller = share_controller.WoowDocShareController()
+        public = self.env.ref('base.public_user')
+
+        def unlock(env, ip):
+            """The route up to its refusal; a link that is only a stand-in is enough for it."""
+            access = share_controller.ShareAccess(
+                SimpleNamespace(id=1, has_password=True), None, ip, '', None)
+            with patch.object(share_controller, 'request', SimpleNamespace(env=env)), \
+                    patch.object(controller, '_share_entry', return_value=access), \
+                    patch.object(streaming, 'too_many_requests', return_value='429'):
+                return controller.share_unlock.original_endpoint(controller, 1)
+
+        def used(cr, minute):
+            row = _budget_version(cr, minute)
+            return row[0] if row else 0
+
+        for _try in range(3):
+            self._inside_one_minute()
+            ip = self._new_source()
+            digest = self._source(ip)
+            minutes = set()
+            with self.registry.cursor() as setup:
+                setup.execute(
+                    """INSERT INTO woow_document_denied_counter
+                           (event, ip_hash, bucket_minute, count)
+                       VALUES ('share_unlock_failed', %s,
+                               date_trunc('minute', now() AT TIME ZONE 'UTC'), %s)""",
+                    (digest, limit))
+                minutes.add(_minute(setup))
+                before = used(setup, _minute(setup))
+            with self.registry.cursor() as cr_b, self.registry.cursor() as cr_a:
+                minutes.add(_minute(cr_b))   # B's first statement takes its snapshot.
+                env_a = api.Environment(cr_a, public.id, {})
+                env_b = api.Environment(cr_b, public.id, {})
+                self.assertEqual(unlock(env_a, ip), '429')
+                minutes.add(_minute(cr_a))
+                cr_a.commit()
+                self.assertEqual(unlock(env_b, ip), '429')
+                minutes.add(_minute(cr_b))
+                with self.registry.cursor() as other:
+                    # B is still open: it holds no lock on the source's counter row.
+                    other.execute(
+                        """SELECT count FROM woow_document_denied_counter
+                           WHERE event = 'share_unlock_failed' AND ip_hash = %s
+                           FOR UPDATE NOWAIT""", (digest,))
+                    self.assertEqual(other.fetchall(), [(limit,)])
+                cr_b.commit()
+            if len(minutes) > 1:
+                continue   # a minute boundary fell inside this try; start a new source
+            with self.registry.cursor() as check:
+                check.execute(
+                    """SELECT count FROM woow_document_denied_counter
+                       WHERE event = 'share_unlock_failed' AND ip_hash = %s""", (digest,))
+                self.assertEqual(check.fetchall(), [(limit,)])
+                # Both refusals are in the one bucket of the source, which took one slot.
+                check.execute(
+                    """SELECT event, share_id, link_ref, count FROM woow_document_log
+                       WHERE result = 'denied' AND ip_hash = %s""", (digest,))
+                self.assertEqual(check.fetchall(), [('rate_limited', None, None, 2)])
+                self.assertEqual(used(check, minutes.pop()), before + 1)
             return
         self.fail('no try stayed within one minute')
 

@@ -925,14 +925,23 @@ class TestShareHttp(HttpCase):
                 'password': password + 'x', 'csrf_token': csrf},
                 allow_redirects=False).status_code, 404)
         versions = [self._ctid(share) for share in shares]
+        log_model = type(self.env['woow.document.log'])
         with patch.object(tokens, 'check_password', side_effect=AssertionError(
-                'a password was compared after the source limit')) as check:
+                'a password was compared after the source limit')) as check, \
+                patch.object(share_controller.WoowDocShareController, '_denied',
+                             side_effect=AssertionError('the refusal was counted again')), \
+                patch.object(log_model, '_count_denied_across_shares', side_effect=AssertionError(
+                    'the source counter row was locked')), \
+                patch.object(log_model, '_log_event', side_effect=AssertionError(
+                    'the refusal was written in the request transaction')):
             for share in (second, first):
                 response = self.url_open('/woow-docs/s/%d/unlock' % share.id, data={
                     'password': password, 'csrf_token': csrf}, allow_redirects=False)
                 self.assertEqual(response.status_code, 429)
         check.assert_not_called()
-        # Refused attempts take no share lock and write no share row version.
+        # Refused attempts take no share lock and write no share row version. The source
+        # limit is proved by the request snapshot, so the refusal locks and recounts nothing
+        # (a recount in the request transaction is what made bursts of them retry).
         self.assertEqual([self._ctid(share) for share in shares], versions)
         self.env.invalidate_all()
         log = self.env['woow.document.log'].sudo()

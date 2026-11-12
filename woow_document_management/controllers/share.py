@@ -71,7 +71,9 @@ class WoowDocShareController(http.Controller):
         The refusals of ATOMIC_EVENTS (a link or an id that is not valid) are counted
         with one statement per count that never waits for another request of the source
         and cannot fail for it (``_refuse``); the wrong passwords are decided here,
-        under the locks of their link and source.
+        under the locks of their link and source. A password attempt of a source that
+        has already used its limit does not come here: ``share_unlock`` refuses it
+        before any lock (``_source_limited``).
         """
         log = request.env['woow.document.log']
         if event in ATOMIC_EVENTS:
@@ -89,6 +91,24 @@ class WoowDocShareController(http.Controller):
             return streaming.too_many_requests()
         log._log_event(event, result='denied', channel='share', share_id=share_id, ip=ip)
         return streaming.uniform_404('share')
+
+    def _source_limited(self, ip):
+        """Answer 429 to a request of a source that has already used its minute limit.
+
+        The caller proved the limit in its request snapshot, and a source's count only
+        grows within a minute, so there is nothing left to count or to lock. The refusal
+        is added to the source's bucket of ``rate_limited`` requests by one statement in
+        a short transaction of its own that commits at once (``_bump_denied_bucket``, as
+        the refusals of ATOMIC_EVENTS are). The request transaction takes no lock, and
+        the statement cannot fail for another request of the source, so a burst of them
+        is not rolled back and run again by the framework, which would hold a worker and
+        its connection asleep for every retry. When no turn or connection can be had the
+        answer is the same and the refusal is not recorded.
+        """
+        log = request.env['woow.document.log']
+        log._bump_denied_bucket(log._event_values(
+            'rate_limited', result='denied', channel='share', ip=ip))
+        return streaming.too_many_requests()
 
     def _unlock_limit(self, access, settings, source_count):
         """The unlock limit that is used up: 'source' (all links), 'link' or None."""
@@ -245,13 +265,16 @@ class WoowDocShareController(http.Controller):
         try:
             settings = request.env['woow.document.settings']._get_settings()
             log = request.env['woow.document.log']
-            # Refuse from the request snapshot first, without locks or writes. A stale
-            # snapshot can only miss failures, so a limit reached here is reached for
-            # certain, and a refused attempt never locks or writes the share row.
+            # Refuse from the request snapshot first, before any lock. A stale snapshot can
+            # only miss failures, so a limit reached here is reached for certain and needs
+            # no locked recount. A refused attempt never locks or writes the share row or
+            # the source's counter row. One that is refused for the source's limit is
+            # recorded by a statement of its own in a short transaction
+            # (``_source_limited``); the others write nothing.
             limit = self._unlock_limit(access, settings, log._peek_denied_across_shares(
                 'share_unlock_failed', access.ip))
             if limit == 'source':
-                return self._denied(access.ip, share.id, event='share_unlock_failed')
+                return self._source_limited(access.ip)
             if limit:
                 return streaming.too_many_requests()
             # Serialize the comparison. The share lock and row lock cover this link's

@@ -50,9 +50,17 @@ repeated once on clean counters.
   answer is 404 or 429, exactly `denied_rate_per_min` refusals are counted (answered 404) and
   the rest are answered 429 and recorded as `rate_limited`; the counter row, the audit buckets
   and the capacity (one slot per row written) add up to what was answered.
+- `sh dev/sc/run_sc.sh unlock-over-limit-together` runs T-SHARE-49: one source (the loopback
+  address every client reaches the server from) uses its minute limit on a protected link
+  (`denied_rate_per_min` 3, wrong passwords one after the other), then twelve clients with a
+  session of their own on that link send passwords in rounds that start together. Every attempt
+  is answered 429 without a comparison, and none fails on or is run again because of another:
+  the server log shows no retry and no error trace. The refusals are added to the one bucket of
+  rate-limited requests and match the answers; the source counter and the counted failures stay
+  at the limit, and the capacity holds one slot, the bucket.
 - `sh dev/sc/run_sc.sh quota-contention` runs T-UPL-32: with a quota set and a long attachment
   table, one portal account sends single-file uploads without pause while another one uploads
   once a second. Every upload answers 200, the slower account's within a second at the 95th
   percentile, and no request is rolled back and run again for a concurrency error.
 
-All six use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.
+All seven use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.
