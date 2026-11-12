@@ -298,7 +298,10 @@ class WoowDocShareController(http.Controller):
     def share_close(self, share_id, **post):
         access = self._share_entry(share_id=share_id, resolve=False)
         grants = dict(request.session.get(SESSION_GRANTS_KEY) or {})
-        grants.pop(str(share_id), None)
-        request.session[SESSION_GRANTS_KEY] = grants
+        # Assigning the session value marks the session as changed and saves a file, so only
+        # a session that holds this grant is written: a request without one (which anyone
+        # can send, with a form token taken from the landing page) must not store a session.
+        if grants.pop(str(share_id), None) is not None:
+            request.session[SESSION_GRANTS_KEY] = grants
         return streaming.apply_common_headers(
             request.redirect('/woow-docs/s', code=303, local=True), 'share')

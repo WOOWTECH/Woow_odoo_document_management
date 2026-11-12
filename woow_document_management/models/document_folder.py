@@ -519,17 +519,28 @@ class WoowDocumentFolder(models.Model):
         return ['|', (f'eff_{level}_user_ids', 'in', [self.env.uid]),
                 (f'eff_{level}_group_ids', 'in', self.env.user.groups_id.ids)]
 
+    def _woow_filter_rank(self, n):
+        """The folders of ``self`` that pass ``_woow_has_rank(n)``, found with one search.
+
+        Checking each folder of a long list one by one costs a query per folder (a
+        share of a few thousand documents would take thousands), however few folders
+        hold them.
+        """
+        if not self:
+            return self
+        if self.env.su:
+            return self.exists()
+        if not self.env.user._is_internal():
+            return self.browse()
+        domain = [('id', 'in', self.ids)]
+        if not self.env.user.has_group(_MANAGER):
+            domain += self._woow_rank_domain(n)
+        return self.search(domain)
+
     def _woow_has_rank(self, n):
         """Check the live rule and effective grant without elevating privileges."""
         self.ensure_one()
-        if self.env.su:
-            return bool(self.exists())
-        if not self.env.user._is_internal():
-            return False
-        domain = [('id', '=', self.id)]
-        if not self.env.user.has_group(_MANAGER):
-            domain += self._woow_rank_domain(n)
-        return bool(self.search_count(domain))
+        return bool(self._woow_filter_rank(n))
 
     def _woow_require_rank(self, n):
         """AccessError unless every folder in self passes _woow_has_rank(n)."""

@@ -282,7 +282,9 @@ class WoowDocumentShareService(models.Model):
             limit=max_candidates + 1 if max_candidates is not None else None)
         if max_candidates is not None and len(docs) > max_candidates:
             raise ZipLimitExceeded('files')
-        return docs.filtered(lambda doc: doc.folder_id._woow_has_rank(4))
+        # One search for all the folders, not one query per document.
+        managed = docs.folder_id._woow_filter_rank(4)
+        return docs.filtered(lambda doc: doc.folder_id in managed)
 
     def _woow_link_url(self, token):
         """Public link: configured base URL or get_base_url(), then '/woow-docs/s#' + token."""

@@ -3,6 +3,7 @@
 
 import base64
 import io
+import os
 import re
 import secrets
 import sys
@@ -17,7 +18,7 @@ import requests
 from psycopg2 import errors
 from psycopg2.pool import PoolError
 
-from odoo import Command, SUPERUSER_ID, api, fields, sql_db
+from odoo import Command, SUPERUSER_ID, api, fields, http, sql_db
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import TEST_CURSOR_COOKIE_NAME, Opener
@@ -26,7 +27,7 @@ from odoo.tools import mute_logger
 from ..models import document_log as document_log_module
 from ..services import tokens
 from ..services.client_ip import hmac_ip, source_key
-from ..services.constants import SHARE_UNLOCK_FAIL_PER_HOUR
+from ..services.constants import SESSION_GRANTS_KEY, SHARE_UNLOCK_FAIL_PER_HOUR
 from ..services.zip_builder import ZipLimitExceeded
 from ..controllers import streaming
 
@@ -179,6 +180,56 @@ class TestShareScope(TransactionCase):
         self.assertTrue(visitor_su.su)
         self.assertFalse(share.sudo()._validate_for_access(visitor_su))
         self.assertFalse(share.sudo()._validate_for_access(None))
+
+    def test_scope_checks_the_management_rank_of_folders_with_one_search(self):
+        """The queries of a share's scope must not grow with the number of its documents."""
+        group = self.env.ref('woow_document_management.group_woow_document_user')
+        owner = self.env['res.users'].sudo().create({
+            'name': 'Rank batch owner', 'login': 'wdoc-rank-batch-owner',
+            'groups_id': [Command.set([group.id])]})
+        admin = self.env.ref('base.user_admin')
+        folders = self.env['woow.document.folder'].sudo()
+        documents = self.env['woow.document'].sudo()
+        root = folders.create({'name': 'Rank batch root', 'owner_id': owner.id})
+        managed = [folders.create({'name': 'Rank batch %d' % index, 'parent_id': root.id,
+                                   'owner_id': owner.id}) for index in range(4)]
+        # The creator only reads this folder: its documents are not in the link's scope.
+        reading = folders.create({'name': 'Rank batch read only', 'parent_id': root.id,
+                                  'owner_id': admin.id, 'inherit_access': False})
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': reading.id, 'subject_type': 'user', 'user_id': owner.id,
+            'level': 'read'})
+        share, code = self.env['woow.document.share'].with_user(owner)._issue({
+            'share_type': 'folder', 'folder_id': root.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        counter = {'index': 0}
+
+        def add(per_folder):
+            for folder in managed + [reading]:
+                for _unused in range(per_folder):
+                    counter['index'] += 1
+                    documents.create({
+                        'name': 'rank-%d.txt' % counter['index'], 'folder_id': folder.id,
+                        'datas': base64.b64encode(b'rank batch')})
+
+        def measure():
+            self.env.flush_all()
+            self.env.invalidate_all()
+            found, scope_env = self.env['woow.document.share'].with_user(
+                owner)._resolve_request_access(token=code)
+            self.env.flush_all()
+            before = self.cr.sql_log_count
+            result = found._scope_documents(scope_env)
+            return result, self.cr.sql_log_count - before
+
+        add(1)
+        measure()   # warm the caches that the first call fills, so that the counts compare
+        few, few_queries = measure()
+        add(4)
+        many, many_queries = measure()
+        self.assertEqual((len(few), len(many)), (4, 20))
+        self.assertFalse(many.filtered(lambda doc: doc.folder_id == reading))
+        self.assertEqual(many_queries, few_queries)
 
     def test_unlock_counter_is_creator_scoped_and_counts_only_matching_ip(self):
         group = self.env.ref('woow_document_management.group_woow_document_user')
@@ -484,6 +535,52 @@ class TestShareHttp(HttpCase):
         self.assertEqual(page.status_code, 404)
         self.assertNotIn(b'creator-only.txt', page.content)
         self.assertNotIn(b'visitor-managed.txt', page.content)
+
+    def _fresh_client(self, sid=None):
+        """A client with its own session cookie (one cookie, named for the test server)."""
+        self.opener = Opener(self.cr)
+        self.opener.cookies[TEST_CURSOR_COOKIE_NAME] = self.http_request_key
+        values = {cookie.name: cookie.value for cookie in self.opener.cookies}
+        if sid:
+            values['session_id'] = sid
+        self.opener.cookies.clear()
+        for name, value in values.items():
+            self.opener.cookies.set(name, value, domain='127.0.0.1', path='/')
+
+    def _csrf(self):
+        landing = self.url_open('/woow-docs/s')
+        return CSRF_RE.search(landing.content).group(1).decode()
+
+    def test_closing_a_link_without_a_grant_stores_no_session(self):
+        """A close request that removes nothing must not make the server save a session file.
+
+        The form token comes from the public landing page and belongs to the session id
+        of the request, which is not stored until the session changes: two requests
+        (GET landing, POST close) would otherwise buy a session file each time.
+        """
+        share, code, _doc = self._link('Close session fixture')
+        store = http.root.session_store
+        sid = store.generate_key()
+        path = store.get_session_filename(sid)
+        self._fresh_client(sid)
+        csrf = self._csrf()
+        self.assertFalse(os.path.exists(path))
+        closed = self.url_open('/woow-docs/s/%d/close' % share.id,
+                               data={'csrf_token': csrf}, allow_redirects=False)
+        self.assertEqual((closed.status_code, closed.headers['Location']), (303, '/woow-docs/s'))
+        self.assertFalse(os.path.exists(path))
+        # A session that holds the grant is still updated: the grant is removed.
+        self._fresh_client(sid)
+        self.assertEqual(self._open(code).status_code, 303)
+        held = self.opener.cookies.get('session_id')
+        self.assertNotEqual(held, sid)
+        self.assertIn(str(share.id), store.get(held).get(SESSION_GRANTS_KEY, {}))
+        self.assertEqual(self.url_open('/woow-docs/s/%d' % share.id).status_code, 200)
+        closed = self.url_open('/woow-docs/s/%d/close' % share.id,
+                               data={'csrf_token': self._csrf()}, allow_redirects=False)
+        self.assertEqual(closed.status_code, 303)
+        self.assertNotIn(str(share.id), store.get(held).get(SESSION_GRANTS_KEY, {}))
+        self.assertEqual(self.url_open('/woow-docs/s/%d' % share.id).status_code, 404)
 
     def test_refusal_records_do_not_tell_whether_a_share_exists(self):
         """A live id without a grant and an unknown id use the same records and capacity.
