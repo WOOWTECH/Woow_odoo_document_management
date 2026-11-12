@@ -181,6 +181,9 @@ class WoowDocumentLog(models.Model):
                    user_agent=None, detail=None):
         """Write a bounded event without storing names, addresses or credentials.
 
+        ``company_id`` is None for the current company, False for a record without a
+        company (stored as no company), or an id.
+
         A denied event is merged into its (event, source, minute) bucket and returns
         the bucket's count; only an event in UNBUDGETED_EVENTS keeps its link in the
         bucket: ``share_id`` for the link's readers and ``link_ref``, which is part of
@@ -202,9 +205,11 @@ class WoowDocumentLog(models.Model):
                      all(type(item) is int for item in value))
                 for key, value in detail.items()):
             raise ValueError('audit detail must contain only numeric values')
-        for value in (user_id, partner_id, share_id, document_id, folder_id, company_id):
+        for value in (user_id, partner_id, share_id, document_id, folder_id):
             if value is not None and type(value) is not int:
                 raise ValueError('audit identifiers must be integers')
+        if company_id is not None and company_id is not False and type(company_id) is not int:
+            raise ValueError('audit identifiers must be integers')
         settings = self.env['woow.document.settings']._get_settings()
         if ip is None and request:
             ip = request_client_ip(request.httprequest, settings)
@@ -223,7 +228,10 @@ class WoowDocumentLog(models.Model):
         ip_display = (truncate_ip(ip) if settings.log_ip_mode == 'truncate' else
                       ip_hash if settings.log_ip_mode == 'hash' else None)
         user_id = (None if self.env.user._is_public() else self.env.uid) if user_id is None else user_id
-        company_id = self.env.company.id if company_id is None else company_id
+        # None names the current company; False (what the empty company of a folder reads
+        # as) is a record that belongs to no company, kept with an empty company so that
+        # every company's administrators may read it (R-L0).
+        company_id = self.env.company.id if company_id is None else (company_id or None)
         vals = {'event': event, 'result': result, 'channel': channel,
                 'user_id': user_id, 'partner_id': partner_id, 'share_id': share_id,
                 'company_id': company_id, 'ip_hash': ip_hash, 'ip_display': ip_display,

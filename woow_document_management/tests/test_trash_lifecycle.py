@@ -369,6 +369,94 @@ class TestPurgeBatches(TransactionCase):
                 self.assertEqual(sorted(record.getMessage() for record in logs.records),
                                  sorted(self._skipped_messages(roots, documents)))
 
+    def test_an_unexpected_error_skips_only_its_record_and_is_logged_by_class(self):
+        """Any error of one record, not only the database ones, leaves the run intact (R2b-06).
+
+        The record counts as failed, the others are purged, and the log names the record by
+        its id and the error by its class, never by its text (which may hold data).
+        """
+        roots, documents = set(), set()
+        for kind in (ValueError, KeyError, RuntimeError):
+            with self.subTest(kind=kind.__name__), \
+                    self.assertLogs(trash_actions.__name__, 'WARNING') as logs:
+                root, in_root, alone, healthy, progress = self._purge_with_failing_records(
+                    kind, roots, documents)
+                self.assertTrue(self._all_exist(root, in_root, alone))
+                self.assertFalse(healthy.exists())
+                self.assertEqual(progress, {'done': 1, 'remaining': 0})
+                expected = (
+                    ['Purge skipped a folder after an unexpected error: id %d (%s)' % (
+                        record, kind.__name__) for record in roots] +
+                    ['Purge skipped a document after an unexpected error: id %d (%s)' % (
+                        record, kind.__name__) for record in documents])
+                self.assertEqual(sorted(record.getMessage() for record in logs.records),
+                                 sorted(expected))
+
+    def test_trashed_folders_without_a_company_are_purged_like_any_other(self):
+        """A folder shared across companies has no company: its audit rows must be written."""
+        shared = self.folders.create({'name': 'Shared root', 'owner_id': self.admin.id,
+                                      'company_id': False})
+        inside = self._doc(shared, 'shared.txt')
+        healthy = self.folders.create({'name': 'Healthy beside shared', 'owner_id': self.admin.id})
+        kept = self._doc(healthy, 'healthy-beside.txt')
+        self.assertFalse(inside.company_id)
+        (shared | healthy).with_user(self.admin).action_trash()
+        self._expire(shared, healthy)
+        progress = self._cron()
+        self.assertTrue(self._none_exist(shared, inside, healthy, kept))
+        self.assertEqual(progress, {'done': 4, 'remaining': 0})
+        events = self.env['woow.document.log'].sudo().search([
+            ('event', 'in', ('upload', 'trash', 'purge')), ('company_id', '=', False)])
+        self.assertEqual(sorted(events.mapped('event')),
+                         ['purge', 'purge', 'trash', 'upload'])
+
+    def test_items_that_stay_undeletable_for_days_alert_the_administrators(self):
+        """After POISON_ALERT_DAYS days past the retention an administrator is told, once a day."""
+        manager = self.admin
+        self.env.ref('woow_document_management.group_woow_document_manager').write({
+            'users': [(4, manager.id)]})
+        summary = 'Items in the trash could not be deleted'
+        activities = self.env['mail.activity'].sudo().with_context(active_test=False)
+        domain = [('res_model', '=', 'res.partner'), ('res_id', '=', manager.partner_id.id),
+                  ('user_id', '=', manager.id), ('summary', '=', summary)]
+
+        def failing(name, days):
+            """A trashed root that fails to purge, expired ``days`` days ago."""
+            root = self.folders.create({'name': name, 'owner_id': self.admin.id})
+            root.with_user(self.admin).action_trash()
+            root.with_context(active_test=False).sudo().write({
+                'trashed_date': fields.Datetime.now() - timedelta(days=days)})
+            return root
+
+        def run(*roots):
+            purge_tree = trash_actions.WoowDocumentFolderTrash._woow_purge_tree
+
+            def failing_tree(folder, limit=None):
+                if folder.id in {root.id for root in roots}:
+                    raise ValueError('poison')
+                return purge_tree(folder, limit)
+
+            with patch.object(trash_actions.WoowDocumentFolderTrash, '_woow_purge_tree',
+                              failing_tree):
+                self._cron()
+
+        recent = failing('Recently expired poison', 31)    # retention is 30 days
+        with self.assertLogs(trash_actions.__name__, 'WARNING'):
+            run(recent)
+        self.assertEqual(activities.search_count(domain), 0)
+        stuck = failing('Long expired poison', 30 + 3 + 1)
+        with self.assertLogs(trash_actions.__name__, 'WARNING'):
+            run(recent, stuck)
+        found = activities.search(domain)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found.user_id, manager)
+        self.assertIn('1 items have stayed in the trash for more than 3 days', found.note)
+        self.assertNotIn('poison', found.note)
+        with self.assertLogs(trash_actions.__name__, 'WARNING'):
+            run(recent, stuck)
+        self.assertEqual(activities.search_count(domain), 1)   # one activity a day
+        self.assertTrue(self._all_exist(recent, stuck))
+
     def _failing_link(self, folder, ip):
         """A password link on the folder with a counted wrong password of the source."""
         share, _code = self.env['woow.document.share'].with_user(self.admin)._issue({

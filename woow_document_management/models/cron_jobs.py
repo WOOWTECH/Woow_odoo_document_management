@@ -4,12 +4,15 @@
 
 Every ``_cron_*`` starts by checking ``self.env.su``.
 """
+import logging
 from datetime import timedelta
 
 from odoo import _, api, models
 from odoo import fields
 from odoo.exceptions import AccessError
-from ..services.constants import LOG_RETENTION_BATCH, PURGE_BATCH
+from ..services.constants import LOG_RETENTION_BATCH, POISON_ALERT_DAYS, PURGE_BATCH
+
+_logger = logging.getLogger(__name__)
 
 
 class WoowDocumentCron(models.Model):
@@ -28,7 +31,9 @@ class WoowDocumentCron(models.Model):
         restore or move committed after the snapshot (the lock on the folder rows
         of the purge root's subtree, or the document delete, then fails with
         serialization_failure), or a delete the database refuses (an integrity
-        error). Skipped records are not counted in ``remaining`` (R2b-06).
+        error), or any other error of that record. Skipped records are not counted in
+        ``remaining`` (R2b-06); a record that stays undeletable for POISON_ALERT_DAYS
+        days after its retention period is reported to the document administrators.
         """
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
@@ -41,16 +46,64 @@ class WoowDocumentCron(models.Model):
         document_domain = domain + [('legal_hold', '=', False)]
         folder_model = self.env['woow.document.folder'].with_context(active_test=False)
         documents_model = self.with_context(active_test=False)
+        failures = []
         folders = folder_model.search(folder_domain, limit=PURGE_BATCH)
-        _done, failed, deleted = folders._woow_purge_batch(PURGE_BATCH)
+        _done, failed, deleted = folders._woow_purge_batch(PURGE_BATCH, failures=failures)
         if deleted < PURGE_BATCH:
             documents = documents_model.search(document_domain, limit=PURGE_BATCH - deleted)
-            done_docs, failed_docs = documents.exists()._woow_purge()
+            done_docs, failed_docs = documents.exists()._woow_purge(failures=failures)
             deleted += done_docs
             failed += failed_docs
         remaining = max(0, folder_model.search_count(folder_domain) +
                         documents_model.search_count(document_domain) - failed)
+        self._woow_alert_stuck_trash(failures, cutoff)
         self.env['ir.cron']._notify_progress(done=deleted, remaining=remaining)
+
+    @api.model
+    def _woow_alert_stuck_trash(self, failures, cutoff):
+        """Tell the document administrators about items that the purge cannot delete (R2b-06).
+
+        The daily run tries every item whose retention period has ended, so an item that
+        failed in this run and whose retention ended more than POISON_ALERT_DAYS days ago
+        has failed in every run since. Each administrator gets one activity a day, which
+        only counts the items (no names). The alert never fails the purge.
+        """
+        threshold = cutoff - timedelta(days=POISON_ALERT_DAYS)
+        stuck = 0
+        for model_name in ('woow.document.folder', 'woow.document'):
+            ids = [record_id for name, record_id in failures if name == model_name]
+            if ids:
+                stuck += self.env[model_name].with_context(active_test=False).search_count(
+                    [('id', 'in', ids), ('trashed_date', '<', threshold)])
+        if not stuck:
+            return
+        today = fields.Date.context_today(self)
+        summary = _('Items in the trash could not be deleted')
+        note = _('%(count)s items have stayed in the trash for more than %(days)s days after '
+                 'their retention period and could not be deleted. Check the trash for items '
+                 'under legal hold or with an error.', count=stuck, days=POISON_ALERT_DAYS)
+        partner_model = self.env.ref('base.model_res_partner')
+        activity_type = self.env.ref('mail.mail_activity_data_todo')
+        activities = self.env['mail.activity']
+        group = self.env.ref('woow_document_management.group_woow_document_manager')
+        for manager in group.users.filtered('active'):
+            partner = manager.partner_id
+            if not partner:
+                continue
+            try:
+                with self.env.cr.savepoint():
+                    if activities.search_count([
+                            ('res_model_id', '=', partner_model.id), ('res_id', '=', partner.id),
+                            ('user_id', '=', manager.id), ('date_deadline', '=', today),
+                            ('summary', '=', summary)]):
+                        continue
+                    activities.create({
+                        'res_model_id': partner_model.id, 'res_id': partner.id,
+                        'user_id': manager.id, 'activity_type_id': activity_type.id,
+                        'date_deadline': today, 'summary': summary, 'note': note})
+            except Exception as error:  # noqa: BLE001 - an alert never fails the purge
+                _logger.warning('The trash alert could not be created for a user (%s)',
+                                type(error).__name__)
 
     @api.model
     def _cron_share_maintenance(self):

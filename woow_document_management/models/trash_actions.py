@@ -23,11 +23,20 @@ _PURGE_SKIPPED = (AccessError, UserError, LockBusy, errors.SerializationFailure,
                   errors.DeadlockDetected, errors.IntegrityError)
 
 
-def _skipped(kind, record, error):
-    """Note a skipped record; only a refused delete is worth a log line (ids only)."""
+def _skipped(kind, record, error, failures=None):
+    """Note a skipped record: a refused delete or an unexpected error is logged (ids only).
+
+    The class of an unexpected error is logged, never its text, which may name data.
+    ``failures`` collects (model, id) of the skipped records for the caller.
+    """
     if isinstance(error, errors.IntegrityError):
         _logger.warning('Purge skipped a %s the database refused to delete: id %s',
                         kind, record.id)
+    elif not isinstance(error, _PURGE_SKIPPED):
+        _logger.warning('Purge skipped a %s after an unexpected error: id %s (%s)',
+                        kind, record.id, type(error).__name__)
+    if failures is not None:
+        failures.append((record._name, record.id))
 
 
 def _audit(record, event, **detail):
@@ -91,13 +100,15 @@ class WoowDocumentTrash(models.Model):
                 _audit(doc, 'legal_hold', hold=state)
         return True
 
-    def _woow_purge(self):
+    def _woow_purge(self, failures=None):
         """Delete permanently, skipping held and locked records -> (done, failed).
 
         A document already removed with a folder earlier in the same run is skipped
         and counts as neither. The hold is read from this transaction's snapshot and
         the delete writes the same row, so a hold committed after the snapshot makes
         the delete fail with serialization_failure: that document counts as failed.
+        Any other error of one record skips only that record as well (R2b-06); with
+        ``failures`` (a list) the skipped records are appended to it as (model, id).
         """
         self._require_manager()
         done = failed = 0
@@ -111,9 +122,9 @@ class WoowDocumentTrash(models.Model):
                     with bounded_wait(self.env.cr, LOCK_TIMEOUT_MS):
                         doc.unlink()
                     done += 1
-            except _PURGE_SKIPPED as error:
+            except Exception as error:  # noqa: BLE001 - one record never stops the run
                 failed += 1
-                _skipped('document', doc, error)
+                _skipped('document', doc, error, failures)
         return done, failed
 
 
@@ -187,7 +198,7 @@ class WoowDocumentFolderTrash(models.Model):
         done, failed, _deleted = self._woow_purge_batch(budget)
         return done, failed
 
-    def _woow_purge_batch(self, budget=None):
+    def _woow_purge_batch(self, budget=None, failures=None):
         """``_woow_purge`` that also returns the number of records deleted.
 
         The rows of each root and of every folder below it are locked before any
@@ -211,9 +222,9 @@ class WoowDocumentFolderTrash(models.Model):
                         None if budget is None else budget - deleted)
                 deleted += count
                 done += finished
-            except _PURGE_SKIPPED as error:
+            except Exception as error:  # noqa: BLE001 - one record never stops the run
                 failed += 1
-                _skipped('folder', root, error)
+                _skipped('folder', root, error, failures)
         return done, failed, deleted
 
     def _woow_lock_purge_root(self):

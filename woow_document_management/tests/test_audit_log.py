@@ -155,6 +155,24 @@ class TestAuditLog(TransactionCase):
         # One counter row and one bucket for the whole network.
         self.assertEqual(_budget(self.env), 2)
 
+    def test_an_event_may_name_a_record_without_a_company(self):
+        """A folder shared across companies has no company; its events are kept without one."""
+        log = self.env['woow.document.log']
+        self.assertEqual(log._log_event('upload', channel='backend', company_id=False), 1)
+        self.assertEqual(log._log_event('upload', channel='backend', company_id=None), 1)
+        self.assertEqual(log._log_event('upload', channel='backend',
+                                        company_id=self.env.company.id), 1)
+        rows = log.sudo().search([('event', '=', 'upload')], order='id')
+        self.assertEqual(rows.mapped('company_id'),
+                         self.env['res.company'].browse() | self.env.company | self.env.company)
+        self.assertEqual(log._log_event('share_open', result='denied', channel='share',
+                                        company_id=False), 1)
+        denied = log.sudo().search([('event', '=', 'share_open'), ('result', '=', 'denied')])
+        self.assertFalse(denied.company_id)
+        for value in ('1', 1.0, True, [1]):
+            with self.subTest(company_id=value), self.assertRaises(ValueError):
+                log._log_event('upload', channel='backend', company_id=value)
+
     def test_audit_detail_rejects_strings(self):
         with self.assertRaises(ValueError):
             self.env['woow.document.log']._log_event(
