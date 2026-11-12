@@ -2,9 +2,10 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Folder members (IF-MODEL, owned by core-models-acl)."""
 from odoo import _, api, fields, models, tools
-from odoo.exceptions import ValidationError
+from odoo.exceptions import AccessError, ValidationError
 
 from ..services.locks import advisory_key, lock
+from .document_folder import _company_value
 
 _LEVEL_RANK = {'read': 1, 'upload': 2, 'edit': 3, 'manage': 4}
 MAX_ACCESS_LINES = 500
@@ -90,6 +91,15 @@ class WoowDocumentFolderAccess(models.Model):
             self._lock_folders([vals['folder_id']])
             if not self.env.su:
                 self.env['woow.document.folder'].browse(vals['folder_id'])._woow_require_rank(4)
+        if 'company_id' in vals and not self.env.su:
+            # The company of a row is the one of its folder (the new one, when the row moves):
+            # a stored value of another company would take the row out of the company rule of
+            # the administrators of that folder.
+            company = _company_value(vals['company_id'])
+            target = self.env['woow.document.folder'].browse(vals.get('folder_id'))
+            if any(company != ((target or line.folder_id).company_id.id or False)
+                   for line in self):
+                raise AccessError(_('This folder field cannot be changed directly.'))
         before = self._members_by_folder() if vals else {}
         result = super().write(vals)
         if vals:
