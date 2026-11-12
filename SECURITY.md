@@ -84,6 +84,11 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   the stored bytes are measured once through a database connection of their own after the
   upload took the quota lock. One account has one upload transaction at a time: its other
   requests wait for it (up to five seconds, then 503) and not for the site-wide lock.
+- **Indexing.** The files of documents are saved without core indexing: their `index_content`
+  stays empty, whether or not `attachment_indexation` is installed. Its indexers unpack and parse
+  the members of Office and OpenDocument archives of any file type and any declared size, while
+  the upload policy bounds only the directory of an archive. A module that searches the content
+  of documents has to decide what it reads from a file, and how much.
 
 ## Known limitations (pending owner decisions)
 
