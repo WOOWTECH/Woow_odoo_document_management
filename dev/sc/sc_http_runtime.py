@@ -233,6 +233,35 @@ def refuse_many(spec):
     return result
 
 
+def same_source(spec):
+    """Refused link opens from one source (one address) by several clients at once."""
+    spec = json.loads(spec)
+    clients = [Client({'X-Real-IP': spec['ip']}) for _ in range(spec['clients'])]
+    prepared = [(client, client.csrf('/woow-docs/s')) for client in clients]
+    barrier = threading.Barrier(len(prepared))
+    result = {'statuses': [[] for _ in prepared], 'errors': []}
+
+    def refuse(index):
+        client, token = prepared[index]
+        try:
+            for _ in range(spec['rounds']):
+                barrier.wait(timeout=120)   # every round starts all requests together
+                result['statuses'][index].append(client.send(
+                    'POST', '/woow-docs/s/open', {'token': 'x' * 43, 'csrf_token': token})[0])
+        except Exception as exc:  # reported to the runner, which fails closed
+            result['errors'].append(type(exc).__name__)
+            barrier.abort()
+
+    threads = [threading.Thread(target=refuse, args=(index,)) for index in range(len(prepared))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=300)
+    if any(thread.is_alive() for thread in threads):
+        result['errors'].append('timeout')
+    return result
+
+
 def quota_contention(spec):
     """One account uploads without pause while another one uploads at a steady rhythm."""
     spec = json.loads(spec)
@@ -286,7 +315,8 @@ def quota_contention(spec):
 
 
 COMMANDS = {'ready': ready, 'denied': denied, 'unlock-race': unlock_race, 'sources': sources,
-            'refuse-many': refuse_many, 'quota-contention': quota_contention}
+            'refuse-many': refuse_many, 'quota-contention': quota_contention,
+            'same-source': same_source}
 sys.stdout.write(json.dumps(COMMANDS[sys.argv[1]](*sys.argv[3:])) + '\n')
 '''
 

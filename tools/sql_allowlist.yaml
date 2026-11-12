@@ -63,8 +63,16 @@ entries:
   note: per-source denied counter row across share ids (no share existence oracle); snapshot read, locked read and increment that fail with serialization_failure on a stale repeatable read snapshot, removal of a row that counts nothing
 - id: Q14
   file: woow_document_management/models/document_log.py
-  functions: [_take_slot]
-  note: per-minute denied record capacity; refused at once when the calling transaction's snapshot shows the minute full, otherwise one slot reserved in its own short read committed transaction for the calling transaction's minute, never past the maximum
+  functions: [_take_slot, _short_transaction, _minute_is_full, _reserve]
+  note: per-minute denied record capacity; refused at once when the calling transaction's snapshot shows the minute full, otherwise one slot reserved in its own short read committed transaction for the calling transaction's minute, never past the maximum (a refusal's own short transaction reserves its slot on its own cursor, together with the row that needs it); the isolation level of those short transactions
+- id: Q22
+  file: woow_document_management/models/document_log.py
+  functions: [_count_below]
+  note: per-source denied counter of the refusals anybody can cause (no valid link, no grant): one statement raises the minute's row while it is below the limit, in a short read committed transaction that commits at once, so concurrent requests of one source neither wait for nor fail on each other; a new source's row is inserted with count 1 after a slot of the minute capacity
+- id: Q23
+  file: woow_document_management/models/document_log.py
+  functions: [_bump_denied_bucket]
+  note: denied audit bucket of those refusals (per event, source and minute, never per link): an existing bucket is raised by one statement, a new one is inserted after a slot, each in a short read committed transaction that commits at once
 - id: Q16
   file: woow_document_management/models/document_log.py
   functions: [_denied_bucket_exists]

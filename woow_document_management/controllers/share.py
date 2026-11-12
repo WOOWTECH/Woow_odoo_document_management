@@ -10,6 +10,7 @@ from odoo import fields, http
 from odoo.exceptions import AccessError, MissingError, UserError
 from odoo.http import Response, request
 
+from ..models.document_log import ATOMIC_EVENTS
 from ..services import tokens
 from ..services.client_ip import hmac_ip, request_client_ip, source_key
 from ..services.constants import (MAX_GRANTS, SESSION_GRANTS_KEY,
@@ -66,8 +67,20 @@ class WoowDocShareController(http.Controller):
         password, which needs a valid link and grant. A source that is new in the
         minute and finds no capacity for its counter row gets 429, and nothing is
         written.
+
+        The refusals of ATOMIC_EVENTS (a link or an id that is not valid) are counted
+        with one statement per count that never waits for another request of the source
+        and cannot fail for it (``_refuse``); the wrong passwords are decided here,
+        under the locks of their link and source.
         """
         log = request.env['woow.document.log']
+        if event in ATOMIC_EVENTS:
+            # Counted and recorded in short transactions of their own, so that refusals
+            # of one source never wait for, fail on or are run again because of each other.
+            limit = request.env['woow.document.settings']._get_settings().denied_rate_per_min
+            if log._refuse(event, ip, limit=limit, channel='share') == 'counted':
+                return streaming.uniform_404('share')
+            return streaming.too_many_requests()
         prior = log._count_denied_across_shares(event, ip)
         if prior is None:
             return streaming.too_many_requests()

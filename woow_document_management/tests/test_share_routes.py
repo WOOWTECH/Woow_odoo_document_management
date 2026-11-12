@@ -8,7 +8,9 @@ import re
 import secrets
 import sys
 import threading
+import time
 import zipfile
+from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import timedelta
@@ -29,6 +31,7 @@ from ..services import tokens
 from ..services.client_ip import hmac_ip, source_key
 from ..services.constants import SESSION_GRANTS_KEY, SHARE_UNLOCK_FAIL_PER_HOUR
 from ..services.zip_builder import ZipLimitExceeded
+from ..controllers import share as share_controller
 from ..controllers import streaming
 
 CSRF_RE = re.compile(rb'name="csrf_token"[^>]*value="([^"]+)"')
@@ -72,6 +75,62 @@ def _deleted_creator_link(test, password=None):
     test.env.invalidate_all()
     test.assertFalse(share.sudo().create_uid)
     return share, code, visitor
+
+
+@tagged('woow_docmgmt_share_scope')
+class TestRefusalsOfOneSourceDoNotCollide(TransactionCase):
+    """Refusals of one source that overlap are counted exactly and none fails or is retried.
+
+    Each request takes its snapshot before any of them has written: under Repeatable Read a
+    request that locks or updates a row another one changed after its snapshot fails with
+    a serialization error and the framework runs it again after a pause, which keeps a
+    worker busy (T-SHARE-48 shows it over real HTTP).
+    """
+
+    def _clean(self, digest):
+        with self.registry.cursor() as cr:
+            cr.execute('DELETE FROM woow_document_log WHERE ip_hash = %s', (digest,))
+            cr.execute('DELETE FROM woow_document_denied_counter WHERE ip_hash = %s', (digest,))
+            cr.execute('DELETE FROM woow_document_denied_budget')
+
+    def test_overlapping_refusals_of_one_source_are_counted_exactly(self):
+        source = '198.51.100.201'
+        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, source_key(source))
+        self.addCleanup(self._clean, digest)
+        self.env.cr.execute('SELECT EXTRACT(SECOND FROM clock_timestamp())')
+        second = self.env.cr.fetchone()[0]
+        if second > 50:
+            time.sleep(61 - float(second))      # keep the requests inside one minute
+        controller = share_controller.WoowDocShareController()
+        public = self.env.ref('base.public_user')
+        requests = 13
+        answers = []
+        cursors = [self.registry.cursor() for _index in range(requests)]
+        try:
+            for cr in cursors:
+                cr.execute('SELECT 1')          # every request has its snapshot already
+            with patch.object(streaming, 'uniform_404', return_value='404'), \
+                    patch.object(streaming, 'too_many_requests', return_value='429'):
+                for cr in cursors:
+                    env = api.Environment(cr, public.id, {})
+                    with patch.object(share_controller, 'request', SimpleNamespace(env=env)):
+                        answers.append(controller._denied(source))
+                    cr.commit()                 # the end of the request
+        finally:
+            for cr in cursors:
+                cr.close()
+        limit = 10                              # denied_rate_per_min
+        self.assertEqual(answers, ['404'] * limit + ['429'] * (requests - limit))
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT event, count FROM woow_document_denied_counter '
+                       'WHERE ip_hash = %s', (digest,))
+            self.assertEqual(cr.fetchall(), [('share_access', limit)])
+            cr.execute("SELECT event, count FROM woow_document_log WHERE ip_hash = %s "
+                       "AND result = 'denied' ORDER BY event", (digest,))
+            self.assertEqual(cr.fetchall(), [('rate_limited', requests - limit),
+                                             ('share_access', limit)])
+            cr.execute('SELECT COALESCE(SUM(count), 0) FROM woow_document_denied_budget')
+            self.assertEqual(cr.fetchone()[0], 3)   # the counter row and the two buckets
 
 
 @tagged('woow_docmgmt_share_scope')
@@ -1038,11 +1097,11 @@ class TestShareHttp(HttpCase):
     def test_refusals_without_a_connection_for_a_slot_answer_429_not_500(self):
         """A full connection pool never turns a refusal into a server error.
 
-        Reserving a capacity slot borrows a second connection. While none can be had,
-        a new source's refusals answer 429 on every route and write nothing, and a
-        source that is already counted needs no slot and still gets its 404. Valid
-        links, wrong passwords (which need no slot) and unlocked sessions are served
-        as usual.
+        Counting a refusal borrows a second connection, for a short transaction of its
+        own. While none can be had, refusals answer 429 on every route and write
+        nothing, whether or not the source was counted before. Valid links, wrong
+        passwords (which are counted in the request) and unlocked sessions are served as
+        usual, and the source is counted again once a connection can be had.
         """
         self._trust_forwarded_sources()
         password = secrets.token_urlsafe(16)
@@ -1053,7 +1112,7 @@ class TestShareHttp(HttpCase):
         original = self.registry.cursor
 
         def cursor(*args, **kwargs):
-            if sys._getframe(1).f_code.co_name == '_take_slot':
+            if sys._getframe(1).f_code.co_name in ('_take_slot', '_short_transaction'):
                 raise PoolError('The Connection Pool Is Full')
             return original(*args, **kwargs)
 
@@ -1068,9 +1127,9 @@ class TestShareHttp(HttpCase):
                 self.assertEqual(self._refusals_of(headers['X-Real-IP']), ([], []))
             self.assertEqual(self._capacity_rows(), capacity)
             self.assertEqual(self._denied_rows(), refusals)
-            self.assertEqual(self.url_open(unknown, headers=counted).status_code, 404)
+            self.assertEqual(self.url_open(unknown, headers=counted).status_code, 429)
             self.assertEqual(self._refusals_of('198.51.100.120'),
-                             ([('share_access', None, 2)], [('share_access', 2)]))
+                             ([('share_access', None, 1)], [('share_access', 1)]))
             guesser = {'X-Real-IP': '198.51.100.130'}
             self.assertEqual(self._open(code, headers=guesser).status_code, 303)
             self.assertEqual(self._unlock(share, password + 'x', headers=guesser).status_code,
@@ -1080,6 +1139,9 @@ class TestShareHttp(HttpCase):
             self.assertEqual(self._unlock(share, password, headers=guesser).status_code, 303)
             self.assertEqual(self.url_open('/woow-docs/s/%d' % share.id,
                                            headers=guesser).status_code, 200)
+        self.assertEqual(self.url_open(unknown, headers=counted).status_code, 404)
+        self.assertEqual(self._refusals_of('198.51.100.120'),
+                         ([('share_access', None, 2)], [('share_access', 2)]))
 
     def test_refusals_from_one_ipv6_network_and_many_links_stay_bounded(self):
         """A /64 is one source, and refusals on many links share the source's records."""

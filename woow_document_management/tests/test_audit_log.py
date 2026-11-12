@@ -173,6 +173,63 @@ class TestAuditLog(TransactionCase):
             with self.subTest(company_id=value), self.assertRaises(ValueError):
                 log._log_event('upload', channel='backend', company_id=value)
 
+    def _counted(self, ip):
+        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, source_key(ip))
+        self.env.flush_all()
+        self.env.cr.execute('SELECT event, count FROM woow_document_denied_counter '
+                            'WHERE ip_hash = %s ORDER BY event', (digest,))
+        counters = self.env.cr.fetchall()
+        self.env.cr.execute("SELECT event, count FROM woow_document_log WHERE ip_hash = %s "
+                            "AND result = 'denied' ORDER BY event", (digest,))
+        return counters, self.env.cr.fetchall()
+
+    def test_refusals_count_exactly_up_to_the_limit_then_are_limited(self):
+        log = self.env['woow.document.log']
+        ip = '198.51.100.150'
+        outcomes = [log._refuse('share_access', ip, limit=3) for _ in range(5)]
+        self.assertEqual(outcomes, ['counted'] * 3 + ['limited'] * 2)
+        self.assertEqual(self._counted(ip), (
+            [('share_access', 3)], [('rate_limited', 2), ('share_access', 3)]))
+        # The counter row and the two buckets are the slots used.
+        self.assertEqual(_budget(self.env), 3)
+        self.assertEqual(self._counted('198.51.100.151'), ([], []))
+        for name in ('rate_limited', 'share_unlock_failed', 'upload'):
+            with self.subTest(event=name), self.assertRaises(ValueError):
+                log._refuse(name, ip, limit=3)
+
+    def test_a_slot_stays_only_with_the_row_that_needed_it(self):
+        log = self.env['woow.document.log']
+        with patch.object(document_log_module, 'MAX_DENIED_ROWS_PER_MIN', 3):
+            self.assertEqual(log._refuse('share_access', '198.51.100.160', limit=5), 'counted')
+            self.assertEqual(_budget(self.env), 2)
+            # One slot is left: the counter row of the new source takes it, its bucket finds
+            # none and is not written, and the refusal is still answered by its count.
+            self.assertEqual(log._refuse('share_access', '198.51.100.161', limit=5), 'counted')
+            self.assertEqual(self._counted('198.51.100.161'), ([('share_access', 1)], []))
+            self.assertEqual(_budget(self.env), 3)
+            # None is left: a new source writes nothing and leaves no slot behind.
+            self.assertEqual(log._refuse('share_access', '198.51.100.162', limit=5), 'busy')
+            self.assertEqual(self._counted('198.51.100.162'), ([], []))
+            self.assertEqual(_budget(self.env), 3)
+            # A source that has its rows needs no slot, even when none is left.
+            self.assertEqual(log._refuse('share_access', '198.51.100.160', limit=5), 'counted')
+            self.assertEqual(self._counted('198.51.100.160'), (
+                [('share_access', 2)], [('share_access', 2)]))
+            self.assertEqual(log._refuse('share_access', '198.51.100.161', limit=5), 'counted')
+            self.assertEqual(self._counted('198.51.100.161'), ([('share_access', 2)], []))
+            self.assertEqual(_budget(self.env), 3)
+
+    def test_refusals_without_a_connection_write_nothing_and_say_so(self):
+        log = self.env['woow.document.log']
+        ip = '198.51.100.170'
+        for error in (PoolError('the pool is full'), OperationalError('too many connections')):
+            with self.subTest(error=type(error).__name__), \
+                    patch.object(self.env.registry, 'cursor', side_effect=error):
+                self.assertEqual(log._refuse('share_access', ip, limit=3), 'busy')
+        self.assertEqual(self._counted(ip), ([], []))
+        self.assertEqual(_budget(self.env), 0)
+        self.assertEqual(log._refuse('share_access', ip, limit=3), 'counted')
+
     def test_audit_detail_rejects_strings(self):
         with self.assertRaises(ValueError):
             self.env['woow.document.log']._log_event(
