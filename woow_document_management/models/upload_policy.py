@@ -92,6 +92,92 @@ def _bounded_zip_directory(data: bytes) -> bool:
     return True
 
 
+# An image library reads the header structures of a file in Python code, one by one,
+# and some of them cost more than their size: a GIF appends each comment to the
+# previous ones, a JPEG keeps every application segment, a PNG every private chunk.
+# A few thousand empty structures of a few bytes each (megabytes of upload) keep a
+# worker busy for minutes, so the headers are counted before the library opens the file.
+IMAGE_MAX_STRUCTURES = ZIP_MAX_ENTRIES
+IMAGE_MAX_JUNK = 4096
+
+
+def _png_structure_ok(data: bytes) -> bool:
+    """PNG chunks up to the first image data, the only ones read when a file is opened."""
+    size, position, structures = len(data), 8, 0
+    while position + 8 <= size:
+        structures += 1
+        if structures > IMAGE_MAX_STRUCTURES:
+            return False
+        length = int.from_bytes(data[position:position + 4], 'big')
+        if data[position + 4:position + 8] in (b'IDAT', b'IEND'):
+            return True
+        position += 12 + length
+    return True
+
+
+def _jpeg_structure_ok(data: bytes) -> bool:
+    """JPEG segments up to the start of the scan, like the library walks them."""
+    size, position, structures, junk = len(data), 2, 0, 0
+    while position < size:
+        if data[position] != 0xFF:
+            junk += 1
+            position += 1
+            if junk > IMAGE_MAX_JUNK:
+                return False
+            continue
+        if position + 1 >= size:
+            return True
+        marker = data[position + 1]
+        if marker == 0xDA:
+            return True
+        structures += 1
+        if structures > IMAGE_MAX_STRUCTURES:
+            return False
+        if marker == 0xFF:
+            position += 1               # fill byte
+        elif marker in (0x00, 0x01) or 0xD0 <= marker <= 0xD8:
+            position += 2               # markers without a length
+        else:
+            position += 2 + max(int.from_bytes(data[position + 2:position + 4], 'big'), 2)
+    return True
+
+
+def _gif_structure_ok(data: bytes) -> bool:
+    """GIF extension blocks (and their sub-blocks) before the first image."""
+    size = len(data)
+    if size < 13:
+        return True
+    position = 13 + (3 * (2 << (data[10] & 7)) if data[10] & 0x80 else 0)
+    structures = junk = 0
+    while position < size:
+        block = data[position]
+        if block in (0x2C, 0x3B):       # first image, or the trailer: no more headers
+            return True
+        if block == 0x21:
+            position += 2
+            structures += 1
+            while position < size:      # data sub-blocks up to the empty one
+                structures += 1
+                if structures > IMAGE_MAX_STRUCTURES:
+                    return False
+                length = data[position]
+                position += 1 + length
+                if not length:
+                    break
+            continue
+        junk += 1
+        position += 1
+        if junk > IMAGE_MAX_JUNK:
+            return False
+    return structures <= IMAGE_MAX_STRUCTURES
+
+
+_IMAGE_STRUCTURE_CHECKS = {
+    'image/png': _png_structure_ok, 'image/jpeg': _jpeg_structure_ok,
+    'image/gif': _gif_structure_ok,
+}
+
+
 def _office_zip_mimetype(data: bytes, ext: str) -> str:
     """Inspect bounded ZIP metadata; never extract an untrusted Office member wholesale."""
     if not _bounded_zip_directory(data):
@@ -208,6 +294,8 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
             else:
                 raise WoowUploadRejected('content')
         if mimetype.startswith('image/'):
+            if not _IMAGE_STRUCTURE_CHECKS.get(mimetype, lambda _data: True)(data):
+                raise WoowUploadRejected('content')
             try:
                 with Image.open(io.BytesIO(data)) as image:
                     pixels = image.width * image.height

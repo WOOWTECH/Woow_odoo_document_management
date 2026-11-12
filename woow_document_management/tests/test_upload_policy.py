@@ -17,7 +17,7 @@ from odoo.tests import TransactionCase, tagged
 from ..models import upload_policy
 from ..models.upload_policy import WoowUploadRejected
 from ..services.constants import PIXEL_LIMIT
-from .common import png_declaring
+from .common import gif_with_comments, jpeg_with_segments, png_declaring, png_with_chunks
 
 
 @tagged('woow_docmgmt_files')
@@ -190,6 +190,49 @@ class TestUploadPolicy(TransactionCase):
             small.write({'datas': header})
         self.assertEqual(caught.exception.code, 'pixels')
         self.assertEqual((small.file_size, small.mimetype), (size, 'image/png'))
+
+    def test_images_with_too_many_header_structures_are_refused_before_they_are_opened(self):
+        """The headers of a PNG, JPEG or GIF are counted before the image library reads them.
+
+        The library walks them in Python and some cost more than their size, so a few
+        megabytes of empty structures would keep a worker busy for minutes. The check
+        refuses them as unreadable content before ``Image.open`` is called.
+        """
+        too_many = upload_policy.IMAGE_MAX_STRUCTURES + 1
+        cases = {
+            'png.png': png_with_chunks(too_many),
+            'jpeg.jpg': jpeg_with_segments(too_many),
+            'gif.gif': gif_with_comments(too_many),
+            'jpeg-fill.jpg': jpeg_with_segments(1, b'\xff' * too_many),
+            'jpeg-junk.jpg': jpeg_with_segments(
+                1, b'\xff\xe1\x00\x02' + b'\x00' * (upload_policy.IMAGE_MAX_JUNK + 1)),
+            'gif-sub-blocks.gif': (gif_with_comments(0)[:13] + b'\x21\xfe' + b'\x01a' * too_many
+                                   + b'\x00;'),
+        }
+        portal = self.env['res.users'].create({
+            'name': 'Header portal fixture', 'login': 'doc-header-portal-fixture',
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])]})
+        for name, content in cases.items():
+            for uploader, policy in (('internal', self.policy),
+                                     ('portal', self.policy.with_user(portal))):
+                with self.subTest(file=name, uploader=uploader), \
+                        patch.object(upload_policy.Image, 'open',
+                                     side_effect=AssertionError('the image was opened')):
+                    with self.assertRaises(WoowUploadRejected) as caught:
+                        policy._validate(name, content)
+                    self.assertEqual(caught.exception.code, 'content')
+
+    def test_images_with_ordinary_headers_are_still_accepted(self):
+        within = upload_policy.IMAGE_MAX_STRUCTURES // 8
+        for name, content, mimetype in (
+                ('chunks.png', png_with_chunks(within), 'image/png'),
+                ('segments.jpg', jpeg_with_segments(within), 'image/jpeg'),
+                ('comments.gif', gif_with_comments(within), 'image/gif'),
+                ('plain.png', png_with_chunks(0), 'image/png'),
+                ('plain.jpg', jpeg_with_segments(0), 'image/jpeg'),
+                ('plain.gif', gif_with_comments(0), 'image/gif')):
+            with self.subTest(file=name):
+                self.assertEqual(self.policy._validate(name, content).mimetype, mimetype)
 
     def test_blocked_suffix_and_mime_disagreement(self):
         for name, content, expected in (
