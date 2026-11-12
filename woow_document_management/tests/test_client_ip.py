@@ -2,6 +2,7 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Proxy boundary tests for IF-IP (T-SET-20 through T-SET-25)."""
 
+import ipaddress
 from types import SimpleNamespace
 
 from odoo.tests import TransactionCase, tagged
@@ -36,6 +37,18 @@ class TestClientIp(TransactionCase):
         env['HTTP_X_REAL_IP'] = '203.0.113.9, 203.0.113.10'
         self.assertEqual(client_ip(env, trusted, 'X-Real-IP'), '10.0.0.1')
         self.assertEqual(parse_trusted_proxies('10.0.0.0/8, invalid'), ())
+
+    def test_an_ipv4_mapped_address_is_trusted_like_its_ipv4_address(self):
+        trusted = parse_trusted_proxies('10.0.0.0/8')
+        env = {'REMOTE_ADDR': '::ffff:10.0.0.1', 'HTTP_X_REAL_IP': '203.0.113.9'}
+        self.assertEqual(client_ip(env, trusted, 'X-Real-IP'), '203.0.113.9')
+        env = {'REMOTE_ADDR': '::ffff:10.0.0.1',
+               'HTTP_X_FORWARDED_FOR': '203.0.113.9, ::ffff:10.0.0.2'}
+        self.assertEqual(client_ip(env, trusted, 'X-Forwarded-For'), '203.0.113.9')
+        # a mapped address of another network stays untrusted
+        env = {'REMOTE_ADDR': '::ffff:198.51.100.1', 'HTTP_X_REAL_IP': '203.0.113.9'}
+        self.assertEqual(client_ip(env, trusted, 'X-Real-IP'),
+                         str(ipaddress.ip_address('::ffff:198.51.100.1')))
 
     def test_request_uses_pre_proxyfix_peer(self):
         settings = SimpleNamespace(trusted_proxies=parse_trusted_proxies('10.0.0.0/8'),
