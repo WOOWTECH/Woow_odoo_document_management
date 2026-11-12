@@ -23,6 +23,7 @@ class WoowDocumentFolderAccess(models.Model):
     _inherit = ['woow.document.guard.mixin']
     _description = 'Document folder member'
     _woow_allowed_defaults = frozenset({'default_folder_id'})
+    _woow_own_default_fields = frozenset({'company_id'})     # the company of its folder
     _sql_constraints = [
         ('subject_exactly_one', "CHECK ((subject_type = 'user' AND user_id IS NOT NULL "
          "AND group_id IS NULL AND partner_id IS NULL) OR (subject_type = 'group' "

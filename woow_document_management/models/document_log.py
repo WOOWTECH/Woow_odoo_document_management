@@ -72,6 +72,10 @@ def _short_transaction(registry):
     turn; a full connection pool or a database that refuses one more connection is the
     same). The block never runs while another one of the same request is open, so
     the turns cannot deadlock. In registry test mode the cursor shares the test transaction.
+
+    The block must not need a row that its own request holds uncommitted (a counter, a bucket
+    or a budget row): it would wait for the transaction of its own request, which the
+    database cannot see as a deadlock. No flow of the module does.
     """
     if not _SLOT_GATE.acquire(timeout=SLOT_WAIT):
         yield None
@@ -92,8 +96,16 @@ def _short_transaction(registry):
 
 class WoowDocumentLog(models.Model):
     _name = 'woow.document.log'
+    _inherit = ['woow.document.server.fields.mixin']
     _description = 'Document audit log'
     _order = 'id desc'
+    # Only the server writes a row, and ``count`` is what the limits of the share links and of
+    # the share mails add up: no column takes a stored default (a row is made with ``sudo()``,
+    # which keeps the uid of the caller and so his defaults).
+    _woow_own_default_fields = frozenset({
+        'event', 'result', 'channel', 'user_id', 'partner_id', 'share_id', 'link_ref',
+        'document_id', 'folder_id', 'company_id', 'ip_display', 'ip_hash', 'user_agent', 'count',
+        'bucket_minute', 'detail'})
 
     event = fields.Selection([(e, _EVENT_LABELS[e]) for e in EVENTS], required=True, index=True)
     result = fields.Selection([(r, r.capitalize()) for r in RESULTS], required=True,
@@ -451,8 +463,10 @@ class WoowDocumentDeniedBudget(models.Model):
     slots reserved in the minute; it only grows and never exceeds the maximum.
     """
     _name = 'woow.document.denied.budget'
+    _inherit = ['woow.document.server.fields.mixin']
     _description = 'Bounded denied audit minute budget'
     _log_access = False
+    _woow_own_default_fields = frozenset({'bucket_minute', 'count'})     # written by statements
 
     bucket_minute = fields.Datetime(required=True, index=True)
     count = fields.Integer(required=True)
@@ -565,8 +579,10 @@ class WoowDocumentDeniedCounter(models.Model):
     after this snapshot, and Odoo retries the request with a fresh snapshot.
     """
     _name = 'woow.document.denied.counter'
+    _inherit = ['woow.document.server.fields.mixin']
     _description = 'Denied share requests per source'
     _log_access = False
+    _woow_own_default_fields = frozenset({'event', 'ip_hash', 'bucket_minute', 'count'})
 
     event = fields.Char(size=32, required=True)
     ip_hash = fields.Char(size=64, required=True)

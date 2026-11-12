@@ -14,6 +14,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -898,7 +899,7 @@ class TestCheckSweepConfig(ToolCase):
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         self.assertIn('.security/', cfg['always_human']['paths'])
         # The 36 required files and the tests/test_reg_<slug>.py files that fixes added.
-        self.assertEqual(len(cfg['verify']['regression_tests']), 36 + 6)
+        self.assertEqual(len(cfg['verify']['regression_tests']), 36 + 7)
 
     def test_check_workflow_rules(self):
         """T-STAT-10 / sec 8: no pull_request_target, read-only permissions, SHA-pinned actions."""
@@ -1023,7 +1024,7 @@ class TestRepo(unittest.TestCase):
                                                    'web.assets_tests'})
 
     def test_tests_init_day0(self):
-        """IF-SKEL 2.3: tests/__init__.py imports the 35 regression test files and test_perf."""
+        """IF-SKEL 2.3: tests/__init__.py imports the regression test files of sweep.yaml and the others."""
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         expected = sorted(os.path.basename(p)[:-3] for p in cfg['verify']['regression_tests']
                           if p.startswith(W)) + ['test_perf', 'test_core_assumptions_http',
@@ -1032,7 +1033,7 @@ class TestRepo(unittest.TestCase):
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 38 + 6)   # the six tests/test_reg_<slug>.py files
+        self.assertEqual(len(imported), 38 + 7)   # the seven tests/test_reg_<slug>.py files
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""
@@ -1054,6 +1055,137 @@ class TestRepo(unittest.TestCase):
                                  capture_output=True, text=True, check=False)
             self.assertEqual(out.returncode, 1)
             self.assertRegex(out.stdout, r'^woow_document_management/models/x.py:2 SUDO-NOT-ALLOWED ')
+
+
+class TestServerFieldsDeclared(unittest.TestCase):
+    """Every model of the module takes the own default of the fields that only the server sets.
+
+    Create completes the keys it was not given from the defaults of the caller (``ir.default``, which a
+    call made with ``sudo()`` keeps) and from the context. A model must therefore declare the fields
+    that only the server sets, or that create checks only when they are passed
+    (``_woow_own_default_fields``), and inherit the mixin that applies the declaration, directly or
+    through the guard mixin. A new model, or a wizard that gets such a field, fails here until it does.
+    """
+
+    MIXIN = 'woow.document.server.fields.mixin'
+    GUARD = 'woow.document.guard.mixin'
+    # Wizards whose fields are all filled in by the user in the form.
+    FORM_ONLY = frozenset({
+        'woow.document.move.wizard', 'woow.document.purge.wizard',
+        'woow.document.restore.wizard', 'woow.document.add.attachment.wizard',
+        'woow.document.notify.wizard'})
+
+    @staticmethod
+    def _literal(node):
+        """The strings of a ``_name`` or ``_inherit`` value (a string or a list of them)."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return [node.value]
+        if isinstance(node, (ast.List, ast.Tuple)):
+            return [item.value for item in node.elts
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str)]
+        return []
+
+    def _classes(self, relpath):
+        """{class name: (bases, {attribute: value node})} of the module-level classes of a file."""
+        tree = ast.parse(_read(os.path.join(REPO, relpath)))
+        found = {}
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            attributes = {}
+            for statement in node.body:
+                if isinstance(statement, ast.Assign) and len(statement.targets) == 1 \
+                        and isinstance(statement.targets[0], ast.Name):
+                    attributes[statement.targets[0].id] = statement.value
+            bases = [ast.unparse(base) for base in node.bases]
+            found[node.name] = (bases, attributes)
+        return found
+
+    def _models(self):
+        """{model name: (relpath, inherited names, declares)} of the own models in models/ and wizards/."""
+        found = {}
+        for folder in ('models', 'wizards'):
+            directory = os.path.join(REPO, W + folder)
+            for name in sorted(os.listdir(directory)):
+                if not name.endswith('.py') or name == '__init__.py':
+                    continue
+                relpath = W + folder + '/' + name
+                for bases, attributes in self._classes(relpath).values():
+                    if not {'models.Model', 'models.TransientModel'} & set(bases) \
+                            or '_name' not in attributes:
+                        continue
+                    model = self._literal(attributes['_name'])[0]
+                    found[model] = (relpath, set(self._literal(attributes.get('_inherit', ast.Pass()))),
+                                    '_woow_own_default_fields' in attributes)
+        return found
+
+    def test_every_model_declares_the_fields_that_only_the_server_sets(self):
+        models = self._models()
+        self.assertGreaterEqual(len(models), 14)
+        for model, (relpath, inherited, declares) in sorted(models.items()):
+            with self.subTest(model=model):
+                if model in self.FORM_ONLY:
+                    self.assertFalse(
+                        inherited & {self.MIXIN, self.GUARD} or declares,
+                        '%s declares server fields: remove it from FORM_ONLY' % model)
+                    continue
+                self.assertTrue(
+                    inherited & {self.MIXIN, self.GUARD},
+                    '%s (%s) must inherit %s' % (model, relpath, self.MIXIN))
+                self.assertTrue(
+                    declares,
+                    '%s (%s) must declare _woow_own_default_fields (frozenset() when every field '
+                    'is filled in by its users)' % (model, relpath))
+        self.assertEqual(self.FORM_ONLY - set(models), set())
+
+    def test_the_mixins_apply_the_declaration(self):
+        """The mixin calls ``own_default_values``; the guard mixin and the attachments use it too."""
+        def calls_helper(function):
+            return any(isinstance(node, ast.Call) and getattr(node.func, 'id', '') ==
+                       'own_default_values' for node in ast.walk(function))
+
+        for relpath, class_name in ((W + 'models/guard_mixin.py', 'WoowServerFieldsMixin'),
+                                    (W + 'models/ir_attachment.py', 'IrAttachment')):
+            tree = ast.parse(_read(os.path.join(REPO, relpath)))
+            cls = next(node for node in tree.body
+                       if isinstance(node, ast.ClassDef) and node.name == class_name)
+            functions = [node for node in cls.body if isinstance(node, ast.FunctionDef)
+                         and node.name == '_add_missing_default_values']
+            with self.subTest(file=relpath):
+                self.assertEqual(len(functions), 1)
+                self.assertTrue(calls_helper(functions[0]))
+        guard = self._classes(W + 'models/guard_mixin.py')['WoowDocumentGuardMixin'][1]
+        self.assertEqual(self._literal(guard['_inherit']), [self.MIXIN])
+
+
+class TestTestFilesAreRegistered(unittest.TestCase):
+    """The lists that name the test files of the addon agree with the files."""
+
+    def _test_files(self):
+        return sorted(name for name in os.listdir(os.path.join(REPO, W + 'tests'))
+                      if re.fullmatch(r'test_\w+\.py', name))
+
+    def test_every_test_file_is_imported_by_the_package_or_by_another_test(self):
+        imported = set()
+        directory = os.path.join(REPO, W + 'tests')
+        for name in os.listdir(directory):
+            if not name.endswith('.py'):
+                continue
+            for node in ast.walk(ast.parse(_read(os.path.join(directory, name)))):
+                if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None:
+                    imported.update(alias.name + '.py' for alias in node.names)
+        self.assertEqual(set(self._test_files()) - imported, set())
+
+    def test_every_regression_test_file_is_listed_for_the_gate(self):
+        """A ``tests/test_reg_<slug>.py`` of a fix is in sweep.yaml and has a floor in EXPECTED_MIN."""
+        cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
+        floors = json.loads(_read(os.path.join(REPO, W + 'tests/EXPECTED_MIN.json')))['files']
+        files = [name for name in self._test_files() if name.startswith('test_reg_')]
+        self.assertGreaterEqual(len(files), 7)
+        for name in files:
+            with self.subTest(file=name):
+                self.assertIn(W + 'tests/' + name, cfg['verify']['regression_tests'])
+                self.assertIn(name, floors)
 
 
 class TestYamlSubset(unittest.TestCase):

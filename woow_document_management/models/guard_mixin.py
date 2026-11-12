@@ -5,34 +5,55 @@ from odoo import _, api, models
 from odoo.exceptions import AccessError, UserError
 
 
-class WoowDocumentGuardMixin(models.AbstractModel):
-    _name = 'woow.document.guard.mixin'
-    _description = 'Document management guard'
+def own_default_values(model, values, completed, names):
+    """``completed``, with the own default of each field of ``names`` that ``values`` leaves out.
 
-    # each model overrides this, e.g. frozenset({'default_folder_id'})
-    _woow_allowed_defaults = frozenset()
-    # fields that create refuses or checks when the caller passes them, or that the server sets
+    ``completed`` is what ``_add_missing_default_values`` returned: ``default_get`` also reads the
+    stored defaults of the caller (``ir.default``; every internal user may store their own and an
+    administrator may store them for the whole site, which keep applying to a call made with
+    ``sudo()``) and the ``default_<field>`` keys of the context. Create checks only the keys it is
+    given, so a field that the server sets, or that a check refuses when it is passed, takes the
+    field's own default, or is left out when it has none. Values that were passed stay as they are.
+    """
+    for name in names.intersection(completed).difference(values):
+        field = model._fields[name]
+        if field.default:
+            completed[name] = field.convert_to_write(
+                field.convert_to_cache(field.default(model), model, validate=False), model)
+        else:
+            del completed[name]
+    return completed
+
+
+class WoowServerFieldsMixin(models.AbstractModel):
+    _name = 'woow.document.server.fields.mixin'
+    _description = 'Fields that only the server sets'
+
+    # The fields that only the server sets, and the ones that create refuses or checks when the
+    # caller passes them. Every model of the module declares its own (``frozenset()`` when all
+    # of its fields are filled in by users); ``tools/tests`` checks that none is left out.
     _woow_own_default_fields = frozenset()
 
     @api.model
     def _add_missing_default_values(self, values):
-        """A field of ``_woow_own_default_fields`` that was not passed takes its own default.
+        """Create takes the own default of ``_woow_own_default_fields``, whoever calls it.
 
-        ``default_get`` also reads the stored defaults of the caller (``ir.default``). Every
-        internal user may store their own, an administrator may store them for the whole site,
-        field groups do not apply to them, and ``create`` only checks the keys it was given.
-        Such a field is completed from the field's own default, or left out when it has none.
+        Used by ``create`` only: ``default_get``, the prefill of a form and the values that
+        were passed are not touched, and neither is the superuser: a call made with ``sudo()``
+        keeps the uid of the caller, and so the defaults that this user stored.
         """
-        completed = super()._add_missing_default_values(values)
-        if not self.env.su:
-            for name in self._woow_own_default_fields.intersection(completed).difference(values):
-                field = self._fields[name]
-                if field.default:
-                    completed[name] = field.convert_to_write(
-                        field.convert_to_cache(field.default(self), self, validate=False), self)
-                else:
-                    del completed[name]
-        return completed
+        return own_default_values(
+            self, values, super()._add_missing_default_values(values),
+            self._woow_own_default_fields)
+
+
+class WoowDocumentGuardMixin(models.AbstractModel):
+    _name = 'woow.document.guard.mixin'
+    _inherit = ['woow.document.server.fields.mixin']
+    _description = 'Document management guard'
+
+    # each model overrides this, e.g. frozenset({'default_folder_id'})
+    _woow_allowed_defaults = frozenset()
 
     @api.model_create_multi
     def create(self, vals_list):

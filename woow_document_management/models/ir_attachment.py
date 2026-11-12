@@ -5,11 +5,16 @@ from odoo import _, api, models
 from odoo.exceptions import AccessError
 
 from ..services.constants import WOOW_MODELS
+from .guard_mixin import own_default_values
 
 GUARDED_WRITE_KEYS = ('raw', 'datas', 'db_datas', 'mimetype', 'type', 'url', 'res_model', 'res_id',
                       'res_field', 'public', 'access_token', 'store_fname')
 # A context with this key set has core store no indexed content for the file it saves.
 NO_INDEX_CTX_KEY = 'woow_no_index'
+# The file of a binary field of a document or folder is made as superuser, under the uid of the
+# caller; only the server sets what makes it reachable (it is never public or tokenised).
+FIELD_FILE_OWN_DEFAULTS = frozenset({
+    'public', 'access_token', 'url', 'description', 'original_id', 'company_id'})
 
 
 class IrAttachment(models.Model):
@@ -27,6 +32,14 @@ class IrAttachment(models.Model):
         if self.env.context.get(NO_INDEX_CTX_KEY):
             return False
         return super()._index(bin_data, file_type, checksum=checksum)
+
+    @api.model
+    def _add_missing_default_values(self, values):
+        """The file of a document or folder field takes the own default of the fields it sets."""
+        completed = super()._add_missing_default_values(values)
+        if values.get('res_model') in WOOW_MODELS and values.get('res_field'):
+            completed = own_default_values(self, values, completed, FIELD_FILE_OWN_DEFAULTS)
+        return completed
 
     @api.model_create_multi
     def create(self, vals_list):

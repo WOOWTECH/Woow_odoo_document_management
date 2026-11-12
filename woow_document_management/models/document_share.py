@@ -13,6 +13,12 @@ class WoowDocumentShare(models.Model):
     _inherit = ['woow.document.guard.mixin']      # no mail.thread
     _description = 'Document share link'
     _order = 'id desc'
+    # What the server sets (``_issue``, the revoke, expire and send steps) and the limit that
+    # ``_check_create_rights`` checks when it is passed; the name, the scope and the recipient
+    # are the creator's own.
+    _woow_own_default_fields = frozenset({
+        'company_id', 'token_hash', 'token_hint', 'password_hash', 'has_password', 'max_downloads',
+        'state', 'revoked_at', 'revoked_by_id', 'sent_at', 'replaced_share_id'})
 
     name = fields.Char()
     company_id = fields.Many2one('res.company', required=True, index=True, ondelete='restrict')

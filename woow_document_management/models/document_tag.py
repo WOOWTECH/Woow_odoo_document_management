@@ -10,6 +10,7 @@ class WoowDocumentTag(models.Model):
     _inherit = ['woow.document.guard.mixin']
     _description = 'Document tag'
     _order = 'name, id'
+    _woow_own_default_fields = frozenset()      # every field is filled in by the user who makes a tag
 
     name = fields.Char(required=True, translate=True)
     color = fields.Integer()

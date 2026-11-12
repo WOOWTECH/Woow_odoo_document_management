@@ -29,7 +29,11 @@ class WoowDocument(models.Model):
     _woow_own_default_fields = frozenset({
         'document_type', 'datas', 'url', 'mimetype', 'owner_id', 'uploaded_by_partner_id',
         'shared_user_ids', 'shared_partner_ids', 'source_res_model', 'source_res_id',
-        'legal_hold', 'active', 'trashed_date', 'trashed_by_id', 'restored_date'})
+        'legal_hold', 'active', 'trashed_date', 'trashed_by_id', 'restored_date',
+        # computed from the file, the folder and the dates, and the chatter of the record
+        'attachment_id', 'checksum', 'file_size', 'company_id', 'folder_in_trash',
+        'effective_restored_at', 'woow_user_can_write', 'source_display', 'activity_ids',
+        'message_follower_ids', 'message_ids', 'website_message_ids'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,

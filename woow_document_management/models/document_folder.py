@@ -20,6 +20,7 @@ _EFFECTIVE_FIELDS = {
               ('eff_edit_group_ids', 3), ('eff_manage_group_ids', 4)),
     'partner': (('eff_read_partner_ids', 1), ('eff_upload_partner_ids', 2)),
 }
+_EFF_FIELDS = frozenset(name for lines in _EFFECTIVE_FIELDS.values() for name, _rank in lines)
 _SUBJECT_FIELD = {'user': 'user_id', 'group': 'group_id', 'partner': 'partner_id'}
 _SUBJECT_MODEL = {'user': 'res.users', 'group': 'res.groups', 'partner': 'res.partner'}
 _SERVER_ONLY_FIELDS = frozenset({
@@ -64,9 +65,10 @@ class WoowDocumentFolder(models.Model):
     _check_company_auto = True
     _rec_names_search = ['name']
     _woow_allowed_defaults = frozenset({'default_parent_id'})
-    _woow_own_default_fields = frozenset({
+    _woow_own_default_fields = _SERVER_ONLY_FIELDS | _EFF_FIELDS | frozenset({
         'company_id', 'legal_hold', 'inherit_access', 'active', 'trashed_date', 'trashed_by_id',
-        'restored_date'})
+        'restored_date', 'activity_ids', 'message_follower_ids', 'message_ids',
+        'website_message_ids'})
 
     name = fields.Char(required=True, tracking=True)
     complete_name = fields.Char(compute='_compute_complete_name', store=True, recursive=True,

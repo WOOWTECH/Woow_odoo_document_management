@@ -15,7 +15,10 @@ from ..services.constants import (MAX_RECIPIENTS, MAX_SHARE_DOCUMENTS, PASSWORD_
 
 class WoowDocumentShareWizard(models.TransientModel):
     _name = 'woow.document.share.wizard'
+    _inherit = ['woow.document.server.fields.mixin']
     _description = 'Create share links'
+    # the hash is written only through ``password``; the other fields are the ones of the form
+    _woow_own_default_fields = frozenset({'password_hash'})
 
     share_type = fields.Selection([('folder', 'Folder'), ('documents', 'Documents')], required=True,
                                   default='documents')
