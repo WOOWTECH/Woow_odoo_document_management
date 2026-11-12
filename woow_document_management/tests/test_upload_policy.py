@@ -334,7 +334,7 @@ class TestUploadPolicy(TransactionCase):
                     png_chunk(b'tEXt', b'Software\x00test'), png_chunk(b'iTXt', description),
                     png_chunk(b'zTXt', b'key\x00\x00' + deflated)]
         for name, content, mimetype in (
-                ('chunks.png', png_with_chunks(upload_policy.PNG_MAX_CHUNKS // 2), 'image/png'),
+                ('chunks.png', png_with_chunks(100), 'image/png'),
                 ('segments.jpg', jpeg_with_segments(within), 'image/jpeg'),
                 ('comments.gif', gif_with_comments(within), 'image/gif'),
                 ('plain.png', png_with_chunks(0), 'image/png'),
