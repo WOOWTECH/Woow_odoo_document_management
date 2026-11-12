@@ -130,3 +130,19 @@ class TestNotificationLabelFollowsTheReader(TransactionCase):
         self.assertEqual(shared.display_name, self.folder.name)
         self.assertEqual(message.with_user(self.plain).sudo().display_name, 'Restricted folder')
         self.assertEqual(message.with_user(self.reader).sudo().display_name, self.folder.name)
+
+    def test_a_message_of_another_model_keeps_the_name_of_its_record(self):
+        """Only the messages of folders and documents are folded: others read as in core."""
+        partner = self.env['res.partner'].sudo().create({
+            'name': 'Other model contact %s' % secrets.token_hex(4),
+            'company_id': self.company_two.id})
+        message = partner.sudo().message_post(
+            body='label comment', message_type='comment', subtype_xmlid='mail.mt_comment',
+            partner_ids=[self.mentioned.partner_id.id])
+        self.env.flush_all()
+        # the reader cannot read the record, and still sees its name, as before this module
+        self.assertFalse(self.env['res.partner'].with_user(self.plain).search_count(
+            [('id', '=', partner.id)]))
+        for kind, labels in self._labels(self.plain, [message.id]).items():
+            with self.subTest(read=kind):
+                self.assertEqual(labels[message.id], partner.name)
