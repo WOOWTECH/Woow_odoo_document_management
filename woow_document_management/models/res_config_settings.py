@@ -1,7 +1,7 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """System administrator settings form for document management (IF-SET)."""
-from odoo import _, fields, models
+from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
 
 from .settings import PARAM_PREFIX, _PARAM_KEYS, parse_settings
@@ -53,6 +53,23 @@ class ResConfigSettings(models.TransientModel):
          ('X-Real-IP', 'Reverse proxy address'), ('X-Forwarded-For', 'Forwarded chain')],
         default='', config_parameter=_P + 'client_ip_header')
     woow_doc_uninstall_confirm = fields.Char(config_parameter=_P + 'uninstall_confirm')
+
+    @api.model
+    def default_get(self, fields_list):
+        """Only system administrators read the module settings through the form defaults.
+
+        Core fills ``config_parameter`` fields from ``ir.config_parameter`` as the
+        superuser, and ``default_get`` (also the first ``onchange`` of the form) can be
+        called by any signed-in user, so the trusted-proxy list, the rate limits and the
+        other values would be readable by portal users. Field groups do not apply to it;
+        for everyone else the module's own fields are left out of the request.
+        """
+        if not (self.env.su or self.env.user.has_group('base.group_system')):
+            fields_list = [
+                name for name in fields_list or ()
+                if not str(getattr(self._fields.get(name), 'config_parameter', '') or '').startswith(
+                    PARAM_PREFIX)]
+        return super().default_get(fields_list)
 
     def set_values(self):
         """Only base.group_system saves; values are range-checked and logged (settings_change)."""

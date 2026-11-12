@@ -47,4 +47,5 @@ woow.document.folder::message_subscribe
 woow.document.folder::message_unsubscribe
 woow.document.folder::message_new
 res.config.settings::set_values
+res.config.settings::default_get
 woow.document.*.wizard::default_get
