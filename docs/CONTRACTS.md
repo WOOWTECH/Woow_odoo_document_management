@@ -287,7 +287,7 @@
 | 代號 | 檔案::函式 | 內容 |
 |---|---|---|
 | Q1 | `models/document_log.py::_log_event` | ER-28 第 2 點的 SQL；衝突鍵的第三欄由 `share_id` 改成純整數欄位 `link_ref`（見變更紀錄），推斷式與索引逐字相同 |
-| Q2 | `models/quota.py::_usage_bytes` | arch §6.4 Q2 |
+| Q2 | `models/quota.py::_usage_bytes` | arch §6.4 Q2；以自己的連線讀已 commit 的用量（見 §7.2） |
 | Q3 | `models/document_folder.py::init`（名稱唯一索引）、`models/document_log.py::init`（denied bucket，ER-28 第 1 點；鍵改用 `link_ref`，並把舊版 denied 列的 `link_ref` 設成各自的 `share_id` 後才建新索引、刪舊索引） | 只准固定字串的 DDL（ER-47.4） |
 | Q4 | `services/locks.py`（`try_lock`、`lock`、`bounded_wait`） | `SELECT pg_try_advisory_xact_lock(%s)`、`SELECT pg_advisory_xact_lock(%s)`、`SELECT current_setting('lock_timeout')`、`SELECT set_config('lock_timeout', %s, true)` |
 | Q5 | `models/quota.py::_bytes_if_new` | arch §6.4 Q5 |
@@ -297,6 +297,9 @@
 | Q19 | `models/document_folder.py::_woow_check_name_free` | 同一層、同公司、啟用中的資料夾是否已用這個名稱（與唯一索引相同的判斷），先回 M-02 |
 | Q20 | `models/document.py::_woow_portal_direct_documents` | 直接分享給呼叫者本人聯絡人的文件 id，再以呼叫者的 record rule 搜尋 |
 | Q21 | `models/trash_actions.py::_woow_lock_purge_root` | purge 讀任何 hold 之前，以 `SELECT … FOR NO KEY UPDATE` 依 id 順序鎖住這個根資料夾與子樹裡每個資料夾的列（子樹以 active_test=False 的 child_of 取得，含個別丟進回收桶的資料夾；只鎖不寫列版本）：本批快照之後 commit 的 legal hold、還原或搬移改過其中任一列，就 serialization_failure、跳過這個根；之後才開始的會等這一批結束 |
+
+| Q22 | `models/document_log.py::_count_below` | 任何人都能造成的拒絕（無效連結、沒有授權）的來源計數列：一條語句在低於上限時才加一，在自己的短交易（READ COMMITTED）裡立即 commit；新來源的列以 count 1 插入，並在同一個交易取容量槽 |
+| Q23 | `models/document_log.py::_bump_denied_bucket` | 同上拒絕的 denied 稽核 bucket（事件、來源、分鐘，不依連結）：已有的 bucket 一條語句加一，新的在同一個短交易插入並取槽 |
 
 - 其他地方出現 `pg_*advisory*`，或 locks.py 裡呼叫內建的 `hash(`，都直接失敗（T-STAT-22）。
 - tag、access、`attachment_id`、`token_hash` 的唯一索引，一律用 ORM 或 `odoo.tools.sql.create_unique_index(cr, name, table, [固定運算式])` 建在各自 model 的 `init()` 裡。這不是 raw SQL，不算 Q3（IC-R07）。
@@ -521,6 +524,8 @@ class WoowDocumentSettings(models.AbstractModel):
 
 **L0 stub**：見 §3。
 
+- `res.config.settings.default_get`（`@api.model`，也是表單第一次 `onchange` 的來源）以 superuser 填入 `config_parameter` 欄位，任何已登入使用者都能經 RPC 呼叫，欄位 groups 對它無效：非 su、非 `base.group_system` 的呼叫端，`woow_doc_*` 欄位（`config_parameter` 以 `PARAM_PREFIX` 開頭的）會從要求的欄位清單拿掉，所以信任 proxy 清單、限流與其他設定值不會讀給 portal 或一般內部使用者；系統管理員的設定畫面與儲存不變（`tools/public_methods.txt` 的 [override] 列有 `res.config.settings::default_get`）。
+
 ### 6.2 IF-IP：`W/services/client_ip.py`（純 Python，不 import `odoo.models`）
 - **提供者**：L1。
 - **使用者**：L3（`_log_event`）、L5、L12（G-IP）。
@@ -576,11 +581,12 @@ class ValidatedFile:
 
 class WoowDocumentUploadPolicy(models.AbstractModel):
     _name = 'woow.document.upload.policy'
-    def _validate(self, name: str, data: bytes) -> ValidatedFile:
+    def _validate(self, name: str, data: bytes, *, quota: bool = True) -> ValidatedFile:
         """arch §11 的全部步驟。通道由 env.user 決定，不由呼叫端傳入：
         內部使用者（含 su 的 OdooBot）→ internal；share 使用者 → portal；其他 → WoowUploadRejected('channel')。
         單檔上限＝設定的 MiB × MIB，用實際 len(data) 比對（ER-03）。
-        最後一步呼叫 env['woow.document.quota']._check(checksum, size)。"""
+        quota=True 時最後一步呼叫 env['woow.document.quota']._check(checksum, size)；一次儲存多個檔案的呼叫端（document.create）
+        傳 quota=False，驗證完所有檔案之後，再以 _check_many 一起檢查（§7.2）。"""
     def _served_mimetype(self, doc) -> str:
         """ER-36：回傳 doc.mimetype；text/* 加 '; charset=utf-8'；
         不在 mime_map 的可接受集合裡 → 'application/octet-stream'。"""
@@ -592,6 +598,7 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
 - 驗證不通過 → `WoowUploadRejected`。它是 UserError 的子類別，所以 RPC 會顯示訊息，controller 會接住，再 return 400 JSON。
 - 圖片的寬 × 高超過 `PIXEL_LIMIT` → `'pixels'`。Pillow 開啟圖片時會拿宣告的尺寸和自己的上限比對：超過兩倍上限丟 `Image.DecompressionBombError`（是 `Exception`，不是 `OSError` 或 `ValueError`），超過一倍只警告（警告被設成錯誤時是 `Image.DecompressionBombWarning`）。這兩個也一律是 `'pixels'`，不可往外丟成 500；Pillow 讀不懂的圖片是 `'content'`。
 - 配額鎖逾時 → `locks.LockBusy` 原樣往外丟，由 controller 轉成 503。
+- PNG、JPEG、GIF 的標頭結構在 Pillow 開啟之前先計數（Pillow 以 Python 逐一讀取，有些結構的成本比大小高：GIF 逐段串接註解、JPEG 保留每個應用程式區段、PNG 保留每個私有 chunk）：PNG 計到第一個 IDAT 為止的 chunk、JPEG 計到 SOS 為止的區段、GIF 計到第一個圖像之前的擴充區塊與其子區塊，超過 `IMAGE_MAX_STRUCTURES`（4096），或結構之外的雜訊位元組超過 `IMAGE_MAX_JUNK`（4096）→ `'content'`，不呼叫 `Image.open`。
 
 ### 7.2 IF-QUOTA：`W/models/quota.py`
 - **提供者**：L2。
@@ -601,11 +608,23 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
 class WoowDocumentQuota(models.AbstractModel):
     _name = 'woow.document.quota'
     def _usage_bytes(self) -> int:                      # Q2  # sql-ok: Q2
+        """已 commit 的用量，以 registry.cursor() 的獨立連線讀取（快照在取得配額鎖之後才取）。
+        呼叫端的交易在第一個陳述句就取了快照，早於它等待配額鎖的時間；在那個快照讀用量，會看不到等待期間
+        別人 commit 的上傳，所以先前用 UPDATE ir_config_parameter 逼並行上傳 serialization_failure 再重試，
+        重試前還會睡眠，一個帳號連續上傳就能讓其他人的上傳變慢、回 500。取不到連線 → LockBusy（503）。"""
     def _bytes_if_new(self, checksum: str, size: int) -> int:   # Q5  # sql-ok: Q5；checksum 已存在就回 0
     def _check(self, checksum: str, size: int) -> None:
-        """quota_mb == 0 → 直接 return。
-        否則：flush ir.attachment → locks.lock(cr, 'quota')（只在驗證和 checksum 之後才取）
-        → 新用量 = _usage_bytes() + size → 超過 quota_block_pct → WoowUploadRejected('quota')。
+        """= _check_many([(checksum, size)])。"""
+    def _check_many(self, items: list[tuple[str, int]]) -> None:
+        """items 是一次呼叫要儲存的所有檔案的 (checksum, size)，依序累計，每個檔案都算進前面的。
+        quota_mb == 0 或沒有檔案 → 直接 return。
+        否則：flush ir.attachment → locks.lock(cr, 'quota:u:<uid>') → locks.lock(cr, 'quota')（都在驗證和 checksum 之後才取，
+        document.create 在所有檔案驗證完之後才呼叫，所以鎖只在寫入檔案的期間被持有）
+        → 新用量 = 已 commit 的用量（一次呼叫量一次）+ 本次執行已接受的位元組 + size
+        → 超過 quota_block_pct → WoowUploadRejected('quota')。
+        一個帳號同一時間只有一個上傳交易：它的其他請求等自己的 quota:u 鎖，不排在全站配額鎖之前。
+        QuotaLedger（context 鍵 LEDGER_KEY）讓同一個交易裡的多次呼叫（加入資料夾精靈、write 同時換多個檔案）
+        共用同一次量測，並累計已接受但尚未 commit 的位元組；沒有帶 ledger 的呼叫自己量一次。
         只有加入資料夾精靈（context 帶 SOURCE_CTX_KEY 的 sentinel，來源已 check('read')）以
         _bytes_if_new() 抵扣已存的相同內容；一般上傳一律計入 size，答覆不因全庫是否有相同內容而不同。
         精確百分比只給文件管理員（pct=…），其他人的訊息不含百分比。
@@ -631,6 +650,12 @@ def sanitize_segment(name: str, empty_label: str) -> str:
     去掉 '.'、'..'、開頭的點和空白；utf-8 ≤ SEGMENT_MAX_BYTES；空字串 → empty_label（由呼叫端傳入已翻譯的「未命名」）。"""
 def dedupe(names: Sequence[str]) -> list[str]:
     """同一層同名時，加上 ' (2)'、' (3)'…；比對時不分大小寫。"""
+class Deduper:
+    """一次一個名稱的 dedupe：add(name) 回傳 dedupe 對同一份清單在同一位置給的名稱。已被取走的名稱放進建構子。
+    每個 (主檔名, 副檔名) 記住下一個要試的數字，n 個名稱只做約 n 次 _fit_segment，不是 n × n 次；
+    zip_builder 每一層一個 Deduper（根層一開始就有 '_links.txt'）。"""
+    def __init__(self, taken: Sequence[str] = ()): ...
+    def add(self, name: str) -> str: ...
 
 # mime_map.py
 DEFAULT_EXTENSIONS: frozenset[str]    # arch §11 的預設白名單
@@ -649,7 +674,7 @@ def is_compressed(mimetype: str) -> bool: ...
 ```python
 class LockBusy(Exception): ...
 RANK: dict[str, int] = {'zip': 1, 'share': 2, 'quota': 3}
-NAME_RE = re.compile(r'^(zip:u:\d+|zip:slot:[1-4]|zip:s:\d+:[0-9a-f]{16}|share:\d+|quota)$')
+NAME_RE = re.compile(r'^(zip:u:\d+|zip:slot:[1-4]|zip:s:\d+:[0-9a-f]{16}|share:\d+|quota(?::warn|:u:\d+)?|access:\d+)$')
 
 def advisory_key(name: str) -> int:
     """int.from_bytes(hashlib.sha256(b'woow_docmgmt/lock/v1:' + name.encode()).digest()[:8], 'big', signed=True)
@@ -685,7 +710,7 @@ def _reset_tracker(cr) -> None:
 |---|---|---|
 | L4 ZIP | `try_lock('zip:u:<uid>')` 或 `try_lock('zip:s:<share_id>:<ip_hash[:16]>')` → 對 i＝1..zip_concurrency 逐一 `try_lock('zip:slot:<i>')` | 回傳 `limit_page('M-42' 或 'M-43', 429)` |
 | L5 分享下載 | `lock(cr, 'share:<id>')` | `LockBusy` → `service_busy()` |
-| L2 配額 | `lock(cr, 'quota')` | `LockBusy` → 由路由回傳 `service_busy()` |
+| L2 配額 | `lock(cr, 'quota:u:<uid>')`，再 `lock(cr, 'quota')`（同為 rank 3） | `LockBusy` → 由路由回傳 `service_busy()` |
 
 ---
 
@@ -722,9 +747,11 @@ class WoowDocumentGuardMixin(models.AbstractModel):
     @api.model
     def _woow_rank_domain(self, n: int) -> list:
         """E(n)，內容見 arch §4.4。"""
+    def _woow_filter_rank(self, n: int) -> 'woow.document.folder':
+        """self 裡通過 _woow_has_rank(n) 的資料夾，只用一次 search（一個分享範圍的幾千份文件不再每份查一次）。"""
     def _woow_has_rank(self, n: int) -> bool:
-        """ensure_one。su 或文件管理員 → bool(self.exists())（仍然套用公司 rule）。
-        內部使用者 → bool(search_count([('id','=',self.id)] + E(n)))。非內部使用者 → False。"""
+        """ensure_one。= bool(self._woow_filter_rank(n))：su 或文件管理員 → self.exists()（仍然套用公司 rule）。
+        內部使用者 → search([('id','in',self.ids)] + E(n))。非內部使用者 → 空。"""
     def _woow_require_rank(self, n: int) -> None:
         """self 裡任何一筆 _woow_has_rank(n) 不成立 → AccessError（訊息不含名稱）。"""
     def _woow_portal_can_upload(self) -> bool:
@@ -737,7 +764,14 @@ class WoowDocumentGuardMixin(models.AbstractModel):
     @api.model_create_multi
     def create(self, vals_list):
         """ER-45.3：if not vals.get('parent_id') and not self.env.su and not 文件管理員
-        and not settings.allow_root_create: raise AccessError(M-24)。不寄信，不自動加 follower（ER-45.4）。"""
+        and not settings.allow_root_create: raise AccessError(M-24)（_woow_require_root_right）。
+        非文件管理員不能以 company_id 為空建立（跨公司共用資料夾只有文件管理員能建立，US-23 AC4）。
+        不寄信，不自動加 follower（ER-45.4）。"""
+    def write(self, vals):
+        """非 su：company_id 只有文件管理員能改（改成別家公司或改成空值；寫入目前的值不算變更），
+        只有 manage 的成員不行：根資料夾改成空值或別家公司之後，子資料夾可以逐層改，等於把整棵子樹交給別家公司的管理員。
+        parent_id 清空（搬到最上層）而 self 裡有資料夾原本有上層 → 和 create 一樣的根資料夾政策（M-24），
+        先於名稱檢查，所以同名與否的答案相同；原本就在最上層的不擋。"""
     def init(self):
         """Q3（固定字串）：woow_document_folder_name_uniq ON
         (COALESCE(parent_id,0), COALESCE(company_id,0), lower(name)) WHERE active。  # sql-ok: Q3"""
@@ -833,14 +867,15 @@ class WoowDocumentLog(models.Model):
     def _log_event(self, event: str, *, result: str = 'ok', channel: str,
                    user_id: int | None = None, partner_id: int | None = None,
                    share_id: int | None = None, document_id: int | None = None,
-                   folder_id: int | None = None, company_id: int | None = None,
+                   folder_id: int | None = None, company_id: int | bool | None = None,
                    ip: str | None = None, user_agent: str | None = None,
                    detail: Mapping[str, int | bool | list[int]] | None = None) -> int:
         """S1 加 Q1。
         - event、result、channel 不在 constants 的清單裡 → ValueError（屬於程式錯誤）；
         - detail 的值只能是整數、布林值或整數清單，否則 ValueError；
         - ip 沒有傳入，而且有 http request 時，用 client_ip.request_client_ip 取得；user_agent 截斷到 256；
-        - user_id 預設是 env.uid（public 使用者記 None）；company_id 預設是 env.company.id。
+        - user_id 預設是 env.uid（public 使用者記 None）；company_id 預設（None）是 env.company.id，False（沒有公司的資料夾，
+          `folder.company_id.id` 讀出來就是 False）記成空公司，R-L0 讓每家公司的管理員都讀得到；其他型別 → ValueError。
         result == 'ok'：self.sudo().create(vals)   # sudo-ok: S1   → 回傳 1。
         result == 'denied'：flush_model() → Q1（ER-28 第 2 點；衝突鍵用 `COALESCE(link_ref, 0)`，見變更紀錄）  # sql-ok: Q1
                            → invalidate_model() → 回傳 RETURNING count（同一個分鐘桶的累計數）。
@@ -849,6 +884,8 @@ class WoowDocumentLog(models.Model):
 ```
 
 **限流判斷**：呼叫端拿 `count > settings.denied_rate_per_min` 判斷，成立就 return `too_many_requests()`，並另外記一筆 `rate_limited`（denied）。
+
+**任何人都能造成的拒絕（`ATOMIC_EVENTS`＝`share_access`）**走 `_refuse(event, ip, *, limit, channel='share')`：來源計數列由一條語句在低於上限時才加一（`_count_below`，Q22），audit bucket 由一條語句加一（`_bump_denied_bucket`，Q23），各在自己的短交易（READ COMMITTED，`registry.cursor()`，立即 commit）裡，所以同一來源的並行請求不互相等待、不 serialization_failure、不被 core 睡眠重試；計入的恰好是上限筆，其餘回 429。新列在同一個短交易取容量槽，沒有槽就不建立該列（槽數＝寫入的列數，不因並行而浪費）。回傳 `'counted'`（回 404）、`'limited'`（已記 `rate_limited`，回 429）或 `'busy'`（新來源沒有容量、輪次或連線：回 429，沒有寫任何東西）。錯誤密碼（`share_unlock_failed`）仍走鎖定的來源計數列，在 `share_unlock` 的鎖之下判斷。取不到連線時所有這類拒絕都回 429。
 
 **事件 → 記錄的 lane**
 
@@ -914,6 +951,8 @@ class _Guard(models.AbstractModel):   # 實際上分別 _inherit woow.document �
 ```
 - `mail.thread._message_route_process`：路由目標是這兩個 model 時，只有 su（fetchmail）或 `base.group_system`（mail gateway 腳本）能處理；其他人經 `message_process` 送信一律 AccessError。
 - `ir.binary`（`models/ir_binary.py`）：`_find_record` 對本模組 model 的記錄，只要帶 `access_token`（參數或 query）就 MissingError，`/web/content` 回 404、`/web/image` 回 placeholder，回應不會被標成 public；`_record_to_stream` 對 `woow.document.datas` 一律從文件自己的 `attachment_id` 建立串流（Q17 讀出儲存位置；必須是不帶 URL、屬於該文件 `datas` 的 binary 附件，否則 MissingError）。下載、預覽、portal、分享、ZIP 與 `/web/content`、`/web/image` 都經過這裡，其他宣稱同一欄位的附件即使存在也不會被送出。
+- `message_ids`、`website_message_ids`、`has_message`（mail.thread 的欄位，在 `woow.document` 與 `woow.document.folder` 上）加 `groups='base.group_user'`：auto_join 的 one2many 在 domain 裡以子查詢直接查 `mail_message`，不經 R-M0，portal 使用者能對自己讀得到的記錄測試內部 log note 的文字；`guard_mixin._search` 與 `_read_group_groupby` 對 domain 與 groupby 的第一段欄位名檢查欄位 groups，portal 因此得到 AccessError，內部使用者不變。
+- `ir.binary._record_to_stream` 對文件的 `datas` 回傳 `_DocumentStream`：類型固定為上傳政策對這個檔案提供的類型（`_served_mimetype` 的 base type，由回應補 charset），`ir.binary._get_stream_from` 指派的 `mimetype`（`/web/content`、`/web/image` 的 `?mimetype=`）無效；只有 `INLINE_WHITELIST` 的類型可以 inline，其餘一律 attachment；CSP 固定為 `default-src 'none'; sandbox`。`res_field` 屬於本模組 model 的附件 id（`/web/content/<附件 id>`、`/web/image/<附件 id>`）→ MissingError：文件的檔案只有經由文件這一條路由。
 - **ir.attachment write** 另依「寫入後的值」判斷：`res_model` 改成本模組 model 時，若該列原本或寫入後帶 `res_field`、`public` 或 `access_token` → AccessError（兩步驟搬移也擋）。
 
 ### 8.7 IF-UNINST：`W/hooks.py`
@@ -991,6 +1030,8 @@ def zip_response(documents, *, folders=None, root_folder=None,
 ```
 
 **L0 stub**：見 §3。T-ZIP-27 驗證 `uniform_404()` 回傳的是 Response 實例。
+
+- `create_batch`：每個上傳在讀取之前先 `upload.stream.seek(0)`（請求因並行錯誤被重跑時，框架只會倒回第一個檔案，其餘會讀成空檔案）。`zip_response` 不在列出文件時建立串流：`ZipEntry.open_stream` 是 `_lazy_stream(doc)` 回傳的函式，`build_zip` 寫到那個項目才呼叫 `_get_stream_from`；檔案存在資料庫（`ir_attachment.location = db`）時串流建立就會把整個檔案讀進記憶體，所以大小上限要在讀任何一個檔案之前，以 `file_size` 判斷（§9.1 原有規則）。非 path／data 的串流在這時才丟 MissingError → `uniform_404`。
 
 ### 9.2 IF-ZIP：`W/services/zip_builder.py`（純 Python）
 - **提供者**：L4。
@@ -1097,9 +1138,12 @@ class WoowDocumentShareService(models.Model):
           scope_env = share_sudo.with_user(share_sudo.create_uid).with_context(
               allowed_company_ids=[share_sudo.company_id.id]).env      # sudo-drop: S2
         找不到 → return (self.browse(), None)。token 的情況下另外用 tokens.verify 比對。
+        建立者已被刪除（create_uid 為空）→ 同樣 return (self.browse(), None)：with_user(空 recordset) 會保留 superuser 的 env，
+        _validate_for_access 會把請求的使用者當成建立者，列出整個範圍的文件名稱。
         一律回傳 tuple。呼叫端禁止使用 share_sudo.env。"""
     def _validate_for_access(self, scope_env) -> bool:
-        """self 是 share_sudo。依序檢查 arch §8.5 第 1～5、7 步，任何一步不成立就回傳 False，不 raise。"""
+        """self 是 share_sudo。第一步（B2）：`scope_env is None`、或 `_woow_check_scope_env(scope_env)` 不成立（su、uid 不是建立者、公司不符）→ False。
+        接著依序檢查 arch §8.5 第 1～5、7 步，任何一步不成立就回傳 False，不 raise。"""
     def _scope_domain(self) -> list: ...                                 # arch §8.5 第 6 步
     def _scope_documents(self, scope_env, extra_domain: list | None = None) -> 'woow.document':
         """在 scope_env 裡 search，所以會套用建立者的 rule、回收桶和公司。"""
@@ -1186,6 +1230,11 @@ class WoowDocShareController(http.Controller):
 - `exp = min(now + share_session_minutes, expire_at)`。
 - 一律先 `g = dict(request.session.get(SESSION_GRANTS_KEY) or {})`，修改之後整個重新指派。最多保留 MAX_GRANTS 筆，超過時丟掉最舊的，過期的順手清掉。
 - 不碰 `session.uid`、`pre_uid`、`authenticate`、`finalize`。
+- `share_close` 只在 session 確實持有這個 id 的授權時才重新指派（寫回 session）；沒有授權的請求不寫 session：落地頁的表單 token 屬於尚未儲存的 session id，任何人都能用 GET 落地頁加 POST close 兩個請求換一個 session 檔，違反「未驗證的請求不持久化 session」（R2b-02）。
+
+**公開分享事件的身分**：`share_open`、`share_access`、`share_download` 以請求的環境（`request.env`）記錄，也就是訪客本人（匿名訪客的 `user_id` 為空，已登入的內部訪客記自己），不用建立者的 `scope_env`（`user_id` 與 `create_uid` 都會變成分享建立者，稽核無法歸責）。建立者的 `scope_env` 只用來決定範圍與計算 `max_downloads`；建立者仍可經 R-L1 的 `share_id.create_uid` 讀到這些列。`share._record_download(scope_env, log_env, ip, detail)` 的 `log_env` 是必填。
+
+**拒絕的計數**：`_denied` 對 `ATOMIC_EVENTS` 走 `log._refuse`（§8.4），不等待、不因同一來源的其他請求失敗；`share_file` 的 `document_id` 範圍檢查、`_share_entry` 的順序不變。
 
 **分享頁的公司名稱（ER-16）**
 - 用 `scope_env['res.company'].browse(share_sudo.company_id.id).name`。
@@ -1240,7 +1289,10 @@ def _woow_purge(self) -> tuple[int, int]:
     文件的 hold 與刪除是同一列。所以在本交易快照之後 commit 的 legal hold、還原或搬移（子樹任何一個資料夾），會讓該根或該文件
     serialization_failure（並行死結同樣處理），這一筆算 failed、整批照常 commit。
     資料夾另有 _woow_purge(budget=None)：budget 是這次最多刪除的記錄數（文件和資料夾都算）；
-    放不下的子樹保留在回收桶、只刪掉一部分，下次呼叫接著刪。"""
+    放不下的子樹保留在回收桶、只刪掉一部分，下次呼叫接著刪。
+    每一筆的任何例外（不只資料庫錯誤，例如沒有公司的記錄先前讓 _log_event 丟 ValueError）都只讓這一筆算 failed、跳過，整批照常 commit；
+    記錄只寫 id 與例外的類別，不寫例外的文字（可能含資料）。_woow_purge(failures=None)、_woow_purge_batch(budget=None, failures=None)
+    的 failures 是呼叫端給的清單，跳過的記錄以 (model, id) 附加進去。"""
 ```
 - legal hold 依 US-15 AC2 是**項目層級**：保護設了 hold 的項目本身，以及子樹裡有 hold 的資料夾；資料夾設 hold 不保護其中被個別丟進回收桶的文件或子資料夾（另案：是否改成保全資料夾下全部內容，由負責人決定）。
 - 精靈：`woow.document.restore.wizard.action_restore_to(self) -> dict`、`woow.document.purge.wizard.action_confirm_purge(self) -> dict`。兩者的第一個陳述句都是權限檢查。
@@ -1251,7 +1303,7 @@ def _woow_purge(self) -> tuple[int, int]:
 
 | xmlid | 方法（在 `woow.document` 上，`@api.model`） | 頻率 | 內容 |
 |---|---|---|---|
-| `ir_cron_woow_document_purge_trash` | `_cron_purge_trash()` | 每天 | 每批最多刪除 PURGE_BATCH 筆記錄（文件和資料夾都算，不論回收桶資料夾多大）；`ir.cron._notify_progress(done=刪除筆數, remaining=)`；失敗的（含本批快照之後才 commit 的 legal hold、還原）跳過、整批照常 commit，不算進 remaining；同一筆連續失敗 POISON_ALERT_DAYS 天，就對管理員建立 activity（R2b-06） |
+| `ir_cron_woow_document_purge_trash` | `_cron_purge_trash()` | 每天 | 每批最多刪除 PURGE_BATCH 筆記錄（文件和資料夾都算，不論回收桶資料夾多大）；`ir.cron._notify_progress(done=刪除筆數, remaining=)`；失敗的（含本批快照之後才 commit 的 legal hold、還原）跳過、整批照常 commit，不算進 remaining；同一筆連續失敗 POISON_ALERT_DAYS 天，就對管理員建立 activity（R2b-06）。實作：每日的 cron 會試每一筆保留期已過的記錄，所以本次失敗、而且保留期結束已超過 POISON_ALERT_DAYS 天（`trashed_date < cutoff - POISON_ALERT_DAYS 天`）的記錄，就是已連續失敗那麼多天；每位文件管理員每天最多一個 activity（掛在自己的聯絡人上，只寫筆數，不寫名稱），建立失敗只記 log、不讓 purge 失敗 |
 | `ir_cron_woow_document_share_maintenance` | `_cron_share_maintenance()` | 每小時 | 呼叫 `share._maintenance_run()` |
 | `ir_cron_woow_document_log_retention` | `_cron_log_retention()` | 每週 | 每批 LOG_RETENTION_BATCH 筆 |
 | `ir_cron_woow_document_quota` | `_cron_quota()` | 每天 | 呼叫 `quota._cron_check_warn()` |
@@ -1971,3 +2023,4 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-12 | 審查修正（第三輪） | **失敗密碼 bucket 的鍵**：`woow.document.log` 新增 `link_ref`（純整數，不是外鍵）。刪除分享連結時 `share_id` 會被外鍵清成 NULL；舊的唯一索引 `woow_document_log_denied_bucket` 以 `share_id` 為鍵，同一來源在同一分鐘對兩個連結各有一個 `share_unlock_failed` bucket 時，刪掉第二個連結會讓兩列變成相同的鍵而 UniqueViolation：每小時的 `_maintenance_run` 整次回滾（過期標記與失敗信件的清除也跟著消失，cron 連續失敗還會被 Odoo 停用），連結所在資料夾的 purge（cascade）也整批回滾。現在 bucket 的鍵是（事件、來源、`COALESCE(link_ref, 0)`、分鐘）：只有 `UNBUDGETED_EVENTS` 的 denied 列寫入 `link_ref`（等於當時的 `share_id`），其他 denied 事件仍不帶連結（鍵為 0）；`link_ref` 寫入後不再改變、id 也不重用，所以連結被刪後各 bucket 仍各自獨立，留作稽核列（`share_id` 為 NULL、`link_ref` 保留）。唯一索引改名為 `woow_document_log_denied_link_bucket`，ON CONFLICT 推斷式（Q1）與 `_denied_bucket_exists`（Q16）同步改用 `COALESCE(link_ref, 0)`；`_count_share_unlock_failures` 仍以 `share_id` 計數（有索引，存活連結的兩者相同）。`init()` 在舊索引還在時，先把舊版寫下的 denied 列的 `link_ref` 設成各自的 `share_id`（鍵不變、仍唯一），再建新索引並刪舊索引；舊索引的存在就是「尚未搬」的標記，之後的 `init()` 跳過。兩條清理路徑各自隔離單一記錄：`_maintenance_run` 刪舊連結時接住 `IntegrityError`（記一筆只含 id 的 warning，下一輪再試），`_PURGE_SKIPPED` 加入 `IntegrityError`（該記錄算 failed、同樣只記 id，批次其餘照常 commit，`remaining` 不計 failed 的規則不變）。 |
 | 2026-11-12 | 審查修正（第三輪） | **取槽的第二條連線**：取槽（`_take_slot`）要借第二條連線，threaded server 在沒有執行緒上限時（`workers = 0` 且沒有 `ODOO_MAX_HTTP_THREADS`），同時有多個新來源的拒絕請求就會超過 `db_maxconn`（預設 64）：先前連線池滿時 `PoolError` 讓請求回 500、先前已 commit 的槽不退回，借走的連線也讓其他請求（包含有效的分享連結）拿不到自己的連線，core 在 `_transactioning` 取游標時同樣丟 `PoolError`（500）。現在：(1) 取不到連線（`psycopg2.pool.PoolError`，或資料庫拒絕連線的 `OperationalError`）視為沒有槽，回 False：新來源當分鐘的第一次拒絕走既有的「容量用完」路徑（429、不寫任何列、計數列釋放），已有計數列與 bucket 的來源照常計數，錯誤密碼不需要槽；只處理「拿不到連線」，取得連線之後的錯誤照常往上丟。(2) 每個行程同時開著的取槽交易最多 `SLOT_CONNECTIONS`＝`max(1, db_maxconn // 32)` 個（預設 2），其餘的最多等 `SLOT_WAIT`（0.5 秒），逾時同樣是沒有槽：取槽最多占連線池的三十二分之一，請求自己的連線不會被它們搶走，同時處理的請求不超過 `db_maxconn` 減 `SLOT_CONNECTIONS` 時不會因取槽而拿不到連線；取槽的速率本來就受每分鐘容量（1,024）限制，額滿後的拒絕從快照直接判斷、不再借連線。prefork 每個 worker 一次只處理一個請求，不會等。`ODOO_MAX_HTTP_THREADS` 設成整數時直接當執行緒上限，設成非整數值（例如 `auto`）時取 `(db_maxconn - max_cron_threads) // 2`；SECURITY.md 新增部署說明。SC：T-SHARE-47（`dev/sc/sc_denied_many_sources.py`）以 60 個來源同時對 threaded server 送被拒絕的請求：答案只能是 404 或 429、不可有 5xx、伺服器紀錄不得有錯誤追蹤或重試，來源計數列要等於答 404 的拒絕數。 |
 | 2026-11-12 | 審查修正（第四輪） | **分享檔案路由的文件 id 範圍**：`share_file` 的 `document_id` 來自網址，超過資料庫 integer 範圍（2**31-1）時，`('id', '=', x)` 的搜尋會讓 PostgreSQL 回 `NumericValueOutOfRange`（core 把值轉成文字，由資料庫轉成 integer），請求回 500、不計入來源計數也不受限流，持有授權的人可以無限重複。現在範圍之外（含 0）的 id 視為分享範圍裡找不到：不查詢，和其他找不到的 id 一樣走 `_denied`，回 404、計入來源的 `share_access`，達到 `denied_rate_per_min` 後回 429；內部與 portal 路由以 `browse(…).exists()` 取記錄，不受影響。**圖片像素上限**：`upload_policy._validate` 開啟圖片時，Pillow 拿宣告的尺寸和自己的上限比對：超過兩倍上限丟 `DecompressionBombError`（是 `Exception`，不是 `OSError` 或 `ValueError`），超過一倍只警告（警告被設成錯誤時同樣是例外）。先前這兩者都沒有被接住，一個 IHDR 宣告 200000×200000 的 PNG 標頭（約 45 位元組）就讓上傳（內部、portal，經 `create_batch`、`document.create`、`document.write`）回 500。現在兩者都對應 `WoowUploadRejected('pixels')`（400 JSON），像素數的比對移到 `with` 之後；讀不懂的圖片仍是 `content`。**文件登錄**：SC 執行紀錄、L5 檔案清單與 runner／lane／案例表補上 T-SHARE-47（`dev/sc/sc_denied_many_sources.py`）。 |
+| 2026-11-12 | 審查修正（第五輪） | **聊天欄位**：`message_ids`、`website_message_ids`、`has_message` 在 `woow.document` 與 `woow.document.folder` 加 `groups='base.group_user'`（auto_join 的 one2many 在 domain 以子查詢查 `mail_message`，不經 R-M0；portal 能測試自己讀得到的記錄上內部 log note 的文字）。**精靈列**：六個精靈 model 各加一條 `create_uid = user.id` 的 ir.rule（R-W1～R-W6，`tools/security_matrix.yaml` 登錄）：core 對 transient model 沒有擁有者規則，精靈的 action 以呼叫者的權限依列內的值執行，別人不能讀或改管理員正要確認的那一列（管理員也看不到別人的列）。**資料夾**：`write` 的 `company_id` 只有文件管理員能改（非管理員改成別家公司或空值 → AccessError，寫入目前的值不算變更），`create` 的 `company_id` 為空也只有文件管理員能建（T-MC-05 `test_shared_company_false_manager_only`）；把資料夾 `parent_id` 清空（搬到最上層）要過和建立根資料夾一樣的政策（M-24，`allow_root_create` 或文件管理員），先於名稱檢查。**沒有公司的記錄**：`_log_event` 的 `company_id` 接受 False（記成空公司，R-L0 讓各公司管理員都讀得到），先前 `ValueError` 讓上傳、丟進回收桶與 purge 在沒有公司的資料夾上失敗，而 purge cron 沒有接住，整批回滾、之後每天卡住；purge 的每一筆現在接住任何例外（只記 id 與例外類別），並實作 R2b-06 的管理員提醒（`POISON_ALERT_DAYS`：本次失敗且保留期結束已超過該天數的記錄，每位文件管理員每天最多一個 activity，只寫筆數）。**ZIP**：`naming.Deduper` 一次一個名稱、每個（主檔名、副檔名）記住下一個數字，`build_zip` 同一層 n 個檔案不再做 n×n 次 `_fit_segment`（輸出名稱逐字相同，`dedupe` 的簽章與結果不變）；`zip_response` 不在列出文件時建立串流，`ZipEntry.open_stream` 在寫到該項目時才讀（`_lazy_stream`），檔案存在資料庫時大小上限不再要等所有檔案載入記憶體之後才判斷。**分享**：建立者已被刪除（`create_uid` 為空）的連結不再解析（`with_user` 空 recordset 保留 superuser env，請求的使用者會被當成建立者）、`_validate_for_access` 依 B2 的第一步檢查 `scope_env`；公開的 `share_open`／`share_access`／`share_download` 以請求的環境記錄（訪客，不是建立者），`_record_download` 新增必填參數 `log_env`；`share_close` 只在確實移除授權時才寫 session；`_scope_documents` 以 `_woow_filter_rank` 一次查出資料夾的 manage 權限，不再每份文件查一次。**設定**：`res.config.settings.default_get` 對非系統管理員拿掉 `woow_doc_*` 欄位。**上傳**：`document.create` 對非 su 套用每次請求的檔案數上限（`max_files_per_upload`）；PNG、JPEG、GIF 的標頭結構在 Pillow 開啟前先計數（`IMAGE_MAX_STRUCTURES`、`IMAGE_MAX_JUNK`，超過 → `'content'`）；`/web/content`、`/web/image` 對文件的 `datas` 固定使用上傳政策的類型，`?mimetype=` 無效，非 inline 類型一律 attachment，CSP 固定含 `sandbox`，文件欄位附件的 id 路由 → MissingError。**配額**：一次呼叫的檔案在全部驗證之後一起檢查（`_check_many`），已 commit 的用量以獨立連線在取得配額鎖之後讀（取代 `UPDATE ir_config_parameter` 屏障，Q10 移除：它讓並行上傳 serialization_failure，core 睡眠後重試，一個帳號連續上傳就讓其他人的上傳變慢或回 500），同一個交易的多次呼叫共用 `QuotaLedger`；每個帳號有自己的 `quota:u:<uid>` 鎖（rank 3，先於 `quota`），一個帳號同一時間只有一個上傳交易；`create_batch` 讀每個上傳之前先 `seek(0)`。**拒絕計數**：`ATOMIC_EVENTS`（`share_access`）的拒絕改走 `_refuse`：來源計數列（Q22）與 audit bucket（Q23）各由一條語句在自己的 READ COMMITTED 短交易裡更新，立即 commit，不再在請求的 Repeatable Read 交易裡鎖列，所以同一來源的並行請求不互相等待、不 serialization_failure、不被睡眠重試，計入的恰好是上限筆；新列在同一個短交易取容量槽，沒有槽就不建立，槽數等於寫入的列數；取不到連線時所有這類拒絕回 429。錯誤密碼（`share_unlock_failed`，T-SHARE-45）仍在請求交易裡以鎖定的來源計數列與 share 列屏障序列化。SC：T-SHARE-48（`dev/sc/sc_denied_one_source_together.py`）、T-UPL-32（`dev/sc/sc_quota_contention.py`），各自對舊程式碼失敗（重試 33 次、HTTP 500）。 |

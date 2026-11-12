@@ -44,4 +44,16 @@ repeated once on clean counters.
   no error trace and no retry, and the counters must equal the refusals that were answered
   404 (the reservations that find no turn or no connection are answered 429).
 
-All four use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.
+- `sh dev/sc/run_sc.sh denied-one-source-together` runs T-SHARE-48: twelve clients that the
+  trusted loopback proxy names as one source (the same `X-Real-IP`) send refused link opens in
+  rounds that start together. Counting a refusal never waits for, fails on or runs again because
+  of another request of the source: the server log shows no retry and no error trace, every
+  answer is 404 or 429, exactly `denied_rate_per_min` refusals are counted (answered 404) and
+  the rest are answered 429 and recorded as `rate_limited`; the counter row, the audit buckets
+  and the capacity (one slot per row written) add up to what was answered.
+- `sh dev/sc/run_sc.sh quota-contention` runs T-UPL-32: with a quota set and a long attachment
+  table, one portal account sends single-file uploads without pause while another one uploads
+  once a second. Every upload answers 200, the slower account's within a second at the 95th
+  percentile, and no request is rolled back and run again for a concurrency error.
+
+All six use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.

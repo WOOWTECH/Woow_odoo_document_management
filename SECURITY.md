@@ -42,9 +42,12 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   link counts at most 50 of them per hour. When the capacity is used up, a source's first refused
   request of the minute is answered with 429 and not recorded, later refused requests of sources
   already counted still count, and valid links, unlocked sessions and password attempts are not
-  affected. The same applies when the second database connection that reserves a slot cannot be
-  had in time (a full connection pool or a long wait, see Deployment notes): the answer is 429,
-  never a server error.
+  affected. Refused link requests are counted with one statement per count, in a short
+  transaction of their own, so the requests of one source never wait for each other, never fail
+  for each other and are never run again: exactly the limit's worth are counted and the others
+  are answered with 429. When the second database connection for that count cannot be had in
+  time (a full connection pool or a long wait, see Deployment notes), the refused request is
+  answered with 429 and nothing is recorded, never with a server error.
   *(text pending)*
 - **HD-07** The portal folder write right is only an upload probe; real writes are refused.
   *(text pending)*
@@ -63,8 +66,8 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
 
 ## Deployment notes
 
-- **Database connections.** Reserving a capacity slot for a refused link request (HD-06) uses a
-  short second database transaction, so such a request can need two connections of the
+- **Database connections.** Counting a refused link request (HD-06) uses a short second database
+  transaction, so such a request can need two connections of the
   `db_maxconn` pool at the same moment. The addon keeps at most `db_maxconn // 32` of these
   reservations (at least one) open at a time in a process and makes the others wait up to half
   a second, so they cannot take the connections that the other requests need. Run Odoo with
@@ -75,8 +78,12 @@ HD-02, 03, 04, 07, 09, 10, 12: core models and access; HD-05: trash).
   more simultaneous requests than the pool has connections, and a burst of requests can leave
   any route, valid share links included, without a connection (a limit of Odoo itself, not
   specific to this addon). When the second connection or its turn is not available the addon
-  answers a new source's first refused request of the minute with 429 and records nothing; it
-  does not answer with a server error.
+  answers the refused request with 429 and records nothing; it does not answer with a server
+  error.
+- **Quota.** With a storage quota set, the files of one upload are checked together, last, and
+  the stored bytes are measured once through a database connection of their own after the
+  upload took the quota lock. One account has one upload transaction at a time: its other
+  requests wait for it (up to five seconds, then 503) and not for the site-wide lock.
 
 ## Known limitations (pending owner decisions)
 
