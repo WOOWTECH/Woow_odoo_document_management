@@ -202,6 +202,11 @@ class TestStoredDefaultsDoNotFillServerFields(HttpCase):
         self.authenticate(self.uploader.login, self.password)
         self._store('woow.document', {**self._document_defaults(), **self._ordinary_defaults()},
                     'personal')
+        # what a form shows when it starts a record is left as it was
+        shown = self.env['woow.document'].with_user(self.uploader).default_get(
+            ['legal_hold', 'document_type', 'owner_id'])
+        self.assertEqual(shown, {'legal_hold': True, 'document_type': 'url',
+                                 'owner_id': self.other.id})
         self._make_documents('personal', every_way=True)
         self._explicit_values_keep_their_checks()
 
@@ -253,6 +258,9 @@ class TestStoredDefaultsDoNotFillServerFields(HttpCase):
             'trashed_date': '2026-01-01 00:00:00', 'trashed_by_id': self.other.id,
             'restored_date': '2026-01-02 00:00:00', 'color': 3}, scope)
         folders = self.env['woow.document.folder'].with_user(self.uploader)
+        self.assertEqual(
+            folders.default_get(['legal_hold', 'inherit_access']),
+            {'legal_hold': True, 'inherit_access': False})
         child = folders.create({'name': '%s orm child' % scope, 'parent_id': self.parent.id})
         self._check_folder('%s: create' % scope, child.id, child=True)
         rows = [{'name': '%s rpc child' % scope, 'parent_id': self.parent.id}]
