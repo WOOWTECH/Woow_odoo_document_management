@@ -90,5 +90,6 @@ verify:
   - woow_document_management/tests/test_escaping.py
   - tools/tests/test_static_checks.py
   - woow_document_management/tests/test_reg_wizard_owner_scope.py
+  - woow_document_management/tests/test_reg_create_batch_cap.py
   # test_perf.py is tagged -standard and deliberately not listed. Every new tests/test_reg_<slug>.py from a fix is
   # appended here (this touches .security/, so it always goes to a human - expected).

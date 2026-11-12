@@ -40,3 +40,4 @@ from . import test_rpc_exposure
 from . import test_escaping
 from . import test_perf
 from . import test_reg_wizard_owner_scope
+from . import test_reg_create_batch_cap

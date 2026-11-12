@@ -148,6 +148,12 @@ class WoowDocument(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         """Validate each file before storage; keep multi-file calls atomic."""
+        if not self.env.su and len(vals_list) > self.env[
+                'woow.document.settings']._get_settings().max_files_per_upload:
+            # The upload routes allow this many files per request; ``create`` is also
+            # reachable over RPC, where one call would otherwise hold the quota lock and
+            # one transaction for any number of files.
+            raise UserError(_('Invalid number of files.'))
         internal = self.env.su or self.env.user._is_internal()
         manager = self.env.su or self.env.user.has_group(_MANAGER)
         portal_fields = {'name', 'folder_id', 'datas', 'description'}
