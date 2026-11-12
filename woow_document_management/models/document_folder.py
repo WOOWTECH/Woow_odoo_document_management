@@ -42,6 +42,19 @@ def _eff(comodel, relation, column, field_name):
         depends=(*_EFF_LOCAL_DEPENDS, f'parent_id.{field_name}'))
 
 
+def _company_value(value):
+    """The company a write names, as an id or False; None when the value has no known shape."""
+    if isinstance(value, models.BaseModel):
+        if len(value) > 1:
+            return None
+        value = value.id
+    elif isinstance(value, (list, tuple)):
+        value = value[0] if value else False
+    if value is None or value is False:
+        return False
+    return value if type(value) is int else None
+
+
 class WoowDocumentFolder(models.Model):
     _name = 'woow.document.folder'
     _inherit = ['mail.thread', 'mail.activity.mixin', 'woow.document.guard.mixin']
@@ -150,7 +163,6 @@ class WoowDocumentFolder(models.Model):
     def create(self, vals_list):
         """Apply the site root policy and parent edit grant before creating folders."""
         manager = self.env.su or self.env.user.has_group(_MANAGER)
-        allow_root = self.env['woow.document.settings']._get_settings().allow_root_create
         default_parent = self.default_get(['parent_id']).get('parent_id')
         for vals in vals_list:
             if 'name' in vals:
@@ -160,10 +172,13 @@ class WoowDocumentFolder(models.Model):
             if not self.env.su and (_SERVER_ONLY_FIELDS.intersection(vals) or
                                     any(key.startswith('eff_') for key in vals)):
                 raise AccessError(_('This folder field cannot be changed directly.'))
+            if not manager and 'company_id' in vals and not _company_value(vals['company_id']):
+                # A folder that belongs to no company is open to every company's
+                # administrators (R-F0 / R-D0), so only a document administrator makes one.
+                raise AccessError(_('Only document administrators can do this.'))
             parent_id = vals.get('parent_id', default_parent)
             if not parent_id:
-                if not manager and not allow_root:
-                    raise AccessError(_('Only document administrators may create a root folder.'))
+                self._woow_require_root_right()
             elif not manager:
                 parent = self.browse(parent_id)
                 parent._woow_require_rank(3)
@@ -199,11 +214,22 @@ class WoowDocumentFolder(models.Model):
                           'access_ids', 'active', 'trashed_date', 'trashed_by_id',
                           'restored_date', 'legal_hold'}
             self._woow_require_rank(4 if privileged.intersection(vals) else 3)
+            if 'company_id' in vals and not self.env.user.has_group(_MANAGER):
+                # Only a document administrator moves a folder to another company or to
+                # none. A member with the manage grant keeps the company of the folder,
+                # because the same write on the root of a subtree would hand the whole
+                # subtree to another company's administrators, folder by folder.
+                new_company = _company_value(vals['company_id'])
+                if any(new_company != (folder.company_id.id or False) for folder in self):
+                    raise AccessError(_('Only document administrators can do this.'))
         if vals.get('inherit_access') is False and 'access_ids' in vals:
             raise UserError(_('Save member changes before disabling inherited access.'))
         if vals.get('inherit_access') is False and 'parent_id' in vals:
             raise UserError(_('Save the new parent before disabling inherited access.'))
         if 'parent_id' in vals:
+            if not vals['parent_id'] and self.filtered('parent_id'):
+                # Moving a folder to the top level is creating a root folder.
+                self._woow_require_root_right()
             new_parent = self.browse(vals['parent_id']) if vals['parent_id'] else self.browse()
             for folder in self:
                 if new_parent and not self.env.su:
@@ -258,6 +284,18 @@ class WoowDocumentFolder(models.Model):
                         folder_id=folder.id, company_id=folder.company_id.id,
                         detail={'hold': bool(folder.legal_hold)})
         return result
+
+    @api.model
+    def _woow_require_root_right(self):
+        """A folder at the top level needs a document administrator, or the site setting.
+
+        Used where a root folder is created and where a folder is moved to the top level,
+        so that both ways to get one answer the same way (M-24).
+        """
+        if self.env.su or self.env.user.has_group(_MANAGER):
+            return
+        if not self.env['woow.document.settings']._get_settings().allow_root_create:
+            raise AccessError(_('Only document administrators may create a root folder.'))
 
     @api.model
     def _woow_check_name_free(self, name, parent_id, company_id, exclude=()):

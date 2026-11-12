@@ -117,6 +117,38 @@ class TestDocumentPermissions(TransactionCase):
         self.assertFalse(self.env['woow.document.folder'].sudo().with_context(
             default_legal_hold=True).create({'name': 'Filtered default'}).legal_hold)
 
+    def test_root_policy_covers_moves(self):
+        """Moving a folder to the top level is creating a root folder (M-24)."""
+        params = self.env['ir.config_parameter'].sudo()
+        folders = self.env['woow.document.folder'].sudo()
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.root.id, 'subject_type': 'user',
+            'user_id': self.user.id, 'level': 'manage'})
+        moved = folders.create({'name': 'Moved up', 'parent_id': self.root.id})
+        folders.create({'name': 'Moved up'})   # a root with the same name already exists
+        self.env.flush_all()
+        self.assertTrue(moved.with_user(self.user)._woow_has_rank(4))
+        # Refused with the same answer whether or not the name is taken at the top level.
+        for name in ('Moved up', 'Moved elsewhere'):
+            with self.subTest(name=name), self.assertRaises(AccessError):
+                moved.with_user(self.user).write({'parent_id': False, 'name': name})
+        self.assertEqual(moved.parent_id, self.root)
+        # A folder that is already at the top level is not moved by a write that keeps it there.
+        self.root.with_user(self.user).write({'parent_id': False})
+        # The site setting opens it, as it does for creating a root folder.
+        params.set_param('woow_document_management.allow_root_create', 'True')
+        moved.with_user(self.user).write({'parent_id': False, 'name': 'Moved elsewhere'})
+        self.assertFalse(moved.parent_id)
+        # Document administrators and the superuser never need the setting.
+        params.set_param('woow_document_management.allow_root_create', 'False')
+        admin = self.env.ref('base.user_admin')
+        by_admin = folders.create({'name': 'Moved by admin', 'parent_id': self.root.id})
+        by_admin.with_user(admin).write({'parent_id': False})
+        self.assertFalse(by_admin.parent_id)
+        by_su = folders.create({'name': 'Moved by su', 'parent_id': self.root.id})
+        by_su.write({'parent_id': False})
+        self.assertFalse(by_su.parent_id)
+
     def test_portal_partner_grant_is_exact_and_write_is_only_a_probe(self):
         partner = self.env['res.partner'].sudo().create({'name': 'Portal document contact'})
         other = self.env['res.partner'].sudo().create({'name': 'Other portal contact'})
