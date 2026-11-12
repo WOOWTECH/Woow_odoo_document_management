@@ -2,7 +2,7 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Folder members (IF-MODEL, owned by core-models-acl)."""
 from odoo import _, api, fields, models, tools
-from odoo.exceptions import AccessError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 
 from ..services.locks import advisory_key, lock
 from .document_folder import _company_value
@@ -46,6 +46,20 @@ class WoowDocumentFolderAccess(models.Model):
         [('read', 'View'), ('upload', 'Upload'), ('edit', 'Edit'), ('manage', 'Manage')],
         required=True)
 
+    def _woow_manageable_folders(self, values):
+        """The distinct folder ids of ``values``, once the caller is known to manage every one.
+
+        Run before any lock is taken or any folder row is updated, so that a request that is
+        refused costs no more than the check, however many folders it names: a value that is not a
+        plain id is refused (so ``'7'`` and ``'07'`` are not two folders), and so is a folder that
+        is missing or that the caller does not manage.
+        """
+        if any(type(value) is not int or value < 1 for value in values):
+            raise UserError(_('Choose an available folder.'))
+        ids = sorted(set(values))
+        self.env['woow.document.folder'].browse(ids)._woow_require_rank(4)
+        return ids
+
     def _lock_folders(self, folder_ids):
         for folder_id in sorted(set(folder_ids), key=lambda value: advisory_key(f'access:{value}')):
             lock(self.env.cr, f'access:{folder_id}')
@@ -57,13 +71,15 @@ class WoowDocumentFolderAccess(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if not self.env.su:
+            self.check_access('create')
         default_folder_id = (self.default_get(['folder_id']).get('folder_id')
                              if any('folder_id' not in vals for vals in vals_list) else None)
         folder_ids = [vals.get('folder_id', default_folder_id)
                       for vals in vals_list if vals.get('folder_id', default_folder_id)]
-        self._lock_folders(folder_ids)
         if not self.env.su:
-            self.env['woow.document.folder'].browse(folder_ids)._woow_require_rank(4)
+            folder_ids = self._woow_manageable_folders(folder_ids)
+        self._lock_folders(folder_ids)
         lines = super().create(vals_list)
         for line in lines:
             self.env['woow.document.log']._log_event(
@@ -89,9 +105,10 @@ class WoowDocumentFolderAccess(models.Model):
 
     def write(self, vals):
         if vals.get('folder_id'):
-            self._lock_folders([vals['folder_id']])
+            folder_ids = [vals['folder_id']]
             if not self.env.su:
-                self.env['woow.document.folder'].browse(vals['folder_id'])._woow_require_rank(4)
+                folder_ids = self._woow_manageable_folders(folder_ids)
+            self._lock_folders(folder_ids)
         if 'company_id' in vals and not self.env.su:
             # The company of a row is the one of its folder (the new one, when the row moves):
             # a stored value of another company would take the row out of the company rule of
