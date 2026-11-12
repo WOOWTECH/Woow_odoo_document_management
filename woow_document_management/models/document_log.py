@@ -597,6 +597,13 @@ class WoowDocumentDeniedCounter(models.Model):
         does, and without a slot the row is not created. Returns the new count; 0 when
         the source has used its limit; None when a new source finds no slot, turn or
         connection for its row (nothing is written).
+
+        That statement matches no row both when the source has none and when its row is
+        at the limit, and each statement after it sees what other requests committed
+        meanwhile. A row that exists below the limit when it is read, or that another
+        request created while this one was about to insert its own, was therefore
+        created after the first statement: it is counted on, and only a row at the limit
+        is answered with 0.
         """
         count = """UPDATE woow_document_denied_counter SET count = count + 1
                    WHERE event = %s AND ip_hash = %s AND count < %s
@@ -615,21 +622,24 @@ class WoowDocumentDeniedCounter(models.Model):
                    WHERE event = %s AND ip_hash = %s
                      AND bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""",
                 (event, ip_hash))
-            if cr.fetchone() is not None:
+            row = cr.fetchone()
+            if row is not None and row[0] >= limit:
                 return 0
-            if budget._minute_is_full():
-                return None
-            cr.execute(  # sql-ok: Q22
-                """INSERT INTO woow_document_denied_counter (event, ip_hash, bucket_minute, count)
-                   VALUES (%s, %s, date_trunc('minute', now() AT TIME ZONE 'UTC'), 1)
-                   ON CONFLICT (event, ip_hash, bucket_minute) DO NOTHING RETURNING count""",
-                (event, ip_hash))
-            if cr.fetchone():
-                if budget._reserve(cr):
-                    return 1
-                cr.rollback()           # no slot: the row is not created
-                return None
-            # Another request created the row meanwhile: count on it.
+            if row is None:
+                if budget._minute_is_full():
+                    return None
+                cr.execute(  # sql-ok: Q22
+                    """INSERT INTO woow_document_denied_counter
+                           (event, ip_hash, bucket_minute, count)
+                       VALUES (%s, %s, date_trunc('minute', now() AT TIME ZONE 'UTC'), 1)
+                       ON CONFLICT (event, ip_hash, bucket_minute) DO NOTHING RETURNING count""",
+                    (event, ip_hash))
+                if cr.fetchone():
+                    if budget._reserve(cr):
+                        return 1
+                    cr.rollback()           # no slot: the row is not created
+                    return None
+            # Another request created the row after the first statement: count on it.
             cr.execute(count, (event, ip_hash, limit))  # sql-ok: Q22
             row = cr.fetchone()
             return row[0] if row else 0
