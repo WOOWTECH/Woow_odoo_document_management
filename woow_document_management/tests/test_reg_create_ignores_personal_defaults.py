@@ -8,15 +8,15 @@ for the whole site, and no field group applies to them. A field that only the se
 value, fills must come out as if no default existed, whichever way the record is made.
 """
 import base64
-import hmac
 import json
 import secrets
-import time
 
 from odoo import Command
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, tagged
 from odoo.tests.common import new_test_user
+
+from .common import csrf_token
 
 _USER = 'woow_document_management.group_woow_document_user'
 _OVERVIEW = 'woow_document_management.group_woow_document_attachment_overview'
@@ -80,11 +80,7 @@ class TestStoredDefaultsDoNotFillServerFields(HttpCase):
 
     def _upload_form(self):
         """The form fields of an upload into the fixture folder, with this session's CSRF token."""
-        secret = self.env['ir.config_parameter'].sudo().get_param('database.secret')
-        expires = int(time.time() + 3600)
-        message = ('%s%d' % (self.session.sid, expires)).encode('utf-8')
-        csrf = hmac.new(secret.encode('ascii'), message, 'sha1').hexdigest() + 'o' + str(expires)
-        return {'folder_id': str(self.folder.id), 'csrf_token': csrf}
+        return {'folder_id': str(self.folder.id), 'csrf_token': csrf_token(self)}
 
     def _document_defaults(self):
         """A default for every field that create refuses, or checks, when it is passed."""

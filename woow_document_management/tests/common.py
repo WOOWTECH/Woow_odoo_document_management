@@ -1,9 +1,19 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Helpers shared by several test modules."""
+import hmac
 import string
 import struct
+import time
 import zlib
+
+
+def csrf_token(case):
+    """A CSRF token for the session of an ``HttpCase``, built the way core builds one."""
+    secret = case.env['ir.config_parameter'].sudo().get_param('database.secret')
+    expires = int(time.time() + 3600)
+    message = ('%s%d' % (case.session.sid, expires)).encode('utf-8')
+    return hmac.new(secret.encode('ascii'), message, 'sha1').hexdigest() + 'o' + str(expires)
 
 
 def png_chunk(kind, payload=b''):

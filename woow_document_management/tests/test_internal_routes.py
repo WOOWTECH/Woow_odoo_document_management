@@ -2,10 +2,8 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 
 import base64
-import hmac
 import io
 import json
-import time
 import zipfile
 from unittest.mock import patch
 
@@ -15,7 +13,7 @@ from odoo import Command
 from odoo.tests import HttpCase, tagged
 
 from ..controllers.streaming import create_batch
-from .common import png_declaring
+from .common import csrf_token, png_declaring
 
 
 @tagged('woow_docmgmt_http')
@@ -134,11 +132,7 @@ class TestInternalRoutes(HttpCase):
 
     def _upload_form(self):
         """The form fields of an upload into the fixture folder, with this session's CSRF token."""
-        secret = self.env['ir.config_parameter'].sudo().get_param('database.secret')
-        expires = int(time.time() + 3600)
-        message = ('%s%d' % (self.session.sid, expires)).encode('utf-8')
-        csrf = hmac.new(secret.encode('ascii'), message, 'sha1').hexdigest() + 'o' + str(expires)
-        return {'folder_id': str(self.folder.id), 'csrf_token': csrf}
+        return {'folder_id': str(self.folder.id), 'csrf_token': csrf_token(self)}
 
     def test_upload_accepts_text_and_rejects_mixed_batch_atomically(self):
         data = self._upload_form()
