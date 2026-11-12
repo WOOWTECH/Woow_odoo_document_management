@@ -419,6 +419,10 @@ class TestPurgeBatches(TransactionCase):
         activities = self.env['mail.activity'].sudo().with_context(active_test=False)
         domain = [('res_model', '=', 'res.partner'), ('res_id', '=', manager.partner_id.id),
                   ('user_id', '=', manager.id), ('summary', '=', summary)]
+        # The alert of a day is created once, so one that the database already holds (committed
+        # by an earlier run or another test) would hide the alert this test looks for. Whatever
+        # is there is removed inside this test's transaction, which is rolled back at its end.
+        activities.search(domain).unlink()
 
         def failing(name, days):
             """A trashed root that fails to purge, expired ``days`` days ago."""
@@ -567,11 +571,32 @@ class TestPurgeRacesWithLegalHold(TransactionCase):
     would delete documents without touching the held folder's row.
     """
 
+    ALERT_SUMMARY = 'Items in the trash could not be deleted'
+
     def setUp(self):
         super().setUp()
         self._documents, self._folders = [], []
-        self.addCleanup(self._drop_committed)
         self.admin_id = self.env.ref('base.user_admin').id
+        self._alerts_before = self._committed_alerts()
+        # Cleanups run last in, first out: the guard runs after the fixture is dropped.
+        self.addCleanup(self._assert_no_alert_committed)
+        self.addCleanup(self._drop_committed)
+
+    def _committed_alerts(self):
+        """How many stuck-trash alerts (activities) the database holds, committed."""
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT count(*) FROM mail_activity WHERE summary = %s',
+                       (self.ALERT_SUMMARY,))
+            return cr.fetchone()[0]
+
+    def _assert_no_alert_committed(self):
+        """The race tests commit real purge runs: none may leave an alert in the database.
+
+        An alert is an activity with its message, follower, notification and bus rows, and
+        nothing here removes them; one left behind changes every later test on the database.
+        """
+        self.assertEqual(self._committed_alerts(), self._alerts_before,
+                         'a purge batch of the race tests committed a stuck-trash alert')
 
     def _commit_fixture(self):
         old = fields.Datetime.now() - timedelta(days=400)
@@ -674,13 +699,20 @@ class TestPurgeRacesWithLegalHold(TransactionCase):
                 record_id).action_set_legal_hold(True)
 
     def _purge_batch(self, cr):
-        """T: the daily job with room for two records; returns (progress, failure)."""
+        """T: the daily job with room for two records; returns (progress, failure).
+
+        The records the races make it skip are far past their retention, so the job would
+        tell the administrators about them. These tests say nothing about that alert, and
+        a committed one is left in the database for good, so it is not sent.
+        """
         env = api.Environment(cr, SUPERUSER_ID, {})
         progress = []
         failure = None
         with patch.object(cron_jobs, 'PURGE_BATCH', 2), \
                 patch.object(type(env['ir.cron']), '_notify_progress',
                              lambda cron, **values: progress.append(values)), \
+                patch.object(type(env['woow.document']), '_woow_alert_stuck_trash',
+                             lambda *args, **kwargs: None), \
                 mute_logger('odoo.sql_db'):
             try:
                 env['woow.document']._cron_purge_trash()
