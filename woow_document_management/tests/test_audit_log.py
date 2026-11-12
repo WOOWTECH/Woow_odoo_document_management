@@ -744,6 +744,83 @@ class TestDeniedConcurrency(TransactionCase):
             return
         self.fail('no try stayed within one minute')
 
+    def _request_after_the_last_slot_went(self, call):
+        """What ``call(env, ip, digest)`` writes as a request whose snapshot still shows a free slot.
+
+        B takes its snapshot while the capacity of the minute stands one below its maximum;
+        another request then takes the last slot and commits. ``call`` is B, on a new source,
+        and sees one slot free in its own snapshot, while the short transaction in which it
+        reserves the slot sees none. Returns the answer of ``call``, the counter rows and the
+        audit buckets of the source that were committed, and the capacity row of the minute
+        before and after the call; None when a minute boundary fell inside the try.
+        """
+        maximum = document_log_module.MAX_DENIED_ROWS_PER_MIN
+        self._inside_one_minute()
+        ip = self._new_source()
+        digest = self._source(ip)
+        with self.registry.cursor() as setup:
+            minute = _minute(setup)
+            _set_budget(setup, minute, maximum - 1)
+        with self.registry.cursor() as cr_b:
+            if _minute(cr_b) != minute:   # B's first statement takes its snapshot.
+                return None
+            env_b = api.Environment(cr_b, SUPERUSER_ID, {})
+            with self.registry.cursor() as other:
+                _set_budget(other, minute, maximum)
+            with self.registry.cursor() as check:
+                before = _budget_version(check, minute)
+            self.assertEqual(_budget(env_b), maximum - 1)
+            answer = call(env_b, ip, digest)
+            cr_b.rollback()
+        if self._db_minute() != minute:
+            return None
+        with self.registry.cursor() as check:
+            check.execute('SELECT event, count FROM woow_document_denied_counter '
+                          'WHERE ip_hash = %s', (digest,))
+            counters = check.fetchall()
+            check.execute('SELECT event, count FROM woow_document_log '
+                          "WHERE result = 'denied' AND ip_hash = %s", (digest,))
+            buckets = check.fetchall()
+            return answer, counters, buckets, before, _budget_version(check, minute)
+
+    def _assert_nothing_is_kept_without_a_slot(self, call, answer):
+        """The request of ``_request_after_the_last_slot_went`` got no slot and kept no row."""
+        self._keep_capacity_rows()
+        for _try in range(3):
+            result = self._request_after_the_last_slot_went(call)
+            if result is not None:
+                break   # else a minute boundary fell inside this try; start a new source
+        else:
+            self.fail('no try stayed within one minute')
+        got, counters, buckets, before, after = result
+        self.assertEqual(got, answer)
+        self.assertEqual((counters, buckets), ([], []))
+        # The capacity row keeps its count and its row version: nothing took or gave back a slot.
+        self.assertEqual(after, before)
+        self.assertEqual(after[0], document_log_module.MAX_DENIED_ROWS_PER_MIN)
+
+    def test_a_counter_row_is_not_kept_when_the_last_slot_went_after_the_snapshot(self):
+        """The row that finds no slot is rolled back with its short transaction.
+
+        B's snapshot shows a free slot, so B inserts the counter row of its source and asks for
+        the slot in the same short transaction, which sees the capacity used up. The transaction
+        commits when its block ends, so unless the insert is undone the row stays committed
+        without a slot, and the slots used would no longer be the rows written. B answers None
+        and no row is left.
+        """
+        self._assert_nothing_is_kept_without_a_slot(
+            lambda env, ip, digest: env['woow.document.denied.counter']._count_below(
+                'share_access', digest, 5), None)
+
+    def test_an_audit_bucket_is_not_kept_when_the_last_slot_went_after_the_snapshot(self):
+        """The same for the audit bucket of a refusal: B answers 0 and no bucket is left."""
+        def bump(env, ip, _digest):
+            log = env['woow.document.log']
+            return log._bump_denied_bucket(
+                log._event_values('share_access', result='denied', channel='share', ip=ip))
+
+        self._assert_nothing_is_kept_without_a_slot(bump, 0)
+
     def test_unlock_refused_for_the_source_limit_neither_waits_for_nor_fails_on_other_requests(self):
         """share_unlock turns away a source that used its limit without a lock or a retry.
 

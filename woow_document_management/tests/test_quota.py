@@ -8,7 +8,7 @@ from unittest.mock import patch
 from psycopg2 import OperationalError
 from psycopg2.pool import PoolError
 
-from odoo import Command
+from odoo import Command, api
 from odoo.exceptions import AccessError
 from odoo.tests import TransactionCase, tagged
 from odoo.tools import mute_logger
@@ -277,6 +277,76 @@ class TestQuotaRuns(TransactionCase):
             with mute_logger('odoo.sql_db'), self.assertRaises(LockBusy):
                 self.quota.with_user(self.admin)._check_many([('checksum', 10)])
             self.quota.with_user(other_user)._check_many([('checksum', 10)])
+
+    def test_an_account_waits_for_the_site_lock_that_another_account_holds(self):
+        """The quota lock orders the uploads of different accounts.
+
+        Each account has a lock of its own (``quota:u:<uid>``), which keeps one account from
+        queueing its requests in front of everybody, but the room that is left is the site's: an
+        upload measures the stored bytes only while no other one stands between its own
+        measurement and its commit.
+        """
+        other_user = self.env['res.users'].sudo().create({
+            'name': 'Quota site lock account', 'login': 'wdoc-quota-site-lock',
+            'groups_id': [Command.set([self.env.ref('base.group_user').id])]})
+        real_lock = locks.lock
+
+        def quick(cr, name, timeout_ms=50):
+            return real_lock(cr, name, timeout_ms)
+
+        with self.env.registry.cursor() as measuring, patch.object(quota_module, 'lock', quick):
+            self.assertTrue(try_lock(measuring, 'quota'))      # another account is measuring
+            with mute_logger('odoo.sql_db'), self.assertRaises(LockBusy):
+                self.quota.with_user(other_user)._check_many([('checksum', 10)])
+        # The other transaction is over and so is its lock: the account goes through.
+        self.quota.with_user(other_user)._check_many([('checksum', 10)])
+
+    def test_two_accounts_racing_for_the_last_room_are_not_both_accepted(self):
+        """The second of two accounts that race for the last room is refused, not accepted too.
+
+        Two real transactions of two accounts, room for one file. B took its snapshot before A
+        stored anything. A is accepted and holds the site lock until it commits, so B has to
+        wait. When A has committed its file B asks again and measures through a connection of
+        its own, not through its old snapshot, so the file counts and B is refused. Without the
+        lock both measure the same room and both are accepted; measured through the snapshot of
+        B the file of A would be missed.
+        """
+        settings = self.env['woow.document.settings']._get_settings()
+        capacity = settings.quota_mb * MIB
+        block = capacity * settings.quota_block_pct
+        used = self.quota._usage_bytes()
+        size = (block // 100 - used) * 3 // 4        # one file of this size fits, two do not
+        self.assertLessEqual((used + size) * 100, block)
+        self.assertGreater((used + 2 * size) * 100, block)
+        name = 'quota-race-%s' % id(self)
+
+        def remove():
+            with self.env.registry.cursor() as cr:
+                cr.execute('DELETE FROM ir_attachment WHERE name = %s', (name,))
+        self.addCleanup(remove)
+        real_lock = locks.lock
+
+        def quick(cr, lock_name, timeout_ms=50):
+            return real_lock(cr, lock_name, timeout_ms)
+
+        # The settings of this test are not committed: the other transactions read them from here.
+        with patch.object(type(self.env['woow.document.settings']), '_get_settings',
+                          return_value=settings), \
+                patch.object(quota_module, 'lock', quick), \
+                self.env.registry.cursor() as cr_b, self.env.registry.cursor() as cr_a:
+            cr_b.execute('SELECT 1')      # B's first statement takes its snapshot
+            quota_a = api.Environment(cr_a, self.admin.id, {})['woow.document.quota']
+            quota_b = api.Environment(
+                cr_b, self.env.ref('base.public_user').id, {})['woow.document.quota']
+            quota_a._check_many([('race-a', size)])      # A fits, and keeps the site lock
+            with mute_logger('odoo.sql_db'), self.assertRaises(LockBusy):
+                quota_b._check_many([('race-b', size)])
+            cr_a.execute("""INSERT INTO ir_attachment (name, type, store_fname, file_size)
+                            VALUES (%s, 'binary', %s, %s)""", (name, 'zz/' + name, size))
+            cr_a.commit()                                # A's file is stored, its lock is gone
+            with self.assertRaises(WoowUploadRejected) as caught:
+                quota_b._check_many([('race-b', size)])
+            self.assertEqual(caught.exception.code, 'quota')
 
     def test_files_of_one_run_count_the_bytes_the_run_has_already_accepted(self):
         self.params.set_param('woow_document_management.quota_mb', '1')

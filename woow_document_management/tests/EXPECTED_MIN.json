@@ -1,14 +1,14 @@
 {
   "batches": {
     "core": 218,
-    "files": 139,
+    "files": 143,
     "portal": 3,
-    "share": 63
+    "share": 64
   },
   "files": {
     "test_add_attachment.py": 4,
     "test_attachment_guard.py": 13,
-    "test_audit_log.py": 33,
+    "test_audit_log.py": 35,
     "test_backend_views.py": 2,
     "test_backend_wizards.py": 4,
     "test_ca21_tour.py": 1,
@@ -29,7 +29,7 @@
     "test_naming.py": 7,
     "test_native_routes.py": 5,
     "test_portal_routes.py": 3,
-    "test_quota.py": 15,
+    "test_quota.py": 17,
     "test_record_rules.py": 4,
     "test_reg_access_company_locked.py": 2,
     "test_reg_access_create_authorizes_before_locking.py": 7,
@@ -44,7 +44,7 @@
     "test_rpc_exposure.py": 3,
     "test_security_acl.py": 10,
     "test_settings_bounds.py": 10,
-    "test_share_routes.py": 47,
+    "test_share_routes.py": 48,
     "test_share_token.py": 4,
     "test_trash_lifecycle.py": 30,
     "test_uninstall.py": 3,

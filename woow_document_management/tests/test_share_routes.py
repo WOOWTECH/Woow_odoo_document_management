@@ -468,6 +468,75 @@ class TestShareScope(TransactionCase):
             self.assertFalse(share_b._download_slot_available(scope_b))
             cr_b.rollback()
 
+    def test_unlock_takes_the_link_barrier_before_it_compares_a_password(self):
+        """share_unlock compares no password from a snapshot older than the link's last failure.
+
+        The link has used 49 of its 50 wrong passwords of the hour, all from a third source, so
+        that no counter row of a source stands between the two requests. B, from one source,
+        takes its snapshot. A, from another source, sends a wrong password and commits it as the
+        50th. B's snapshot still shows 49: a comparison of B's password would be allowed, and a
+        correct one would unlock the link although its hourly cap is used up. The route takes
+        the lock and the row lock of the link before it compares, and a counted failure writes
+        the share row, so B fails with serialization_failure with nothing compared; its retry
+        sees the 50th failure and is answered 429, again without a comparison. The barrier is
+        also tested on its own (test_password_attempt_barrier_rejects_a_stale_snapshot): this
+        test pins that the route calls it, and that a counted failure writes the row.
+        """
+        self._committed_sources = set()
+        password = secrets.token_urlsafe(16)
+        share_id, scope = self._committed_link(
+            password_hash=tokens.hash_password(secrets.token_urlsafe(16)))
+        k_ip = self.env['woow.document.settings']._share_keys().k_ip
+        ips = ['2001:db8:%x:%x::1' % (secrets.randbelow(0xffff), number) for number in (1, 2, 3)]
+        digests = [hmac_ip(k_ip, source_key(ip)) for ip in ips]
+        self._committed_sources.update(digests)
+        with self.registry.cursor() as cr:
+            cr.execute("""INSERT INTO woow_document_log
+                              (create_uid, create_date, write_uid, write_date, event, result,
+                               channel, share_id, link_ref, ip_hash, bucket_minute, count, detail)
+                          VALUES (1, now() AT TIME ZONE 'UTC', 1, now() AT TIME ZONE 'UTC',
+                                  'share_unlock_failed', 'denied', 'share', %s, %s, %s,
+                                  date_trunc('minute', now() AT TIME ZONE 'UTC'), %s, '{}'::jsonb)""",
+                       (share_id, share_id, digests[2], SHARE_UNLOCK_FAIL_PER_HOUR - 1))
+        controller = share_controller.WoowDocShareController()
+        public = self.env.ref('base.public_user')
+        compared = []
+
+        def compare(given, _stored):
+            compared.append(given)
+            return False
+
+        def unlock(cr, ip, attempt):
+            """The route up to its answer, for a request of ``ip`` that holds a grant on the link."""
+            share, scope_env = scope(cr)
+            access = share_controller.ShareAccess(
+                share, scope_env, ip, '', {'exp': 0, 'h': '', 'pw': False})
+            env = api.Environment(cr, public.id, {})
+            with patch.object(share_controller, 'request', SimpleNamespace(env=env)), \
+                    patch.object(controller, '_share_entry', return_value=access), \
+                    patch.object(streaming, 'uniform_404', return_value='404'), \
+                    patch.object(streaming, 'too_many_requests', return_value='429'), \
+                    patch.object(tokens, 'check_password', side_effect=compare):
+                return controller.share_unlock.original_endpoint(
+                    controller, share_id, password=attempt)
+
+        with self.registry.cursor() as cr_b, self.registry.cursor() as cr_a:
+            cr_b.execute('SELECT 1')   # B's first statement takes its snapshot.
+            self.assertEqual(unlock(cr_a, ips[0], 'wrong password A'), '404')
+            cr_a.commit()
+            with mute_logger('odoo.sql_db'), self.assertRaises(errors.SerializationFailure):
+                unlock(cr_b, ips[1], 'wrong password B')
+            self.assertEqual(compared, ['wrong password A'])
+            cr_b.rollback()
+            self.assertEqual(unlock(cr_b, ips[1], password), '429')
+            self.assertEqual(compared, ['wrong password A'])
+            cr_b.rollback()
+        since = fields.Datetime.now() - timedelta(hours=1)
+        with self.registry.cursor() as cr:
+            share, scope_env = scope(cr)
+            self.assertEqual(scope_env['woow.document.log']._count_share_unlock_failures(
+                share_id, since=since), SHARE_UNLOCK_FAIL_PER_HOUR)
+
     def test_password_attempt_lock_needs_the_creator_scope(self):
         admin = self.env.ref('base.user_admin')
         share, _code = self.env['woow.document.share'].with_user(admin)._issue({
