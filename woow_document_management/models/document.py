@@ -8,6 +8,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
 
 from ..services import url_policy
+from .ir_attachment import NO_INDEX_CTX_KEY
 from .quota import LEDGER_KEY, QuotaLedger
 from .upload_policy import WoowUploadRejected
 
@@ -232,7 +233,8 @@ class WoowDocument(models.Model):
             for vals, folder, size in prepared:
                 context = ({'tracking_disable': True} if not internal else
                            {'mail_create_nolog': True, 'mail_create_nosubscribe': True})
-                created = super(WoowDocument, self.with_context(**context)).create([vals])
+                created = super(WoowDocument, self.with_context(
+                    **context, **{NO_INDEX_CTX_KEY: True})).create([vals])
                 docs |= created
                 self.env['woow.document.log']._log_event(
                     'upload', channel='portal' if not internal else self._woow_log_channel(),
@@ -312,7 +314,8 @@ class WoowDocument(models.Model):
                             'woow.document.settings']._get_settings().allow_http_links:
                         raise UserError(_('The link address must use HTTPS.'))
                     update['url'] = safe_url
-                result = super(WoowDocument, doc).write(update)
+                result = super(WoowDocument, doc.with_context(**{NO_INDEX_CTX_KEY: True})).write(
+                    update)
                 if 'datas' in update or 'folder_id' in update:
                     self.env['woow.document.log']._log_event(
                         'replace' if 'datas' in update else 'move',

@@ -8,10 +8,25 @@ from ..services.constants import WOOW_MODELS
 
 GUARDED_WRITE_KEYS = ('raw', 'datas', 'db_datas', 'mimetype', 'type', 'url', 'res_model', 'res_id',
                       'res_field', 'public', 'access_token', 'store_fname')
+# A context with this key set has core store no indexed content for the file it saves.
+NO_INDEX_CTX_KEY = 'woow_no_index'
 
 
 class IrAttachment(models.Model):
     _inherit = 'ir.attachment'
+
+    @api.model
+    def _index(self, bin_data, file_type, checksum=None):
+        """The files of documents are not indexed by core: their ``index_content`` stays empty.
+
+        The indexers of ``attachment_indexation`` unpack and parse the members of Office and
+        OpenDocument archives (of any file type, at any declared size) while the file is saved,
+        and a few kilobytes of upload can take the memory and time of a worker. What is read from
+        a document file is for the upload policy, or a search bridge, to decide.
+        """
+        if self.env.context.get(NO_INDEX_CTX_KEY):
+            return False
+        return super()._index(bin_data, file_type, checksum=checksum)
 
     @api.model_create_multi
     def create(self, vals_list):
