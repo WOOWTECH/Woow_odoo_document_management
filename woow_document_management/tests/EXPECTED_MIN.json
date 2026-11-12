@@ -1,14 +1,14 @@
 {
   "batches": {
     "core": 141,
-    "files": 119,
+    "files": 121,
     "portal": 3,
     "share": 42
   },
   "files": {
     "test_add_attachment.py": 4,
     "test_attachment_guard.py": 13,
-    "test_audit_log.py": 29,
+    "test_audit_log.py": 30,
     "test_backend_views.py": 2,
     "test_backend_wizards.py": 4,
     "test_ca21_tour.py": 1,
@@ -29,7 +29,7 @@
     "test_naming.py": 7,
     "test_native_routes.py": 5,
     "test_portal_routes.py": 3,
-    "test_quota.py": 14,
+    "test_quota.py": 15,
     "test_record_rules.py": 4,
     "test_reg_create_batch_cap.py": 3,
     "test_reg_wizard_owner_scope.py": 2,
