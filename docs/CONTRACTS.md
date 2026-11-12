@@ -79,10 +79,10 @@
 |---|---|
 | L0 ci-sweep | `.gitignore`、`.gitattributes`、`LICENSE`、`COPYING`、`README.md`、`CLEANROOM.md`、`SECURITY.md`、`docs/CONTRACTS.md`、`.security/sweep.yaml`、`.github/workflows/security.yml`、`.github/gitleaks.toml`、`.github/pull_request_template.md`、`tools/**`（含 `tools/routes.lock.json`，IC-R12）、`W/__manifest__.py`、`W/__init__.py`、`W/{models,controllers,wizards,services}/__init__.py`、`W/security/groups.xml`（PR-01）、推送前檢查腳本與其字串清單（兩者都在 repo 外）、plat 的 target `Woow_odoo_document_management.yaml`、README target 表新增的那一列 |
 | L1 settings-ip | `W/models/settings.py`、`W/models/res_config_settings.py`、`W/views/res_config_settings_views.xml`、`W/services/client_ip.py`、`W/tests/test_settings_bounds.py`、`W/tests/test_client_ip.py` |
-| L2 upload-quota | `W/models/upload_policy.py`、`W/models/quota.py`、`W/services/naming.py`、`W/services/mime_map.py`、`W/services/locks.py`、`W/tests/test_upload_policy.py`、`test_naming.py`、`test_quota.py`、`test_locks.py` |
+| L2 upload-quota | `W/models/upload_policy.py`、`W/models/quota.py`、`W/services/naming.py`、`W/services/mime_map.py`、`W/services/locks.py`、`W/tests/test_upload_policy.py`、`test_naming.py`、`test_quota.py`、`test_locks.py`、`dev/sc/sc_quota_contention.py` |
 | L3 core-models-acl | `W/models/guard_mixin.py`、`document_folder.py`、`folder_access.py`、`document.py`、`document_tag.py`、`document_share.py`、`document_log.py`、`ir_attachment.py`、`mail_thread_guard.py`、`W/hooks.py`、`W/services/constants.py`、`folding.py`、`url_policy.py`、`W/security/ir.model.access.csv`、`rules.xml`、`W/data/admin_assignment.xml`、`W/views/safe_url_templates.xml`、`W/tests/test_core_models.py`、`test_security_acl.py`、`test_multicompany.py`、`test_attachment_guard.py`、`test_mail_thread_guard.py`、`test_uninstall.py`、`test_display_name_folding.py`、`test_folding_service.py`、`test_url_policy.py`、`dev/sc/sc_uninstall.py` |
 | L4 internal-routes-zip | `W/controllers/streaming.py`、`W/controllers/main.py`、`W/services/zip_builder.py`、`W/models/zip_actions.py`、`W/views/common_templates.xml`、`W/tests/test_zip_builder.py`、`test_internal_routes.py`、`test_native_routes.py` |
-| L5 share | `W/models/share_service.py`、`W/services/tokens.py`、`W/wizards/share_wizard.py`、`W/views/wizards/share_wizard_views.xml`、`W/views/share_views.xml`、`W/views/share_templates.xml`、`W/controllers/share.py`、`W/static/src/share/**`、`W/static/src/share_result/**`、`W/static/tests/tours/share/**`、`W/data/mail_templates.xml`、`W/security/share_access.xml`、`W/tests/test_share_token.py`、`test_share_routes.py`、`test_mail_share.py`、`dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py`、`dev/sc/sc_source_limit_two_links.py`、`dev/sc/sc_denied_sources_together.py`、`dev/sc/sc_denied_many_sources.py`、`dev/sc/sc_http_runtime.py` |
+| L5 share | `W/models/share_service.py`、`W/services/tokens.py`、`W/wizards/share_wizard.py`、`W/views/wizards/share_wizard_views.xml`、`W/views/share_views.xml`、`W/views/share_templates.xml`、`W/controllers/share.py`、`W/static/src/share/**`、`W/static/src/share_result/**`、`W/static/tests/tours/share/**`、`W/data/mail_templates.xml`、`W/security/share_access.xml`、`W/tests/test_share_token.py`、`test_share_routes.py`、`test_mail_share.py`、`dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py`、`dev/sc/sc_source_limit_two_links.py`、`dev/sc/sc_denied_sources_together.py`、`dev/sc/sc_denied_many_sources.py`、`dev/sc/sc_denied_one_source_together.py`、`dev/sc/sc_http_runtime.py` |
 | L6 trash-audit-cron | `W/models/trash_actions.py`、`W/models/cron_jobs.py`、`W/wizards/restore_wizard.py`、`purge_wizard.py`、`W/views/wizards/restore_wizard_views.xml`、`purge_wizard_views.xml`、`W/security/trash_access.xml`、`W/data/ir_cron.xml`、`W/tests/test_trash_lifecycle.py`、`test_audit_log.py`、`test_cron.py`、`dev/sc/sc_purge_skip_locked.py` |
 | L7 portal | `W/controllers/portal.py`、`W/views/portal_templates.xml`、`W/static/src/portal/**`、`W/tests/test_portal_routes.py`、`test_portal_upload.py` |
 | L8 backend-ui | `W/views/backend/{folder,document,tag,trash,log,attachment_overview}_views.xml`、`W/views/menus.xml`、`W/views/wizards/{move,add_attachment,notify}_wizard_views.xml`、`W/wizards/{move,add_attachment,notify}_wizard.py`、`W/models/backend_actions.py`、`W/security/backend_access.xml`、`W/static/src/{backend,scss,img}/**`、`W/static/description/**`、`W/static/tests/tours/backend/**`、`W/tests/test_attachment_overview.py`、`test_add_attachment.py`、`test_backend_views.py`、`test_backend_wizards.py` |
@@ -292,15 +292,23 @@
 | Q4 | `services/locks.py`（`try_lock`、`lock`、`bounded_wait`） | `SELECT pg_try_advisory_xact_lock(%s)`、`SELECT pg_advisory_xact_lock(%s)`、`SELECT current_setting('lock_timeout')`、`SELECT set_config('lock_timeout', %s, true)` |
 | Q5 | `models/quota.py::_bytes_if_new` | arch §6.4 Q5 |
 | Q6 | `models/ir_attachment.py`（守衛） | arch §6.4 Q6 |
+| Q7 | `models/folder_access.py::_check_member` | 在存取交易鎖之下，不經 record rule 數這個資料夾的全部授權列（授權上限的判斷） |
+| Q8 | `models/folder_access.py::_lock_folders` | 新增授權之前，在 Repeatable Read 下強制列版本衝突，讓並行的授權變更序列化 |
+| Q9 | `models/document_log.py::_count_share_unlock_failures` | 建立者範圍內的分享解鎖失敗次數彙總，不暴露受限的來源雜湊 |
+| Q11 | `models/share_service.py::_woow_send_link` | 每小時寄信次數計數之前，在 Repeatable Read 下先寫寄件者那一列的版本（屏障） |
+| Q12 | `models/share_service.py::_woow_lock_share_row`、`::_woow_count_on_share_row` | 下載次數與錯誤密碼次數計數之前先鎖 share 列（Repeatable Read）；只有計入下載或錯誤密碼時才寫列版本 |
+| Q13 | `models/document_log.py::_peek_source`、`::_lock_source`、`::_add_one`、`::_release_source` | 跨分享的來源拒絕計數列（不洩漏分享是否存在）：快照讀、鎖定讀與加一（舊快照會 serialization_failure），以及移除沒有計數的列 |
+| Q14 | `models/document_log.py::_take_slot`、`::_short_transaction`、`::_minute_is_full`、`::_reserve` | 每分鐘的拒絕紀錄容量：呼叫交易的快照已顯示該分鐘滿了就直接拒絕，否則在自己的 READ COMMITTED 短交易為呼叫交易的分鐘取一個槽，不超過上限（拒絕自己的短交易用自己的連線，與需要槽的那一列一起取）；這些短交易的隔離等級 |
+| Q16 | `models/document_log.py::_denied_bucket_exists` | 已存在的來源每分鐘 bucket（鍵與唯一索引相同，用 `link_ref`）不再占用另一個容量槽 |
 | Q17 | `models/ir_attachment.py::_woow_field_attachment_ids`、`::_woow_document_file_row` | 要加進討論的附件中，哪些是某個 binary 欄位的附件；文件記錄的檔案附件（`attachment_id`，且是不帶 URL、屬於該文件 `datas` 的 binary 附件）的儲存位置，串流只從這一列建立 |
 | Q18 | `models/mail_thread_guard.py::_woow_follower_scope`、`::_woow_user_companies` | 通知對象所在記錄的讀取規則所依據的儲存欄位（state、公司、eff_* 授權、直接分享），以及被通知帳號的公司 |
 | Q19 | `models/document_folder.py::_woow_check_name_free` | 同一層、同公司、啟用中的資料夾是否已用這個名稱（與唯一索引相同的判斷），先回 M-02 |
 | Q20 | `models/document.py::_woow_portal_direct_documents` | 直接分享給呼叫者本人聯絡人的文件 id，再以呼叫者的 record rule 搜尋 |
 | Q21 | `models/trash_actions.py::_woow_lock_purge_root` | purge 讀任何 hold 之前，以 `SELECT … FOR NO KEY UPDATE` 依 id 順序鎖住這個根資料夾與子樹裡每個資料夾的列（子樹以 active_test=False 的 child_of 取得，含個別丟進回收桶的資料夾；只鎖不寫列版本）：本批快照之後 commit 的 legal hold、還原或搬移改過其中任一列，就 serialization_failure、跳過這個根；之後才開始的會等這一批結束 |
-
 | Q22 | `models/document_log.py::_count_below` | 任何人都能造成的拒絕（無效連結、沒有授權）的來源計數列：一條語句在低於上限時才加一，在自己的短交易（READ COMMITTED）裡立即 commit；新來源的列以 count 1 插入，並在同一個交易取容量槽 |
 | Q23 | `models/document_log.py::_bump_denied_bucket` | 同上拒絕的 denied 稽核 bucket（事件、來源、分鐘，不依連結）：已有的 bucket 一條語句加一，新的在同一個短交易插入並取槽 |
 
+- 表以 `tools/sql_allowlist.yaml` 為準（`check_sql --g1` 要求每一筆都被用到），這裡列出它的每個代號；Q10（配額的列版本屏障）與 Q15 已移除，代號不再使用。
 - 其他地方出現 `pg_*advisory*`，或 locks.py 裡呼叫內建的 `hash(`，都直接失敗（T-STAT-22）。
 - tag、access、`attachment_id`、`token_hash` 的唯一索引，一律用 ORM 或 `odoo.tools.sql.create_unique_index(cr, name, table, [固定運算式])` 建在各自 model 的 `init()` 裡。這不是 raw SQL，不算 Q3（IC-R07）。
 
@@ -599,6 +607,7 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
 - 圖片的寬 × 高超過 `PIXEL_LIMIT` → `'pixels'`。Pillow 開啟圖片時會拿宣告的尺寸和自己的上限比對：超過兩倍上限丟 `Image.DecompressionBombError`（是 `Exception`，不是 `OSError` 或 `ValueError`），超過一倍只警告（警告被設成錯誤時是 `Image.DecompressionBombWarning`）。這兩個也一律是 `'pixels'`，不可往外丟成 500；Pillow 讀不懂的圖片是 `'content'`。
 - 配額鎖逾時 → `locks.LockBusy` 原樣往外丟，由 controller 轉成 503。
 - PNG、JPEG、GIF 的標頭結構在 Pillow 開啟之前先計數（Pillow 以 Python 逐一讀取，有些結構的成本比大小高：GIF 逐段串接註解、JPEG 保留每個應用程式區段、PNG 保留每個私有 chunk）：PNG 計到第一個 IDAT 為止的 chunk、JPEG 計到 SOS 為止的區段、GIF 計到第一個圖像之前的擴充區塊與其子區塊，超過 `IMAGE_MAX_STRUCTURES`（4096），或結構之外的雜訊位元組超過 `IMAGE_MAX_JUNK`（4096）→ `'content'`，不呼叫 `Image.open`。
+- PNG 另有更緊的限制，因為有些 chunk 的成本遠高於大小：Pillow 會解壓色彩設定檔（`iCCP`）和壓縮文字（`zTXt`，以及壓縮的 `iTXt`），每個最多 1 MiB，而幾百位元組就能解成 1 MiB（約 1000 倍），又只限制文字 chunk 的總量（64 MiB，`iCCP` 沒有累計上限）；4000 個約 1 KB 的 `iCCP`（約 4 MB，在每個大小上限之內）會讓 `Image.open` 跑十幾秒。`Image.open` 只讀到第一個 IDAT 為止的 chunk，但 `load()` 讀到 IEND，而 Odoo 儲存附件時會載入 PNG（`ir.attachment` 的後處理讀它的方向或縮圖），所以 IDAT 之後的 chunk 一樣有成本。因此 `_png_structure_ok` 走過整個檔案到 IEND：不是影像資料的 chunk 最多 `PNG_MAX_CHUNKS`（256；一般檔案不到 20 個）個、色彩設定檔最多 `PNG_MAX_PROFILES`（1，PNG 規格只允許一個）個、`zTXt` 加 `iTXt` 最多 `PNG_MAX_COMPRESSED_TEXTS`（16）個；影像資料的 chunk（`IDAT`，動畫的 `fdAT` 與 `fcTL`）個數不限，但函式庫以 Python 逐個讀它們，空的或很小的 chunk 成本遠高於大小，所以超過 `PNG_FREE_IMAGE_CHUNKS`（4096）個之後，平均每個要有 `PNG_IMAGE_CHUNK_BYTES`（256）位元組（這也讓檢查本身走過的 chunk 數有上限）。任何一項超過 → `'content'`，不呼叫 `Image.open`（JPEG 與 GIF 仍用 `IMAGE_MAX_STRUCTURES`）。`tEXt` 的成本等於它的大小（4000 個約 10 毫秒），只受 chunk 總數限制。
 
 ### 7.2 IF-QUOTA：`W/models/quota.py`
 - **提供者**：L2。
@@ -652,7 +661,12 @@ def dedupe(names: Sequence[str]) -> list[str]:
     """同一層同名時，加上 ' (2)'、' (3)'…；比對時不分大小寫。"""
 class Deduper:
     """一次一個名稱的 dedupe：add(name) 回傳 dedupe 對同一份清單在同一位置給的名稱。已被取走的名稱放進建構子。
-    每個 (主檔名, 副檔名) 記住下一個要試的數字，n 個名稱只做約 n 次 _fit_segment，不是 n × n 次；
+    取走的名稱不會再放開，所以記住下一個要試的數字，n 個名稱只做幾個 n 次 _fit_segment（每個名稱：名稱本身一次，
+    加上它試的候選），不是 n × n 次。記住的單位是「有同樣編號候選」的名稱，不是「拼法相同」的名稱：
+    鍵是 (數字的位數, 為該位數的數字裁短後的主檔名, 副檔名)，後兩者不分大小寫比對（casefold）。
+    大小寫不同的名稱、被裁成同一段文字的長名稱（雙位元組字元）、以及只從 10 起才裁成一樣的名稱
+    （數字每多一位，主檔名就少一個位元組）都共用同一個計數；每個候選至多屬於兩個鍵（有或沒有副檔名），
+    所以一個名稱跳過的都是別的名稱取走的號碼，每個號碼合計至多被跳過兩次。
     zip_builder 每一層一個 Deduper（根層一開始就有 '_links.txt'）。"""
     def __init__(self, taken: Sequence[str] = ()): ...
     def add(self, name: str) -> str: ...
@@ -1427,7 +1441,7 @@ class WoowDocumentPortal(CustomerPortal):
    - 上線時間：在 GM7 的 `/approve` 之前，而且在 G6 之前。
 8. **`docs/release/v18.0.1.0.0.md` 欄位**：
    - G0～G5、G1-CA、G1-COV（`sha256:` digest、百分比、各目錄的數字）、G-IP、G-COOKIE、G-CACHE；
-   - SC 執行紀錄：T-SHARE-32、44、45、46、47（L5），T-TRASH-10（L6），T-UNINST-03、05（L3），sc_ca*（L11）。
+   - SC 執行紀錄：T-SHARE-32、44、45、46、47、48（L5），T-UPL-32（L2），T-TRASH-10（L6），T-UNINST-03、05（L3），sc_ca*（L11）。
    - 不寫站名、筆數和主機名稱；registry 只寫 `sha256:` 開頭的 digest（ER-47.9）。
 9. **repo 外的檔案**：`ops/release/{owner-actions,g6-runbook,g6-record}.md`、`site-values.patch`、`ops/g-cache/{ruleset.json,apply.sh,verify.sh}`、`ops/g-ip/verify.sh`、`ops/g-cookie/verify.sh`、`ops/residual-check/**`（T-REL-06，唯讀，只印計數）。
 
@@ -1842,6 +1856,7 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | test_naming.py | L2 | T-UPL-03、18、19 |
 | test_quota.py | L2 | T-UPL-11～14 |
 | test_locks.py | L2 | T-UPL-30、31 |
+| `dev/sc/sc_quota_contention.py` | L2 | T-UPL-32 |
 | test_core_models.py | L3 | T-ACL-02～06、09、10、17～20、28、48、49、54、57；T-UPL-10、15、16 |
 | test_security_acl.py | L3 | T-ACL-07、08、12～16、51、52、56、58 |
 | test_multicompany.py | L3 | T-MC-01～03、05～08 |
@@ -1858,7 +1873,7 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | test_share_token.py | L5 | T-SHARE-01～11 |
 | test_share_routes.py | L5 | T-SHARE-20～31、33～43；T-MC-04 |
 | test_mail_share.py | L5 | T-SHARE-12、50～57 |
-| `dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py`、`dev/sc/sc_source_limit_two_links.py`、`dev/sc/sc_denied_sources_together.py`、`dev/sc/sc_denied_many_sources.py` | L5 | T-SHARE-32、44、45、46、47 |
+| `dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py`、`dev/sc/sc_source_limit_two_links.py`、`dev/sc/sc_denied_sources_together.py`、`dev/sc/sc_denied_many_sources.py`、`dev/sc/sc_denied_one_source_together.py` | L5 | T-SHARE-32、44、45、46、47、48 |
 | test_trash_lifecycle.py | L6 | T-TRASH-01～08、13 |
 | test_cron.py | L6 | T-TRASH-09、11、12 |
 | `dev/sc/sc_purge_skip_locked.py` | L6 | T-TRASH-10 |
@@ -2024,3 +2039,4 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-12 | 審查修正（第三輪） | **取槽的第二條連線**：取槽（`_take_slot`）要借第二條連線，threaded server 在沒有執行緒上限時（`workers = 0` 且沒有 `ODOO_MAX_HTTP_THREADS`），同時有多個新來源的拒絕請求就會超過 `db_maxconn`（預設 64）：先前連線池滿時 `PoolError` 讓請求回 500、先前已 commit 的槽不退回，借走的連線也讓其他請求（包含有效的分享連結）拿不到自己的連線，core 在 `_transactioning` 取游標時同樣丟 `PoolError`（500）。現在：(1) 取不到連線（`psycopg2.pool.PoolError`，或資料庫拒絕連線的 `OperationalError`）視為沒有槽，回 False：新來源當分鐘的第一次拒絕走既有的「容量用完」路徑（429、不寫任何列、計數列釋放），已有計數列與 bucket 的來源照常計數，錯誤密碼不需要槽；只處理「拿不到連線」，取得連線之後的錯誤照常往上丟。(2) 每個行程同時開著的取槽交易最多 `SLOT_CONNECTIONS`＝`max(1, db_maxconn // 32)` 個（預設 2），其餘的最多等 `SLOT_WAIT`（0.5 秒），逾時同樣是沒有槽：取槽最多占連線池的三十二分之一，請求自己的連線不會被它們搶走，同時處理的請求不超過 `db_maxconn` 減 `SLOT_CONNECTIONS` 時不會因取槽而拿不到連線；取槽的速率本來就受每分鐘容量（1,024）限制，額滿後的拒絕從快照直接判斷、不再借連線。prefork 每個 worker 一次只處理一個請求，不會等。`ODOO_MAX_HTTP_THREADS` 設成整數時直接當執行緒上限，設成非整數值（例如 `auto`）時取 `(db_maxconn - max_cron_threads) // 2`；SECURITY.md 新增部署說明。SC：T-SHARE-47（`dev/sc/sc_denied_many_sources.py`）以 60 個來源同時對 threaded server 送被拒絕的請求：答案只能是 404 或 429、不可有 5xx、伺服器紀錄不得有錯誤追蹤或重試，來源計數列要等於答 404 的拒絕數。 |
 | 2026-11-12 | 審查修正（第四輪） | **分享檔案路由的文件 id 範圍**：`share_file` 的 `document_id` 來自網址，超過資料庫 integer 範圍（2**31-1）時，`('id', '=', x)` 的搜尋會讓 PostgreSQL 回 `NumericValueOutOfRange`（core 把值轉成文字，由資料庫轉成 integer），請求回 500、不計入來源計數也不受限流，持有授權的人可以無限重複。現在範圍之外（含 0）的 id 視為分享範圍裡找不到：不查詢，和其他找不到的 id 一樣走 `_denied`，回 404、計入來源的 `share_access`，達到 `denied_rate_per_min` 後回 429；內部與 portal 路由以 `browse(…).exists()` 取記錄，不受影響。**圖片像素上限**：`upload_policy._validate` 開啟圖片時，Pillow 拿宣告的尺寸和自己的上限比對：超過兩倍上限丟 `DecompressionBombError`（是 `Exception`，不是 `OSError` 或 `ValueError`），超過一倍只警告（警告被設成錯誤時同樣是例外）。先前這兩者都沒有被接住，一個 IHDR 宣告 200000×200000 的 PNG 標頭（約 45 位元組）就讓上傳（內部、portal，經 `create_batch`、`document.create`、`document.write`）回 500。現在兩者都對應 `WoowUploadRejected('pixels')`（400 JSON），像素數的比對移到 `with` 之後；讀不懂的圖片仍是 `content`。**文件登錄**：SC 執行紀錄、L5 檔案清單與 runner／lane／案例表補上 T-SHARE-47（`dev/sc/sc_denied_many_sources.py`）。 |
 | 2026-11-12 | 審查修正（第五輪） | **聊天欄位**：`message_ids`、`website_message_ids`、`has_message` 在 `woow.document` 與 `woow.document.folder` 加 `groups='base.group_user'`（auto_join 的 one2many 在 domain 以子查詢查 `mail_message`，不經 R-M0；portal 能測試自己讀得到的記錄上內部 log note 的文字）。**精靈列**：六個精靈 model 各加一條 `create_uid = user.id` 的 ir.rule（R-W1～R-W6，`tools/security_matrix.yaml` 登錄）：core 對 transient model 沒有擁有者規則，精靈的 action 以呼叫者的權限依列內的值執行，別人不能讀或改管理員正要確認的那一列（管理員也看不到別人的列）。**資料夾**：`write` 的 `company_id` 只有文件管理員能改（非管理員改成別家公司或空值 → AccessError，寫入目前的值不算變更），`create` 的 `company_id` 為空也只有文件管理員能建（T-MC-05 `test_shared_company_false_manager_only`）；把資料夾 `parent_id` 清空（搬到最上層）要過和建立根資料夾一樣的政策（M-24，`allow_root_create` 或文件管理員），先於名稱檢查。**沒有公司的記錄**：`_log_event` 的 `company_id` 接受 False（記成空公司，R-L0 讓各公司管理員都讀得到），先前 `ValueError` 讓上傳、丟進回收桶與 purge 在沒有公司的資料夾上失敗，而 purge cron 沒有接住，整批回滾、之後每天卡住；purge 的每一筆現在接住任何例外（只記 id 與例外類別），並實作 R2b-06 的管理員提醒（`POISON_ALERT_DAYS`：本次失敗且保留期結束已超過該天數的記錄，每位文件管理員每天最多一個 activity，只寫筆數）。**ZIP**：`naming.Deduper` 一次一個名稱、每個（主檔名、副檔名）記住下一個數字，`build_zip` 同一層 n 個檔案不再做 n×n 次 `_fit_segment`（輸出名稱逐字相同，`dedupe` 的簽章與結果不變）；`zip_response` 不在列出文件時建立串流，`ZipEntry.open_stream` 在寫到該項目時才讀（`_lazy_stream`），檔案存在資料庫時大小上限不再要等所有檔案載入記憶體之後才判斷。**分享**：建立者已被刪除（`create_uid` 為空）的連結不再解析（`with_user` 空 recordset 保留 superuser env，請求的使用者會被當成建立者）、`_validate_for_access` 依 B2 的第一步檢查 `scope_env`；公開的 `share_open`／`share_access`／`share_download` 以請求的環境記錄（訪客，不是建立者），`_record_download` 新增必填參數 `log_env`；`share_close` 只在確實移除授權時才寫 session；`_scope_documents` 以 `_woow_filter_rank` 一次查出資料夾的 manage 權限，不再每份文件查一次。**設定**：`res.config.settings.default_get` 對非系統管理員拿掉 `woow_doc_*` 欄位。**上傳**：`document.create` 對非 su 套用每次請求的檔案數上限（`max_files_per_upload`）；PNG、JPEG、GIF 的標頭結構在 Pillow 開啟前先計數（`IMAGE_MAX_STRUCTURES`、`IMAGE_MAX_JUNK`，超過 → `'content'`）；`/web/content`、`/web/image` 對文件的 `datas` 固定使用上傳政策的類型，`?mimetype=` 無效，非 inline 類型一律 attachment，CSP 固定含 `sandbox`，文件欄位附件的 id 路由 → MissingError。**配額**：一次呼叫的檔案在全部驗證之後一起檢查（`_check_many`），已 commit 的用量以獨立連線在取得配額鎖之後讀（取代 `UPDATE ir_config_parameter` 屏障，Q10 移除：它讓並行上傳 serialization_failure，core 睡眠後重試，一個帳號連續上傳就讓其他人的上傳變慢或回 500），同一個交易的多次呼叫共用 `QuotaLedger`；每個帳號有自己的 `quota:u:<uid>` 鎖（rank 3，先於 `quota`），一個帳號同一時間只有一個上傳交易；`create_batch` 讀每個上傳之前先 `seek(0)`。**拒絕計數**：`ATOMIC_EVENTS`（`share_access`）的拒絕改走 `_refuse`：來源計數列（Q22）與 audit bucket（Q23）各由一條語句在自己的 READ COMMITTED 短交易裡更新，立即 commit，不再在請求的 Repeatable Read 交易裡鎖列，所以同一來源的並行請求不互相等待、不 serialization_failure、不被睡眠重試，計入的恰好是上限筆；新列在同一個短交易取容量槽，沒有槽就不建立，槽數等於寫入的列數；取不到連線時所有這類拒絕回 429。錯誤密碼（`share_unlock_failed`，T-SHARE-45）仍在請求交易裡以鎖定的來源計數列與 share 列屏障序列化。SC：T-SHARE-48（`dev/sc/sc_denied_one_source_together.py`）、T-UPL-32（`dev/sc/sc_quota_contention.py`），各自對舊程式碼失敗（重試 33 次、HTTP 500）。 |
+| 2026-11-12 | 審查修正（第六輪） | **ZIP 命名**：第五輪的 `Deduper` 以原始的（主檔名、副檔名）記住下一個數字，但 `_fit_segment` 會把長的多位元組主檔名裁短，不同的主檔名因此有同樣的 ` (2)`、` (3)`… 候選，每個新的主檔名都要重掃別人取走的號碼（2000 個「124 個雙位元組字母加兩個不同字元」的名稱各兩次，約 70 萬次 `_fit_segment`、12 秒；只有大小寫不同的 2000 個長名稱，約 200 萬次）。現在記住的鍵是（數字的位數、為該位數的數字裁短後的主檔名、副檔名），後兩者以 `casefold()` 比對；數字每多一位，主檔名就少一個位元組，所以只從 10 起才裁成一樣的名稱也共用同一個計數。每個名稱只多做名稱本身那一次與它試的候選（約 2 次／名稱，四組刁鑽的名稱都在 3 次／名稱之內；沙盒裡 2000 個名稱的 `build_zip`：刁鑽的雙位元組名稱 12.5 秒→0.2 秒，只有大小寫不同的長名稱 36.9 秒→0.3 秒，一般名稱 0.04 秒）；輸出與第一個版本逐字相同（250 回合的隨機名稱：sharp s、Kelvin 符號、帶點的大寫 I、字尾 sigma、共同的長前綴、剛好在裁切點的主檔名、容不下兩位數的副檔名所造成的拒絕，再加上四組縮小的名稱）。**PNG chunk**：`_png_structure_ok` 只限制 chunk 的個數（4096），而且只走到第一個 IDAT。Pillow 會解壓每個 `iCCP`（每個最多 1 MiB，沒有累計上限）與壓縮文字（累計 64 MiB）；4000 個約 1 KB 的 `iCCP`（約 4 MB，在上傳大小之內）讓 `policy._validate` 在沙盒花 13 秒才接受。放在影像資料之後的同樣 chunk 逃得過這個檢查，改由 Odoo 儲存附件時的 `load()` 付代價（`ir.attachment` 的後處理為了讀方向而載入 PNG）：200 個 chunk 的檔案建立 `woow.document` 要 0.7 秒。現在 `_png_structure_ok` 走過整個檔案到 IEND：非影像資料的 chunk 最多 256 個（`PNG_MAX_CHUNKS`）、`iCCP` 1 個（`PNG_MAX_PROFILES`）、`zTXt` 加 `iTXt` 16 個（`PNG_MAX_COMPRESSED_TEXTS`），影像資料的 chunk（`IDAT`、`fdAT`、`fcTL`）超過 4096 個之後平均至少 256 位元組（`PNG_FREE_IMAGE_CHUNKS`、`PNG_IMAGE_CHUNK_BYTES`；成千上萬個空的 `IDAT` 讓函式庫逐一讀取），超過 → `'content'`，不呼叫 `Image.open`（同樣的檔案在 0.01 秒內被拒絕，chunk 放在影像資料之前或之後都一樣）；`tEXt` 的成本等於它的大小，只受 chunk 總數限制。**測試的獨立性**：`TestPurgeRacesWithLegalHold._purge_batch` 不再送出 `_woow_alert_stuck_trash`（競態測試的記錄都過了保留期很久，真的送出會 commit 一個提醒 activity 與它的訊息、追蹤者、通知和 bus 列，沒有任何清理，同一個資料庫上之後的 `test_items_that_stay_undeletable_for_days_alert_the_administrators` 會失敗 `1 != 0`），清理之後並檢查資料庫沒有多出提醒；提醒測試一開始先在自己的交易內刪掉資料庫裡已有的提醒（同一天已有提醒時 purge 不會再建，只比較前後的數量看不出來）。**文件**：T-SHARE-48（`dev/sc/sc_denied_one_source_together.py`）與 T-UPL-32（`dev/sc/sc_quota_contention.py`）補進擁有表、SC 執行紀錄欄位和案例表；§4.4 的 SQL 表補上 Q7～Q9、Q11～Q14、Q16，並拿掉讓 Q22、Q23 脫離表格的空行。 |
