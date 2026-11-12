@@ -147,6 +147,8 @@ class WoowDocumentShareService(models.Model):
         if password:
             data['password_hash'] = tokens.hash_password(password)
         elif password_hash:
+            if not tokens.is_acceptable_hash(password_hash):
+                raise UserError(_('The share password is set through the password field.'))
             data['password_hash'] = password_hash
         elif self.env['woow.document.settings']._get_settings().share_require_password:
             raise UserError(_('A password is required for share links.'))

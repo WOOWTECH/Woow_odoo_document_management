@@ -11,6 +11,7 @@ from odoo.tests import TransactionCase, tagged
 from odoo.tools.sql import column_exists
 
 from ..services import tokens
+from ..services.constants import PASSWORD_ROUNDS_MAX
 
 
 @tagged('woow_docmgmt_share_mail')
@@ -105,6 +106,29 @@ class TestShareWizardPassword(TransactionCase):
             required.action_create_links()
         self.assertEqual(self.env['woow.document.share'].sudo().search_count([
             ('folder_id', '=', self.folder.id)]), 1)
+
+    def test_a_hash_that_takes_more_rounds_than_the_module_makes_is_refused(self):
+        """The link takes the hash of the wizard as it is, and every check of the password runs its
+        rounds, so a hash that the module could not have made is not stored."""
+        password = secrets.token_urlsafe(16)
+        good = tokens.hash_password(password)
+        _empty, scheme, _rounds, salt, checksum = good.split('$')
+        values = {'share_type': 'folder', 'folder_id': self.folder.id,
+                  'expire_at': fields.Datetime.now() + timedelta(days=1)}
+        shares = self.env['woow.document.share'].with_user(self.admin)
+        forged = ['$'.join(['', scheme, str(rounds), salt, checksum])
+                  for rounds in (PASSWORD_ROUNDS_MAX + 1, 2 ** 31 - 1, 2 ** 32 - 1)]
+        for password_hash in forged + ['not a hash']:
+            with self.subTest(password_hash=password_hash[:24]), self.assertRaises(UserError):
+                shares._issue(dict(values, password_hash=password_hash))
+        # a hash that only an administrator's script could put into the wizard fares the same
+        wizard = self.wizards.sudo().create(dict(values, password_hash=forged[0]))
+        with self.assertRaises(UserError):
+            wizard.with_user(self.admin).action_create_links()
+        self.assertFalse(self.env['woow.document.share'].sudo().search([
+            ('folder_id', '=', self.folder.id)]))
+        share, _token = shares._issue(dict(values, password_hash=good))
+        self.assertTrue(tokens.check_password(password, share.password_hash))
 
     def test_init_drops_the_legacy_plaintext_column(self):
         self.env.cr.execute(

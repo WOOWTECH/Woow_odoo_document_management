@@ -2198,6 +2198,7 @@ msgstr ""
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
 #: code:addons/woow_document_management/wizards/share_wizard.py:0
 msgid "The share password is set through the password field."
 msgstr ""

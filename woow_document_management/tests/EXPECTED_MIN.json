@@ -3,7 +3,7 @@
     "core": 205,
     "files": 135,
     "portal": 3,
-    "share": 55
+    "share": 57
   },
   "files": {
     "test_add_attachment.py": 4,
@@ -23,7 +23,7 @@
     "test_i18n_complete.py": 1,
     "test_internal_routes.py": 8,
     "test_locks.py": 6,
-    "test_mail_share.py": 11,
+    "test_mail_share.py": 12,
     "test_mail_thread_guard.py": 20,
     "test_multicompany.py": 4,
     "test_naming.py": 7,
@@ -43,7 +43,7 @@
     "test_security_acl.py": 10,
     "test_settings_bounds.py": 9,
     "test_share_routes.py": 41,
-    "test_share_token.py": 3,
+    "test_share_token.py": 4,
     "test_trash_lifecycle.py": 30,
     "test_uninstall.py": 3,
     "test_upload_policy.py": 22,

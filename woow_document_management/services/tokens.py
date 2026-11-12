@@ -9,8 +9,9 @@ import re
 import secrets
 
 from passlib.context import CryptContext
+from passlib.hash import pbkdf2_sha512
 
-from .constants import PASSWORD_MAX, PASSWORD_MIN
+from .constants import PASSWORD_MAX, PASSWORD_MIN, PASSWORD_ROUNDS_MAX
 
 TOKEN_RE = re.compile(r'^[A-Za-z0-9_-]{43}$')
 MAX_LINK_LEN = 2048
@@ -66,10 +67,23 @@ def hash_password(password: str) -> str:
     return _PASSWORD_CONTEXT.hash(password)
 
 
+def is_acceptable_hash(stored: str) -> bool:
+    """True for a pbkdf2_sha512 hash with at most PASSWORD_ROUNDS_MAX rounds.
+
+    The rounds are part of the hash, and passlib runs all of them when it checks a password (the
+    limits of a context apply when a hash is made, not when one is checked), so a hash that this
+    module could not have made is not worked on.
+    """
+    try:
+        return 1 <= pbkdf2_sha512.from_string(stored).rounds <= PASSWORD_ROUNDS_MAX
+    except (ValueError, TypeError):
+        return False
+
+
 def check_password(password: str, stored: str) -> bool:
     """Verify a password against its stored hash."""
     if not isinstance(password, str) or not isinstance(stored, str) or \
-            not PASSWORD_MIN <= len(password) <= PASSWORD_MAX:
+            not PASSWORD_MIN <= len(password) <= PASSWORD_MAX or not is_acceptable_hash(stored):
         return False
     try:
         return bool(_PASSWORD_CONTEXT.verify(password, stored))
