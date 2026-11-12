@@ -3,7 +3,7 @@
     "core": 218,
     "files": 139,
     "portal": 3,
-    "share": 57
+    "share": 63
   },
   "files": {
     "test_add_attachment.py": 4,
@@ -44,7 +44,7 @@
     "test_rpc_exposure.py": 3,
     "test_security_acl.py": 10,
     "test_settings_bounds.py": 10,
-    "test_share_routes.py": 41,
+    "test_share_routes.py": 47,
     "test_share_token.py": 4,
     "test_trash_lifecycle.py": 30,
     "test_uninstall.py": 3,

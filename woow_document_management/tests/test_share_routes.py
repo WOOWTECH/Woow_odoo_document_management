@@ -487,6 +487,176 @@ class TestShareScope(TransactionCase):
                 link._lock_password_attempts(env)
 
 
+@tagged('woow_docmgmt_share_scope')
+class TestShareReplacementIsForTheCreator(TransactionCase):
+    """Only the creator replaces a link, because a link has no scope of its own.
+
+    A link stores no list of documents: every request works the scope out again in the
+    environment of the link's creator. The replacement belongs to whoever makes it, so one made
+    by a document administrator would be worked out in the environment of the administrator,
+    who sees every subfolder and document, and could open what the link never did. The
+    administrator revokes the link and makes a new one through the share wizard instead.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.share_link_base_url', 'https://docs.example.test')
+        users = self.env['res.users'].sudo()
+        self.creator = users.create({
+            'name': 'Replace creator', 'login': 'wdoc-replace-creator',
+            'groups_id': [Command.set([self.env.ref(
+                'woow_document_management.group_woow_document_user').id])]})
+        self.administrator = users.create({
+            'name': 'Replace administrator', 'login': 'wdoc-replace-administrator',
+            'groups_id': [Command.set([self.env.ref(
+                'woow_document_management.group_woow_document_manager').id])]})
+        self.assertFalse(self.administrator.has_group('base.group_system'))
+        folders = self.env['woow.document.folder'].sudo()
+        documents = self.env['woow.document'].sudo()
+        self.root = folders.create({'name': 'Replace root', 'owner_id': self.creator.id})
+        # The creator owns the root but is no member of this subfolder, which does not take
+        # the members of its parent: only the administrator reads what it holds.
+        self.restricted = folders.create({
+            'name': 'Replace restricted', 'parent_id': self.root.id,
+            'owner_id': self.administrator.id, 'inherit_access': False})
+        self.open_doc = documents.create({
+            'name': 'open.txt', 'folder_id': self.root.id,
+            'datas': base64.b64encode(b'open to the creator')})
+        self.restricted_doc = documents.create({
+            'name': 'restricted.txt', 'folder_id': self.restricted.id,
+            'datas': base64.b64encode(b'for the administrator only')})
+        self.env.flush_all()    # the record rules read the grants of the folders from the database
+        self.shares = self.env['woow.document.share']
+
+    def _issue(self, user, **vals):
+        values = {'share_type': 'folder', 'folder_id': self.root.id,
+                  'expire_at': fields.Datetime.now() + timedelta(days=2), **vals}
+        return self.shares.with_user(user)._issue(values)
+
+    def _scope(self, share):
+        """The documents a visitor of the link gets, worked out the way a request works them out."""
+        found, scope_env = self.shares._resolve_request_access(share_id=share.id)
+        self.assertEqual(found.id, share.id)
+        return found._scope_documents(scope_env)
+
+    def _open(self, token):
+        """Whether the link of this code opens anything now: (valid, the documents it lists)."""
+        found, scope_env = self.shares._resolve_request_access(token=token)
+        return found._validate_for_access(scope_env), found._scope_documents(scope_env)
+
+    def _assert_unchanged(self, share, token, valid=True):
+        """The link is still the one that was made: not revoked, and nothing replaced it."""
+        share.invalidate_recordset()
+        self.assertEqual((share.state, bool(share.revoked_at)), ('active', False))
+        self.assertEqual(self._open(token)[0], valid)
+        self.assertFalse(self.shares.sudo().search([('replaced_share_id', '=', share.id)]))
+
+    def test_an_administrator_cannot_replace_the_link_of_somebody_else(self):
+        share, token = self._issue(self.creator)
+        # The link opens what its creator reads. In the environment of the administrator the
+        # same link would open the restricted document too: a replacement that the
+        # administrator made would not be the same link.
+        self.assertEqual(self._scope(share), self.open_doc)
+        administrator_env = self.shares.with_user(self.administrator).env
+        self.assertEqual(share.sudo()._scope_documents(administrator_env),
+                         self.open_doc | self.restricted_doc)
+        before = self.shares.sudo().search_count([])
+        with self.assertRaises(AccessError):
+            share.with_user(self.administrator).action_reissue()
+        self._assert_unchanged(share, token)
+        self.assertEqual(self.shares.sudo().search_count([]), before)
+        self.assertEqual(self._open(token)[1], self.open_doc)
+
+    def test_the_creator_replaces_the_link_and_its_scope_stays_the_same(self):
+        share, token = self._issue(self.creator)
+        scope = self._scope(share)
+        self.assertEqual(scope, self.open_doc)
+        result = share.with_user(self.creator).action_reissue()
+        self.assertEqual(result['tag'], 'woow_document_share_result')
+        (link,) = result['params']['links']
+        fresh_token = link.split('#', 1)[1]
+        fresh = self.shares.sudo().search([('replaced_share_id', '=', share.id)])
+        self.assertEqual((len(fresh), fresh.create_uid), (1, self.creator))
+        self.assertEqual(self._scope(fresh), scope)
+        valid, listed = self._open(fresh_token)
+        self.assertTrue(valid)
+        self.assertEqual(listed, scope)
+        self.assertNotIn(self.restricted_doc, listed)
+        # The link that was replaced is revoked and opens nothing any more.
+        share.invalidate_recordset()
+        self.assertEqual(share.state, 'revoked')
+        self.assertFalse(self._open(token)[0])
+
+    def test_an_administrator_replaces_a_link_of_their_own(self):
+        share, token = self._issue(self.administrator)
+        scope = self._scope(share)
+        self.assertEqual(scope, self.open_doc | self.restricted_doc)
+        result = share.with_user(self.administrator).action_reissue()
+        fresh = self.shares.sudo().search([('replaced_share_id', '=', share.id)])
+        self.assertEqual((len(fresh), fresh.create_uid), (1, self.administrator))
+        self.assertEqual(self._scope(fresh), scope)
+        self.assertEqual(self._open(result['params']['links'][0].split('#', 1)[1]),
+                         (True, scope))
+        self.assertFalse(self._open(token)[0])
+
+    def test_a_documents_link_of_a_creator_who_lost_the_rank_is_not_replaced(self):
+        """The creator no longer manages the folder: the link lists nothing, and a replacement
+        made by the administrator would list the document, which the creator may not share."""
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Replace documents folder', 'owner_id': self.creator.id})
+        document = self.env['woow.document'].sudo().create({
+            'name': 'listed.txt', 'folder_id': folder.id,
+            'datas': base64.b64encode(b'listed')})
+        share, token = self._issue(
+            self.creator, share_type='documents', folder_id=False,
+            document_ids=[Command.set([document.id])])
+        self.assertEqual(self._scope(share), document)
+        folder.sudo().write({'owner_id': self.administrator.id})
+        self.env.flush_all()
+        self.assertFalse(self._scope(share))
+        administrator_env = self.shares.with_user(self.administrator).env
+        self.assertEqual(share.sudo()._scope_documents(administrator_env), document)
+        before = self.shares.sudo().search_count([])
+        with self.assertRaises(AccessError):
+            share.with_user(self.administrator).action_reissue()
+        self._assert_unchanged(share, token, valid=False)
+        # The creator may not make the replacement either (none of the listed documents is
+        # one that they read any more), and the refusal keeps the link as it is.
+        with self.assertRaises(UserError):     # which AccessError is too
+            share.with_user(self.creator).action_reissue()
+        self._assert_unchanged(share, token, valid=False)
+        self.assertEqual(self.shares.sudo().search_count([]), before)
+
+    def test_a_link_whose_creator_was_deleted_is_not_replaced_by_anybody(self):
+        share, _code, _visitor = _deleted_creator_link(self)
+        before = self.shares.sudo().search_count([])
+        with self.assertRaises(AccessError):
+            share.with_user(self.administrator).action_reissue()
+        self.assertEqual(self.shares.sudo().search_count([]), before)
+        self.assertEqual(share.sudo().state, 'active')
+        self.assertTrue(share.with_user(self.administrator).action_revoke())
+        self.assertEqual(share.sudo().state, 'revoked')
+
+    def test_an_administrator_can_still_revoke_the_link_of_somebody_else(self):
+        share, token = self._issue(self.creator)
+        self.assertTrue(share.with_user(self.administrator).action_revoke())
+        share.invalidate_recordset()
+        self.assertEqual((share.state, share.revoked_by_id), ('revoked', self.administrator))
+        self.assertFalse(self._open(token)[0])
+        events = self.env['woow.document.log'].sudo().search([
+            ('share_id', '=', share.id), ('event', '=', 'share_revoke')])
+        self.assertEqual(events.mapped('user_id'), self.administrator)
+        # A new link is then made through the share wizard, with the scope chosen by its maker.
+        wizard = self.env['woow.document.share.wizard'].with_user(self.administrator).create({
+            'share_type': 'folder', 'folder_id': self.root.id,
+            'expire_at': fields.Datetime.now() + timedelta(days=2)})
+        (link,) = wizard.action_create_links()['params']['links']
+        valid, listed = self._open(link.split('#', 1)[1])
+        self.assertTrue(valid)
+        self.assertEqual(listed, self.open_doc | self.restricted_doc)
+
+
 @tagged('woow_docmgmt_share_http')
 class TestShareHttp(HttpCase):
 

@@ -359,9 +359,21 @@ class WoowDocumentShareService(models.Model):
         return True
 
     def action_reissue(self):
-        """Revoke the link and issue a new one with the same scope."""
+        """Revoke the link and issue a new one with the same scope; only its creator may.
+
+        A link keeps no list of documents: every request works its scope out again in the
+        environment of the link's creator (``_resolve_request_access``). The new link belongs to
+        whoever replaces the old one, so a replacement by somebody else would be worked out in that
+        person's environment, and a document administrator sees every subfolder and document: the
+        new link could open what the old one never did. An administrator who has to end somebody
+        else's link revokes it (``action_revoke``) and makes a new one through the share wizard,
+        where the scope is chosen on purpose.
+        """
         self.check_access('write')
         self.ensure_one()
+        if self.create_uid.id != self.env.uid:
+            raise AccessError(_('Only the creator of a share link can replace it. '
+                                'Revoke the link and create a new one.'))
         if self.has_password:
             raise UserError(_('Set a new password through the share wizard before replacing this link.'))
         data = {'name': self.name, 'share_type': self.share_type,

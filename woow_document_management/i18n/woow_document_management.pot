@@ -1541,6 +1541,12 @@ msgid "Only system administrators can change these settings."
 msgstr ""
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share_service.py:0
+msgid "Only the creator of a share link can replace it. Revoke the link and create a new one."
+msgstr ""
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.share_landing
 msgid "Open"
 msgstr ""
