@@ -151,6 +151,27 @@ def create_batch(folder, uploads, *, channel):
                               'errors': [{'index': 0, 'code': 'invalid', 'message': str(exc)}]}, 400)
 
 
+def _lazy_stream(doc):
+    """Open the stored file of ``doc`` when the archive reaches it, not when it is listed.
+
+    ``build_zip`` checks the announced sizes against the limits before it opens the first
+    stream. A file kept in the database is loaded whole when its stream is built, so
+    building the streams of a whole scope first would hold every file in memory before
+    the size limit could refuse it.
+    """
+    def open_stream():
+        env = doc.env
+        stream = env['ir.binary']._get_stream_from(
+            doc, 'datas', filename=doc.name,
+            mimetype=env['woow.document.upload.policy']._served_mimetype(doc))
+        if stream.type == 'path':
+            return filestore_stream(stream.path)
+        if stream.type == 'data':
+            return io.BytesIO(stream.data)
+        raise MissingError(_('The document is unavailable.'))
+    return open_stream
+
+
 def zip_response(documents, *, folders=None, root_folder=None, channel, share_id=None,
                  ip_hash=None, before_build=None, before_stream=None):
     """Build and stream a ZIP under zip locks; share preflight runs before file reads."""
@@ -200,16 +221,7 @@ def zip_response(documents, *, folders=None, root_folder=None, channel, share_id
                 continue
             if doc.document_type != 'binary':
                 continue
-            stream = env['ir.binary']._get_stream_from(
-                doc, 'datas', filename=doc.name,
-                mimetype=env['woow.document.upload.policy']._served_mimetype(doc))
-            if stream.type == 'path':
-                open_stream = lambda path=stream.path: filestore_stream(path)
-            elif stream.type == 'data':
-                open_stream = lambda data=stream.data: io.BytesIO(data)
-            else:
-                return uniform_404('share' if channel == 'share' else 'page')
-            entries.append(ZipEntry((*parts, name), open_stream, int(doc.file_size),
+            entries.append(ZipEntry((*parts, name), _lazy_stream(doc), int(doc.file_size),
                                     not (doc.mimetype or '').startswith(('image/', 'application/zip',
                                                                  'application/pdf'))))
         archive = tempfile.SpooledTemporaryFile(max_size=ZIP_SPOOL_MAX_BYTES)

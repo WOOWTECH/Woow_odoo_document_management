@@ -6,6 +6,7 @@ import hmac
 import io
 import time
 import zipfile
+from unittest.mock import patch
 
 from odoo import Command
 from odoo.tests import HttpCase, tagged
@@ -39,6 +40,56 @@ class TestInternalRoutes(HttpCase):
         self.assertEqual(archive.status_code, 200)
         with zipfile.ZipFile(io.BytesIO(archive.content)) as zipped:
             self.assertEqual(zipped.read('HTTP folder/note.txt'), b'route-content')
+
+    def _database_documents(self, count, size):
+        """``count`` documents of ``size`` bytes whose files are kept in the database."""
+        self.env['ir.config_parameter'].sudo().set_param('ir_attachment.location', 'db')
+        documents = self.env['woow.document'].sudo()
+        created = documents.browse()
+        for index in range(count):
+            created |= documents.create({
+                'name': 'stored-%d.txt' % index, 'folder_id': self.folder.id,
+                'datas': base64.b64encode(b'%d' % index + b'x' * (size - 1))})
+        self.env.flush_all()
+        attachments = self.env['ir.attachment'].sudo().search([
+            ('res_model', '=', 'woow.document'), ('res_id', 'in', created.ids),
+            ('res_field', '=', 'datas')])
+        self.assertEqual(len(attachments), count)
+        self.assertTrue(all(attachment.db_datas and not attachment.store_fname
+                            for attachment in attachments))
+        return created
+
+    def test_zip_over_the_size_limit_loads_no_file_kept_in_the_database(self):
+        """The size limit is judged on the announced sizes, before any file is read.
+
+        A file kept in the database is loaded whole when its stream is built, so every
+        file of the scope would sit in memory before the limit refused the archive.
+        """
+        created = self._database_documents(6, 400_000)
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.zip_max_mb', '1')
+        binary = type(self.env['ir.binary'])
+        original = binary._record_to_stream
+        loaded = []
+
+        def counting(model, record, field_name):
+            loaded.append(record.id)
+            return original(model, record, field_name)
+
+        with patch.object(binary, '_record_to_stream', counting):
+            refused = self.url_open('/woow_document/zip?document_ids=%s' % ','.join(
+                str(doc.id) for doc in created))
+            self.assertEqual(refused.status_code, 400, refused.text)
+            self.assertEqual(loaded, [])
+            self.env['ir.config_parameter'].sudo().set_param(
+                'woow_document_management.zip_max_mb', '5')
+            accepted = self.url_open('/woow_document/zip?document_ids=%s' % ','.join(
+                str(doc.id) for doc in created))
+        self.assertEqual(accepted.status_code, 200)
+        self.assertEqual(sorted(loaded), sorted(created.ids))
+        with zipfile.ZipFile(io.BytesIO(accepted.content)) as zipped:
+            self.assertEqual(len(zipped.namelist()), 6)
+            self.assertEqual(zipped.read('HTTP folder/stored-3.txt')[:2], b'3x')
 
     def test_hidden_and_missing_documents_have_the_same_response(self):
         self.doc.write({'active': False})
