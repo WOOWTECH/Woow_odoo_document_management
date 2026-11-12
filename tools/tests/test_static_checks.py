@@ -898,7 +898,7 @@ class TestCheckSweepConfig(ToolCase):
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         self.assertIn('.security/', cfg['always_human']['paths'])
         # The 36 required files and the tests/test_reg_<slug>.py files that fixes added.
-        self.assertEqual(len(cfg['verify']['regression_tests']), 36 + 3)
+        self.assertEqual(len(cfg['verify']['regression_tests']), 36 + 4)
 
     def test_check_workflow_rules(self):
         """T-STAT-10 / sec 8: no pull_request_target, read-only permissions, SHA-pinned actions."""
@@ -1032,7 +1032,7 @@ class TestRepo(unittest.TestCase):
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 38 + 3)   # the three tests/test_reg_<slug>.py files
+        self.assertEqual(len(imported), 38 + 4)   # the four tests/test_reg_<slug>.py files
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""

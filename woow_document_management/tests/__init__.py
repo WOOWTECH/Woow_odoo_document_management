@@ -42,3 +42,4 @@ from . import test_perf
 from . import test_reg_wizard_owner_scope
 from . import test_reg_create_batch_cap
 from . import test_reg_create_ignores_personal_defaults
+from . import test_reg_notification_label

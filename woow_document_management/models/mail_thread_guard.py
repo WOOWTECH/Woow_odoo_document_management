@@ -349,3 +349,19 @@ class WoowMailMessageName(models.Model):
             folder = self.env[model].browse(res_id).exists()
             return folder._woow_chatter_name() if folder else False
         return super()._get_record_name(values)
+
+    @api.depends('record_name', 'model')
+    @api.depends_context('uid')
+    def _compute_display_name(self):
+        """A message of a folder or a document names it only to a caller who may read it (I-08).
+
+        Core builds the label of a many2one as superuser with the uid unchanged, and every
+        internal user may read ``mail.notification``, whose message label is this name: the
+        access check runs without the superuser flag, as the real caller.
+        """
+        super()._compute_display_name()
+        threads = self.filtered(lambda message: message.model in _THREAD_MODELS)
+        for message in threads - threads.sudo(False)._filtered_access('read'):
+            message.display_name = (
+                _('Restricted folder') if message.model == 'woow.document.folder'
+                else _('Restricted document'))
