@@ -1212,7 +1212,7 @@ class WoowDocumentShareService(models.Model):
         email_layout_xmlid='mail.mail_notification_light')；記 share_send。取不到寄件人 → UserError(M-55)。"""
     download_count = fields.Integer(compute=…)   # 在使用者 env 從 log 的 share_download（ok）計算
     def action_revoke(self) -> bool:        # 第一個陳述句：self.check_access('write')；_woow_mark_revoked；記 share_revoke
-    def action_reissue(self) -> dict:       # check_access('write')；撤銷舊的，用同一個範圍 _issue 新的；回傳 client action
+    def action_reissue(self) -> dict:       # check_access('write')；只有建立者本人（create_uid 不是呼叫者 → AccessError，舊連結不動）；撤銷舊的，用同一個範圍 _issue 新的；回傳 client action
     def _maintenance_run(self) -> None:
         """第一個陳述句：if not self.env.su: raise AccessError。內容是 arch §8.6（state 改 expired 並記 share_expire、
         刪除到期或撤銷超過 90 天的分享、刪除失敗超過 24 小時的 mail.mail 並建立 activity M-56）。"""
@@ -2117,3 +2117,5 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-13 | 審查修正（第十一輪） | **portal 的 description**：portal 聯絡人可在 `woow.document.create` 帶 `description`（HTML），core 對它 sanitize 兩次，對某些標記成本隨長度平方成長。現在非內部使用者的 description 超過 `PORTAL_DESCRIPTION_MAX_CHARS`（2000）字元 → `WoowUploadRejected('content')`，在配額鎖與寫入之前拒絕。測試：`test_reg_portal_description_cap.py`。 |
 | 2026-11-13 | 審查修正（第十一輪） | **JPEG 的 scan**：`_jpeg_structure_ok` 在第一個 SOS 就放行，之後的 scan 個數沒有上限，而 Odoo 儲存與縮圖時會解碼整張圖。現在走到 EOI 為止，scan 最多 `JPEG_MAX_SCANS`（64），scan 的資料以一次搜尋跳到下一個標記，EOI 之後的位元組不看（§7.1）。測試：`test_upload_policy.py`。 |
 | 2026-11-13 | 審查修正（第十一輪） | **回收桶保留天數 0**：core 把設定表單的整數 0 存成沒有值（刪掉參數），讀回是預設的 30 天，每日 purge 因此照常刪除。現在 `res.config.settings.set_values` 在 core 之後把 0 以字串 `'0'` 寫回。測試：`test_settings_bounds.py`。 |
+| 2026-11-13 | 審查修正（第十二輪） | **替換分享連結**：`models/share_service.py:361`（修正前的行號）的 `action_reissue` 讓新連結以按下按鈕的人為建立者，範圍規格由他的環境讀出，之後每個公開請求都以新建立者的環境重算範圍。文件管理員替換別人的連結時，新連結因此多涵蓋原建立者看不到的受限子資料夾與已失去權限的文件，和「同一個範圍」的約定不符；持有新連結的人可列出並下載原連結範圍之外的文件。現在只有建立者本人能替換：`create_uid` 不是呼叫者 → `AccessError`，舊連結不動；管理員要結束別人的連結用 `action_revoke`（不變），要發新連結走分享精靈，由他自己明確選範圍。測試：`test_share_routes.py` 的 `TestShareReplacementIsForTheCreator`。 |
+| 2026-11-13 | 審查修正（第十二輪） | **並行測試**：補上三組釘住既有行為的測試，沒有改任何非測試檔案：配額的站台鎖 `lock('quota')`（`test_quota.py`）、`_bump_denied_bucket` 與 `_count_below` 取不到容量槽時的 `rollback`（`test_audit_log.py`）、`share_unlock` 比對密碼前的 `_lock_password_attempts` 與計入失敗時寫 share 列（`test_share_routes.py`）；每一項都以刪除被守護的程式行驗證測試會失敗。 |
