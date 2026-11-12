@@ -38,9 +38,8 @@ repeated once on clean counters.
 - `sh dev/sc/run_sc.sh denied-many-sources` runs T-SHARE-47: sixty clients, each its own
   source, send refused link requests in rounds that start together to a threaded server
   (`--workers=0`, no `ODOO_MAX_HTTP_THREADS`, `db_maxconn` 64). Every request holds one
-  connection and every new source borrows a second one for its capacity slots, so an
-  unlimited burst would take connections that other requests need and the pool would run
-  dry. Every answer must be 404 or 429 and none a server error, the server log must show
+  connection and every refusal borrows a second one to be counted, so an unlimited burst
+  would take connections that other requests need and the pool would run dry. Every answer must be 404 or 429 and none a server error, the server log must show
   no error trace and no retry, and the counters must equal the refusals that were answered
   404 (the reservations that find no turn or no connection are answered 429).
 
