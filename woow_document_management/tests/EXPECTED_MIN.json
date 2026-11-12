@@ -1,7 +1,7 @@
 {
   "batches": {
     "core": 217,
-    "files": 135,
+    "files": 139,
     "portal": 3,
     "share": 57
   },
@@ -48,7 +48,7 @@
     "test_share_token.py": 4,
     "test_trash_lifecycle.py": 30,
     "test_uninstall.py": 3,
-    "test_upload_policy.py": 22,
+    "test_upload_policy.py": 26,
     "test_url_policy.py": 4,
     "test_zip_builder.py": 5
   },

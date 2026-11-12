@@ -139,6 +139,24 @@ def jpeg_with_segments(count, filler=b'\xff\xe1\x00\x02'):
     return data[:2] + filler * count + data[2:]
 
 
+def jpeg_with_scans(count, scan_data=b''):
+    """A JPEG that declares ``count`` scans, each followed by ``scan_data`` (nothing by default).
+
+    The headers are those of a small grey baseline picture and each scan is a ten byte header for
+    one component, so the file is a few hundred bytes however many scans it has, while a decoder
+    goes over the whole picture once for each of them. The result is not meant to be decoded.
+    """
+    import io
+    from PIL import Image
+    stream = io.BytesIO()
+    Image.new('L', (2, 2), 128).save(stream, format='JPEG')
+    data = stream.getvalue()
+    start = data.index(b'\xff\xda')
+    assert data[start + 2:start + 4] == b'\x00\x08' and data.endswith(b'\xff\xd9')
+    scan = b'\xff\xda\x00\x08\x01\x01\x00\x01\x3f\x00' + scan_data
+    return data[:start] + scan * count + b'\xff\xd9'
+
+
 def gif_with_comments(count):
     """A valid GIF that carries ``count`` empty comment extensions before its image."""
     import io

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import io
+import re
 import struct
 import zipfile
 
@@ -101,6 +102,13 @@ def _bounded_zip_directory(data: bytes) -> bool:
 IMAGE_MAX_STRUCTURES = ZIP_MAX_ENTRIES
 IMAGE_MAX_JUNK = 4096
 
+# A JPEG can also cost far more than its size through its scans. A progressive (or non-interleaved)
+# file may repeat a scan of ten bytes as often as it likes, and the decoder (Odoo decodes the
+# images it stores, and every thumbnail of them) goes over the whole picture once for each. Encoders
+# write one scan, six for grey, ten for colour and eighteen for four components.
+JPEG_MAX_SCANS = 64
+_JPEG_MARKER = re.compile(rb'\xff[\x01-\xcf\xd8-\xfe]')  # not stuffing (00), a restart or a fill byte
+
 # A PNG chunk can also cost far more than its size. The library inflates the colour profile
 # (iCCP) and compressed text (zTXt, and iTXt when it is compressed): up to 1 MiB for each
 # chunk, out of a few hundred bytes, and it caps only the total of the text chunks (64 MiB).
@@ -153,8 +161,12 @@ def _png_structure_ok(data: bytes) -> bool:
 
 
 def _jpeg_structure_ok(data: bytes) -> bool:
-    """JPEG segments up to the start of the scan, like the library walks them."""
-    size, position, structures, junk = len(data), 2, 0, 0
+    """JPEG segments and scans up to the end of the image, like the decoder walks them.
+
+    At most JPEG_MAX_SCANS scans (SOS). The data of a scan is skipped to the next marker, and what
+    follows the end of the image (EOI) is not looked at, as the decoder does not read it either.
+    """
+    size, position, structures, scans, junk = len(data), 2, 0, 0, 0
     while position < size:
         if data[position] != 0xFF:
             junk += 1
@@ -165,7 +177,7 @@ def _jpeg_structure_ok(data: bytes) -> bool:
         if position + 1 >= size:
             return True
         marker = data[position + 1]
-        if marker == 0xDA:
+        if marker == 0xD9:
             return True
         structures += 1
         if structures > IMAGE_MAX_STRUCTURES:
@@ -176,6 +188,14 @@ def _jpeg_structure_ok(data: bytes) -> bool:
             position += 2               # markers without a length
         else:
             position += 2 + max(int.from_bytes(data[position + 2:position + 4], 'big'), 2)
+            if marker == 0xDA:
+                scans += 1
+                if scans > JPEG_MAX_SCANS:
+                    return False
+                found = _JPEG_MARKER.search(data, position)     # past the data of the scan
+                if not found:
+                    return True
+                position = found.start()
     return True
 
 

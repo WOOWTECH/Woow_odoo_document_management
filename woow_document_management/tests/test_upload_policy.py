@@ -5,6 +5,7 @@
 import base64
 import io
 import struct
+import time
 import warnings
 import zipfile
 import zlib
@@ -18,8 +19,8 @@ from odoo.tests import TransactionCase, tagged
 from ..models import upload_policy
 from ..models.upload_policy import WoowUploadRejected
 from ..services.constants import PIXEL_LIMIT
-from .common import (apng_with_frames, gif_with_comments, jpeg_with_segments, png_chunk,
-                     png_chunks_of, png_declaring, png_of_noise, png_profile_payload,
+from .common import (apng_with_frames, gif_with_comments, jpeg_with_scans, jpeg_with_segments,
+                     png_chunk, png_chunks_of, png_declaring, png_of_noise, png_profile_payload,
                      png_with_chunk_list, png_with_chunks, png_with_image_chunks,
                      png_with_image_data_pieces)
 
@@ -225,6 +226,100 @@ class TestUploadPolicy(TransactionCase):
                     with self.assertRaises(WoowUploadRejected) as caught:
                         policy._validate(name, content)
                     self.assertEqual(caught.exception.code, 'content')
+
+    def test_a_jpeg_with_too_many_scans_is_refused_before_it_is_opened(self):
+        """A JPEG has a few scans, not a few hundred.
+
+        A progressive file may repeat a scan of ten bytes as often as it likes, and the decoder
+        (Odoo decodes the pictures it stores, and every thumbnail of them) goes over the whole
+        picture once for each, so a file of a few kilobytes keeps a worker busy for seconds. The
+        scans are counted up to the end of the image, wherever the data of a scan is, and the file
+        is refused as unreadable content before ``Image.open`` is called.
+        """
+        limit = upload_policy.JPEG_MAX_SCANS
+        scan_data = b'\x12\xff\x00\x34\xff\xd0\x56\xff\x00\x78\xff\xff\xd1\x9a'
+        # the bytes of an end marker inside an application segment end nothing
+        behind_a_fake_end = jpeg_with_scans(limit + 1)
+        behind_a_fake_end = (behind_a_fake_end[:2] + b'\xff\xe1\x00\x08\xff\xd9\xff\xd9\xff\xd9'
+                             + behind_a_fake_end[2:])
+        cases = {
+            'one more than the limit': jpeg_with_scans(limit + 1),
+            'a few thousand': jpeg_with_scans(4006),
+            'with data in the scans': jpeg_with_scans(limit + 1, scan_data),
+            'behind a fake end marker': behind_a_fake_end,
+        }
+        portal = self.env['res.users'].create({
+            'name': 'Scan portal fixture', 'login': 'doc-scan-portal-fixture',
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])]})
+        for name, content in cases.items():
+            for uploader, policy in (('internal', self.policy),
+                                     ('portal', self.policy.with_user(portal))):
+                with self.subTest(file=name, uploader=uploader), \
+                        patch.object(upload_policy.Image, 'open',
+                                     side_effect=AssertionError('the image was opened')):
+                    with self.assertRaises(WoowUploadRejected) as caught:
+                        policy._validate('scans.jpg', content)
+                    self.assertEqual(caught.exception.code, 'content')
+
+    def test_creating_or_replacing_a_file_with_too_many_scans_is_rejected(self):
+        """A document create or write refuses it like any other upload."""
+        admin = self.env.ref('base.user_admin')
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Scan folder', 'owner_id': admin.id})
+        documents = self.env['woow.document'].sudo()
+        many = base64.b64encode(jpeg_with_scans(upload_policy.JPEG_MAX_SCANS + 1))
+        with self.assertRaises(WoowUploadRejected) as caught:
+            documents.create({'name': 'scans.jpg', 'folder_id': folder.id, 'datas': many})
+        self.assertEqual(caught.exception.code, 'content')
+        self.assertFalse(documents.search([('folder_id', '=', folder.id)]))
+        few = jpeg_with_scans(3)
+        document = documents.create({'name': 'few.jpg', 'folder_id': folder.id,
+                                     'datas': base64.b64encode(few)})
+        with self.assertRaises(WoowUploadRejected) as caught:
+            document.write({'datas': many})
+        self.assertEqual(caught.exception.code, 'content')
+        self.assertEqual(base64.b64decode(document.datas), few)
+
+    def test_a_jpeg_within_the_scan_limit_is_accepted(self):
+        """What encoders write passes: one scan, six for grey, ten for colour, eighteen for four
+        components; so does a file at the limit. What follows the end of the image is not read."""
+        limit = upload_policy.JPEG_MAX_SCANS
+        scan_data = b'\x12\xff\x00\x34\xff\xd0\x56\xff\x00\x78\xff\xff\xd1\x9a'
+        many = jpeg_with_scans(100)
+        after_the_end = many[many.index(b'\xff\xda'):-2]       # the headers of 100 scans, no picture
+
+        def encoded(mode, **options):
+            stream = io.BytesIO()
+            Image.new(mode, (16, 16), 100).save(stream, format='JPEG', **options)
+            return stream.getvalue()
+
+        cases = {
+            'baseline': encoded('L'),
+            'progressive grey': encoded('L', progressive=True),
+            'progressive colour': encoded('RGB', progressive=True),
+            'progressive four components': encoded('CMYK', progressive=True),
+            'at the limit': jpeg_with_scans(limit),
+            'at the limit, with data': jpeg_with_scans(limit, scan_data),
+            'a second picture after the end': jpeg_with_scans(1) + jpeg_with_scans(4 * limit),
+            'scan headers after the end': jpeg_with_scans(1) + b'\x00\x00' + after_the_end,
+        }
+        for name, content in cases.items():
+            with self.subTest(file=name):
+                self.assertEqual(self.policy._validate('scans.jpg', content).mimetype, 'image/jpeg')
+
+    def test_the_data_of_a_jpeg_scan_is_walked_in_one_pass(self):
+        """A long run of 0xFF bytes in the data of a scan costs the walk its length, not its square.
+
+        The next marker is found with one search that has no repeat to back out of; the bound is
+        far above what that takes and far below what a quadratic pattern takes on a run of 0xFF
+        that no marker ends (a stuffed zero, here), as well as on one that a marker ends.
+        """
+        for ending in (b'', b'\x00'):
+            content = jpeg_with_scans(2, b'\xff' * (1 << 16) + ending)
+            with self.subTest(run_ends_with=ending):
+                started = time.perf_counter()
+                self.assertTrue(upload_policy._jpeg_structure_ok(content))
+                self.assertLess(time.perf_counter() - started, 5)
 
     @staticmethod
     def _png_chunks_of_unequal_cost():
