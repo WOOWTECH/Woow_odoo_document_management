@@ -7,6 +7,7 @@ import io
 import struct
 import warnings
 import zipfile
+import zlib
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -17,7 +18,9 @@ from odoo.tests import TransactionCase, tagged
 from ..models import upload_policy
 from ..models.upload_policy import WoowUploadRejected
 from ..services.constants import PIXEL_LIMIT
-from .common import gif_with_comments, jpeg_with_segments, png_declaring, png_with_chunks
+from .common import (apng_with_frames, gif_with_comments, jpeg_with_segments, png_chunk,
+                     png_declaring, png_of_noise, png_profile_payload, png_with_chunk_list,
+                     png_with_chunks, png_with_image_chunks)
 
 
 @tagged('woow_docmgmt_files')
@@ -222,15 +225,127 @@ class TestUploadPolicy(TransactionCase):
                         policy._validate(name, content)
                     self.assertEqual(caught.exception.code, 'content')
 
+    @staticmethod
+    def _png_chunks_of_unequal_cost():
+        """Chunks that cost the library far more than their size, in a few megabytes at most.
+
+        A profile (iCCP) or a compressed text (zTXt, a compressed iTXt) of about a kilobyte is
+        inflated to 1 MiB when the file is read, so thousands of them keep a worker busy for
+        seconds, and the whole file is smaller than every upload limit.
+        """
+        deflated = zlib.compress(b'\x00' * (1 << 20), 9)
+        profile = png_chunk(b'iCCP', png_profile_payload())
+        ztxt = png_chunk(b'zTXt', b'key\x00\x00' + deflated)
+        itxt = png_chunk(b'iTXt', b'key\x00\x01\x00\x00\x00' + deflated)
+        return {
+            'profiles': [profile] * 4000,
+            'two profiles': [profile] * 2,
+            'zTXt': [ztxt] * 17,
+            'iTXt': [itxt] * 17,
+            'zTXt and iTXt': [ztxt] * 9 + [itxt] * 8,
+            'a profile and texts': [profile, ztxt, itxt, profile],
+            'private chunks': [png_chunk(b'prVt')] * 300,
+        }
+
+    def test_png_chunks_that_cost_more_than_their_size_are_refused_before_the_image_is_opened(self):
+        """More than one profile, more than a handful of compressed texts, or hundreds of chunks.
+
+        They are refused as 'content' and ``Image.open`` is never called (opening the 4000
+        profiles takes the library seconds), wherever in the file they are: Odoo loads the PNGs
+        it stores as attachments, which reads the chunks after the image data as well.
+        """
+        portal = self.env['res.users'].create({
+            'name': 'Chunk portal fixture', 'login': 'doc-chunk-portal-fixture',
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])]})
+        for label, chunks in self._png_chunks_of_unequal_cost().items():
+            for where, after in (('before', False), ('after', True)):
+                content = png_with_chunk_list(chunks, after_image_data=after)
+                for uploader, policy in (('internal', self.policy),
+                                         ('portal', self.policy.with_user(portal))):
+                    with self.subTest(chunks=label, image_data=where, uploader=uploader), \
+                            patch.object(upload_policy.Image, 'open',
+                                         side_effect=AssertionError('the image was opened')):
+                        with self.assertRaises(WoowUploadRejected) as caught:
+                            policy._validate('chunks.png', content)
+                        self.assertEqual(caught.exception.code, 'content')
+
+    def test_the_png_chunk_limits_are_exact(self):
+        """A file at each limit is accepted and one chunk more is refused, wherever it is."""
+        check = upload_policy._png_structure_ok
+        texts, profiles = upload_policy.PNG_MAX_COMPRESSED_TEXTS, upload_policy.PNG_MAX_PROFILES
+        deflated = zlib.compress(b'\x00' * 1024, 9)
+        profile = png_chunk(b'iCCP', png_profile_payload(1024))
+        ztxt = png_chunk(b'zTXt', b'key\x00\x00' + deflated)
+        itxt = png_chunk(b'iTXt', b'key\x00\x01\x00\x00\x00' + deflated)
+        # The end chunk counts, and the image data does not.
+        at_the_limit = {
+            'chunks': [png_chunk(b'prVt')] * (upload_policy.PNG_MAX_CHUNKS - 2),
+            'profiles': [profile] * profiles,
+            'zTXt': [ztxt] * texts,
+            'iTXt': [itxt] * texts,
+            'zTXt and iTXt': [ztxt] * (texts // 2) + [itxt] * (texts - texts // 2),
+        }
+        over_the_limit = {
+            'chunks': [png_chunk(b'prVt')] * (upload_policy.PNG_MAX_CHUNKS - 1),
+            'profiles': [profile] * (profiles + 1),
+            'zTXt': [ztxt] * (texts + 1),
+            'iTXt': [itxt] * (texts + 1),
+            'zTXt and iTXt': [ztxt] * (texts // 2) + [itxt] * (texts - texts // 2 + 1),
+        }
+        for where, after in (('before', False), ('after', True)):
+            for label, chunks in at_the_limit.items():
+                with self.subTest(chunks=label, image_data=where, limit='at'):
+                    self.assertTrue(check(png_with_chunk_list(chunks, after_image_data=after)))
+                    self.assertEqual(
+                        self.policy._validate('limit.png', png_with_chunk_list(
+                            chunks, after_image_data=after)).mimetype, 'image/png')
+            for label, chunks in over_the_limit.items():
+                with self.subTest(chunks=label, image_data=where, limit='over'):
+                    self.assertFalse(check(png_with_chunk_list(chunks, after_image_data=after)))
+
+    def test_png_image_data_chunks_follow_the_size_of_the_file(self):
+        """Image data may come in any number of chunks, but not in thousands of empty ones.
+
+        The library reads each chunk in Python, so empty chunks cost it far more than their size,
+        and the walk over them costs this check the same. Past a free allowance they must be
+        as large as the encoders write them (kilobytes), or the file is refused.
+        """
+        check = upload_policy._png_structure_ok
+        free = upload_policy.PNG_FREE_IMAGE_CHUNKS
+        self.assertTrue(check(png_with_image_chunks(free)))
+        self.assertFalse(check(png_with_image_chunks(free + free // 4)))
+        self.assertFalse(check(png_with_image_chunks(100000)))
+        with patch.object(upload_policy.Image, 'open',
+                          side_effect=AssertionError('the image was opened')):
+            with self.assertRaises(WoowUploadRejected) as caught:
+                self.policy._validate('split.png', png_with_image_chunks(100000))
+        self.assertEqual(caught.exception.code, 'content')
+        # An animation has an fcTL and an fdAT chunk for each of its frames.
+        animation = apng_with_frames(upload_policy.PNG_MAX_CHUNKS + 44)
+        self.assertGreater(animation.count(b'fcTL'), upload_policy.PNG_MAX_CHUNKS)
+        self.assertTrue(check(animation))
+
     def test_images_with_ordinary_headers_are_still_accepted(self):
         within = upload_policy.IMAGE_MAX_STRUCTURES // 8
+        phys = struct.pack('>2IB', 2835, 2835, 1)
+        description = b'XML:com.adobe.xmp\x00\x00\x00\x00\x00<x/>'      # an uncompressed iTXt
+        deflated = zlib.compress(b'\x00' * 1024, 9)
+        ordinary = [png_chunk(b'iCCP', png_profile_payload(4096)), png_chunk(b'pHYs', phys),
+                    png_chunk(b'tEXt', b'Software\x00test'), png_chunk(b'iTXt', description),
+                    png_chunk(b'zTXt', b'key\x00\x00' + deflated)]
         for name, content, mimetype in (
-                ('chunks.png', png_with_chunks(within), 'image/png'),
+                ('chunks.png', png_with_chunks(upload_policy.PNG_MAX_CHUNKS // 2), 'image/png'),
                 ('segments.jpg', jpeg_with_segments(within), 'image/jpeg'),
                 ('comments.gif', gif_with_comments(within), 'image/gif'),
                 ('plain.png', png_with_chunks(0), 'image/png'),
                 ('plain.jpg', jpeg_with_segments(0), 'image/jpeg'),
-                ('plain.gif', gif_with_comments(0), 'image/gif')):
+                ('plain.gif', gif_with_comments(0), 'image/gif'),
+                # What editors and cameras write: a profile, the resolution, a few texts.
+                ('profile.png', png_with_chunk_list(ordinary), 'image/png'),
+                ('trailing.png', png_with_chunk_list(ordinary, after_image_data=True), 'image/png'),
+                # A large picture is in many image data chunks, but fewer than one per 256 bytes.
+                ('noise.png', png_of_noise(512), 'image/png'),
+                ('split.png', png_with_image_chunks(50), 'image/png')):
             with self.subTest(file=name):
                 self.assertEqual(self.policy._validate(name, content).mimetype, mimetype)
 

@@ -6,34 +6,85 @@ import struct
 import zlib
 
 
+def png_chunk(kind, payload=b''):
+    """One PNG chunk: length, type, payload and checksum."""
+    body = kind + payload
+    return struct.pack('>I', len(payload)) + body + struct.pack('>I', zlib.crc32(body))
+
+
 def png_declaring(width, height):
     """A PNG whose header declares ``width`` x ``height`` pixels and that holds no image data.
 
     Image libraries read the declared size when they open a file, long before any
     pixel is decoded, so a few dozen bytes can declare billions of pixels.
     """
-    def chunk(kind, payload):
-        body = kind + payload
-        return struct.pack('>I', len(payload)) + body + struct.pack('>I', zlib.crc32(body))
-
     return (b'\x89PNG\r\n\x1a\n'
-            + chunk(b'IHDR', struct.pack('>2I5B', width, height, 8, 2, 0, 0, 0))
-            + chunk(b'IEND', b''))
+            + png_chunk(b'IHDR', struct.pack('>2I5B', width, height, 8, 2, 0, 0, 0))
+            + png_chunk(b'IEND', b''))
 
 
-def png_with_chunks(count, kind=b'prVt'):
-    """A valid PNG that carries ``count`` empty private chunks before its image data."""
+def _png_bytes(image):
+    import io
+
+    stream = io.BytesIO()
+    image.save(stream, format='PNG')
+    return stream.getvalue()
+
+
+def png_with_chunk_list(chunks, *, after_image_data=False):
+    """A valid PNG that carries the given chunks (bytes) before its image data, or after it.
+
+    Opening an image reads the chunks up to the image data; loading it reads the ones after it.
+    """
+    from PIL import Image
+
+    data = _png_bytes(Image.new('RGB', (2, 2), 'red'))
+    assert data[-12:] == png_chunk(b'IEND')
+    if after_image_data:
+        return data[:-12] + b''.join(chunks) + data[-12:]
+    return data[:33] + b''.join(chunks) + data[33:]
+
+
+def png_with_chunks(count, kind=b'prVt', payload=b'', *, after_image_data=False):
+    """A valid PNG with ``count`` chunks of one type (empty by default) around its image data."""
+    return png_with_chunk_list([png_chunk(kind, payload)] * count,
+                               after_image_data=after_image_data)
+
+
+def png_with_image_chunks(count):
+    """A valid PNG whose image data is in ``count`` IDAT chunks, all but the last of them empty."""
+    from PIL import Image
+
+    data = _png_bytes(Image.new('RGB', (2, 2), 'red'))
+    length = struct.unpack('>I', data[33:37])[0]
+    assert data[37:41] == b'IDAT' and data[41 + length + 4:] == png_chunk(b'IEND')
+    return (data[:33] + png_chunk(b'IDAT') * (count - 1)
+            + png_chunk(b'IDAT', data[41:41 + length]) + data[-12:])
+
+
+def png_of_noise(side):
+    """A valid PNG of ``side`` x ``side`` pixels of noise: large, in many IDAT chunks."""
+    import random
+    from PIL import Image
+
+    pixels = random.Random(20261112).randbytes(side * side * 3)
+    return _png_bytes(Image.frombytes('RGB', (side, side), pixels))
+
+
+def apng_with_frames(count):
+    """An animated PNG of ``count`` different frames: an acTL chunk, an fcTL and fdAT per frame."""
     import io
     from PIL import Image
 
-    def chunk(name, payload):
-        body = name + payload
-        return struct.pack('>I', len(payload)) + body + struct.pack('>I', zlib.crc32(body))
-
+    frames = [Image.new('RGB', (2, 2), (index % 256, index // 256, 0)) for index in range(count)]
     stream = io.BytesIO()
-    Image.new('RGB', (2, 2), 'red').save(stream, format='PNG')
-    data = stream.getvalue()
-    return data[:33] + chunk(kind, b'') * count + data[33:]
+    frames[0].save(stream, format='PNG', save_all=True, append_images=frames[1:])
+    return stream.getvalue()
+
+
+def png_profile_payload(inflated=1 << 20):
+    """The payload of an iCCP chunk: a profile of ``inflated`` zero bytes, 1 KB deflated."""
+    return b'profile\x00\x00' + zlib.compress(b'\x00' * inflated, 9)
 
 
 def jpeg_with_segments(count, filler=b'\xff\xe1\x00\x02'):

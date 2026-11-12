@@ -101,18 +101,54 @@ def _bounded_zip_directory(data: bytes) -> bool:
 IMAGE_MAX_STRUCTURES = ZIP_MAX_ENTRIES
 IMAGE_MAX_JUNK = 4096
 
+# A PNG chunk can also cost far more than its size. The library inflates the colour profile
+# (iCCP) and compressed text (zTXt, and iTXt when it is compressed): up to 1 MiB for each
+# chunk, out of a few hundred bytes, and it caps only the total of the text chunks (64 MiB).
+# 4000 profile chunks of a kilobyte each (4 MB) keep a worker busy for seconds. Opening a file
+# reads the chunks up to the first image data, but loading it reads the rest up to the end, and
+# Odoo loads the PNGs it stores as attachments (``ir.attachment`` reads their orientation, or
+# resizes them), so the chunks after the image data cost as much as the ones before it.
+# A file has one profile (the PNG specification allows one), a handful of compressed texts and
+# fewer than 20 chunks that are not image data; the image data (IDAT, and for an animation the
+# frame chunks) is in as many chunks as the encoder likes, but an empty chunk costs the library
+# a few microseconds, so beyond 4096 chunks they must average PNG_IMAGE_CHUNK_BYTES bytes.
+PNG_MAX_CHUNKS = 256              # chunks that are not image data, in the whole file
+PNG_MAX_PROFILES = 1
+PNG_MAX_COMPRESSED_TEXTS = 16
+PNG_FREE_IMAGE_CHUNKS = 4096
+PNG_IMAGE_CHUNK_BYTES = 256
+_PNG_COMPRESSED_TEXTS = (b'zTXt', b'iTXt')
+_PNG_IMAGE_CHUNKS = (b'IDAT', b'fdAT', b'fcTL')
+
 
 def _png_structure_ok(data: bytes) -> bool:
-    """PNG chunks up to the first image data, the only ones read when a file is opened."""
-    size, position, structures = len(data), 8, 0
+    """The chunks of a PNG up to its end: few of them, and none that costs more than its size.
+
+    At most PNG_MAX_CHUNKS that are not image data, one colour profile, PNG_MAX_COMPRESSED_TEXTS
+    compressed texts, and image data chunks within PNG_FREE_IMAGE_CHUNKS plus one per
+    PNG_IMAGE_CHUNK_BYTES of the file. The walk is as long as the number of chunks it allows.
+    """
+    size, position = len(data), 8
+    others = profiles = texts = images = 0
+    image_chunks = PNG_FREE_IMAGE_CHUNKS + size // PNG_IMAGE_CHUNK_BYTES
     while position + 8 <= size:
-        structures += 1
-        if structures > IMAGE_MAX_STRUCTURES:
-            return False
-        length = int.from_bytes(data[position:position + 4], 'big')
-        if data[position + 4:position + 8] in (b'IDAT', b'IEND'):
-            return True
-        position += 12 + length
+        kind = data[position + 4:position + 8]
+        if kind in _PNG_IMAGE_CHUNKS:
+            images += 1
+            if images > image_chunks:
+                return False
+        else:
+            others += 1
+            if kind == b'iCCP':
+                profiles += 1
+            elif kind in _PNG_COMPRESSED_TEXTS:
+                texts += 1
+            if (others > PNG_MAX_CHUNKS or profiles > PNG_MAX_PROFILES
+                    or texts > PNG_MAX_COMPRESSED_TEXTS):
+                return False
+            if kind == b'IEND':
+                return True
+        position += 12 + int.from_bytes(data[position:position + 4], 'big')
     return True
 
 
