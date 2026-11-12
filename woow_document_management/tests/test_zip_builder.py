@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from odoo.tests import BaseCase, tagged
 
+from ..services import naming
 from ..services.zip_builder import ZipEntry, ZipLimits, ZipLimitExceeded, build_zip
 
 
@@ -46,6 +47,34 @@ class TestZipBuilder(BaseCase):
                              zipfile.ZIP_STORED)
             self.assertEqual(archive.getinfo('folder/note.txt').compress_type,
                              zipfile.ZIP_DEFLATED)
+
+    def test_unique_names_cost_a_fit_per_entry_not_one_per_pair_of_entries(self):
+        """Naming n files of one level must be linear in n, whether or not they repeat."""
+        count = 1500
+        real = naming._fit_segment
+        calls = []
+
+        def counting(*args):
+            calls.append(1)
+            if len(calls) > 3 * count:
+                raise AssertionError('names are fitted again for every entry')
+            return real(*args)
+
+        for label, leaves in (
+                ('distinct long names', ['%s-%04d.txt' % ('d' * 150, index) for index in range(count)]),
+                ('one name repeated', ['report.txt'] * count),
+                ('numbered names that collide', ['a (%d).txt' % (index % 7) for index in range(count)])):
+            entries = [ZipEntry(('folder', leaf), lambda: io.BytesIO(b'x'), 1, True)
+                       for leaf in leaves]
+            calls.clear()
+            destination = io.BytesIO()
+            with self.subTest(case=label), patch.object(naming, '_fit_segment', counting):
+                build_zip(entries, ZipLimits(5000, 10 ** 9, 2), destination)
+                self.assertLessEqual(len(calls), 3 * count)
+            with zipfile.ZipFile(destination) as archive:
+                names = [name.rsplit('/', 1)[-1] for name in archive.namelist()]
+            self.assertEqual(names, naming.dedupe(leaves), label)
+            self.assertEqual(len({name.casefold() for name in names}), count, label)
 
     def test_actual_stream_overrun_and_deadline(self):
         opened = []

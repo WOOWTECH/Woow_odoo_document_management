@@ -66,23 +66,47 @@ def sanitize_segment(name: str, empty_label: str) -> str:
     return ''.join(out) or str(empty_label)[:SEGMENT_MAX_BYTES]
 
 
-def dedupe(names: Sequence[str]) -> list[str]:
-    """Suffix ' (2)', ' (3)', ... to names repeated in one level (case-insensitive)."""
-    seen = set()
-    result = []
-    for name in names:
+class Deduper:
+    """Make the names of one level unique one at a time (case-insensitive).
+
+    ``add`` returns the name that ``dedupe`` gives at the same place of the same list: the
+    first of the candidates ``name``, ``name (2)``, ``name (3)``, ... (before the extension)
+    that no earlier result has taken. Names taken stay taken, and the candidates of one
+    (stem, extension) pair are the same for every name that has it, so the number to try
+    next is remembered per pair: ``n`` names cost about ``n`` fits, not ``n * n``. Names
+    that are already taken, such as a file written to the level by other means, are
+    passed to the constructor.
+    """
+
+    def __init__(self, taken: Sequence[str] = ()):
+        self._seen = {name.casefold() for name in taken}
+        self._next: dict[tuple[str, str], int] = {}
+
+    def add(self, name: str) -> str:
         stem, dot, extension = name.rpartition('.')
         if not stem or not extension:
             stem, dot, extension = name, '', ''
         suffix = dot + extension
-        candidate = _fit_segment(stem, '', suffix)
-        index = 2
-        while candidate.casefold() in seen:
+        index = self._next.get((stem, suffix))
+        candidate = None
+        if index is None:
+            index = 2
+            candidate = _fit_segment(stem, '', suffix)
+            if candidate.casefold() in self._seen:
+                candidate = None
+        # Else the name itself and the numbers below ``index`` were taken by earlier calls.
+        while candidate is None or candidate.casefold() in self._seen:
             candidate = _fit_segment(stem, ' (%d)' % index, suffix)
             index += 1
-        seen.add(candidate.casefold())
-        result.append(candidate)
-    return result
+        self._seen.add(candidate.casefold())
+        self._next[(stem, suffix)] = index
+        return candidate
+
+
+def dedupe(names: Sequence[str]) -> list[str]:
+    """Suffix ' (2)', ' (3)', ... to names repeated in one level (case-insensitive)."""
+    deduper = Deduper()
+    return [deduper.add(name) for name in names]
 
 
 def _fit_segment(stem: str, number: str, extension: str) -> str:
