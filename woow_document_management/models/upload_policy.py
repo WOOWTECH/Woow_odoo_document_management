@@ -2,7 +2,8 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Upload validation (IF-UPL, owned by upload-quota).
 
-Day-0 stub, fail closed: every upload is rejected, nothing is served inline.
+Name, extension, size, content type, text and image content (header structures and pixels),
+then the quota.
 """
 from __future__ import annotations
 

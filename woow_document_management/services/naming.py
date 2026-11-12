@@ -2,7 +2,7 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """File and ZIP segment naming (IF-NAME, owned by upload-quota).
 
-Pure Python. Day-0 stub: constants are final, functions are stubs.
+Pure Python.
 """
 from __future__ import annotations
 

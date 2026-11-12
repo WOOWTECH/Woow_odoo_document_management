@@ -2,8 +2,8 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Transaction-level advisory locks (IF-LOCK, owned by upload-quota; ER-24, ER-47.3).
 
-Every advisory lock of the module goes through this file. Day-0 stub: lock acquisition
-fails closed (``try_lock`` -> False, ``lock`` -> LockBusy); ``advisory_key`` is final.
+Every advisory lock of the module goes through this file: transaction-level locks that a
+transaction must take in the rank order zip, share, quota, access.
 """
 from __future__ import annotations
 

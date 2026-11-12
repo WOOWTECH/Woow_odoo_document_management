@@ -3,8 +3,7 @@
 """Shared HTTP responses (IF-STREAM, owned by internal-routes-zip).
 
 Module-level functions, not a controller. Every refusal is RETURNED as a Response, never raised
-(ER-29). Day-0 stub: fixed minimal bodies; serve / create_batch / zip_response are stubs;
-MAX_UPLOAD_BODY, max_upload_body and apply_common_headers are final.
+(ER-29): the uniform refusal pages, file serving, batch upload and ZIP streaming.
 """
 from __future__ import annotations
 

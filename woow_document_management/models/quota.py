@@ -2,7 +2,7 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Storage quota (IF-QUOTA, owned by upload-quota). Q2 and Q5 live here.
 
-Day-0 stub, fail closed: every quota check rejects.
+The quota check of uploads (one measurement and one lock per run) and the warning cron.
 """
 import math
 

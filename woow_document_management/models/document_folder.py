@@ -2,8 +2,8 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Folders (IF-MODEL, owned by core-models-acl).
 
-Day-0 stub: fields follow arch section 3.1 and 3.3; every computed permission is empty, every
-rank probe is False and names are folded (fail closed).
+Fields follow arch section 3.1 and 3.3; permissions, rank probes and display names follow the
+record rules and grants of the user.
 """
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
