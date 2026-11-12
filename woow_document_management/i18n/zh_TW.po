@@ -24,6 +24,12 @@ msgstr "已加入 %(added)s 個；拒絕 %(rejected)s 個。%(reasons)s"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/cron_jobs.py:0
+msgid "%(count)s items have stayed in the trash for more than %(days)s days after their retention period and could not be deleted. Check the trash for items under legal hold or with an error."
+msgstr "有 %(count)s 個項目在保留期間結束後已在回收桶超過 %(days)s 天，仍無法刪除。請檢查回收桶中是否有受法律保留或發生錯誤的項目。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid ".%(ext)s files aren't accepted here."
 msgstr "此處不接受 .%(ext)s 檔案。"
@@ -1204,6 +1210,7 @@ msgstr "文件設定無效：%s"
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/controllers/streaming.py:0
+#: code:addons/woow_document_management/models/document.py:0
 msgid "Invalid number of files."
 msgstr "檔案數量無效。"
 
@@ -1223,6 +1230,12 @@ msgstr "IP 雜湊值"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_is_follower
 msgid "Is Follower"
 msgstr "是關注人"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/cron_jobs.py:0
+msgid "Items in the trash could not be deleted"
+msgstr "回收桶中有項目無法刪除"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_log_ip_mode__hash

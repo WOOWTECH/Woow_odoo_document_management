@@ -23,6 +23,12 @@ msgstr ""
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/cron_jobs.py:0
+msgid "%(count)s items have stayed in the trash for more than %(days)s days after their retention period and could not be deleted. Check the trash for items under legal hold or with an error."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid ".%(ext)s files aren't accepted here."
 msgstr ""
@@ -1189,6 +1195,7 @@ msgstr ""
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/controllers/streaming.py:0
+#: code:addons/woow_document_management/models/document.py:0
 msgid "Invalid number of files."
 msgstr ""
 
@@ -1207,6 +1214,12 @@ msgstr ""
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_is_follower
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_is_follower
 msgid "Is Follower"
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/cron_jobs.py:0
+msgid "Items in the trash could not be deleted"
 msgstr ""
 
 #. module: woow_document_management
