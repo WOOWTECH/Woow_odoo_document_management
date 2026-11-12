@@ -77,3 +77,27 @@ class TestMemberRowCompanyFollowsItsFolder(TransactionCase):
         self.folder.with_user(self.admin).write({'company_id': False})
         self.env.flush_all()
         self.assertFalse(created.company_id)
+
+    def test_the_company_of_the_target_folder_decides_when_a_row_moves(self):
+        """A write that names a folder too is compared with that folder, not with the one it leaves."""
+        env = self.env
+        companies = [self.company_a.id, self.company_b.id]
+        mover = new_test_user(env, login='rowco_mover', groups=_USER, company_id=self.company_a.id,
+                              company_ids=[Command.set(companies)])
+        folder_b = env['woow.document.folder'].sudo().create({
+            'name': 'Member row folder B', 'owner_id': mover.id, 'company_id': self.company_b.id})
+        env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': mover.id,
+            'level': 'manage'})
+        line = env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': self.newcomer.id,
+            'level': 'read'})
+        env.flush_all()
+        as_mover = line.with_user(mover).with_context(allowed_company_ids=companies)
+        # the company of the folder it leaves is not the one that counts
+        with self.assertRaises(AccessError), self.cr.savepoint():
+            as_mover.write({'company_id': self.company_a.id, 'folder_id': folder_b.id})
+        self.assertEqual((line.folder_id, line.company_id), (self.folder, self.company_a))
+        # the company of the folder it joins is
+        as_mover.write({'company_id': self.company_b.id, 'folder_id': folder_b.id})
+        self.assertEqual((line.folder_id, line.company_id), (folder_b, self.company_b))
