@@ -55,7 +55,9 @@ class TestTrash(TransactionCase):
         self.assertTrue(root.with_user(admin).action_trash())
         self.assertTrue(child.in_trash)
         self.assertTrue(doc.folder_in_trash)
+        self.assertFalse(root.restored_date)
         self.assertTrue(root.with_user(admin).with_context(active_test=False).action_restore())
+        self.assertTrue(root.restored_date)
         self.assertFalse(child.in_trash)
         self.assertFalse(doc.folder_in_trash)
 
@@ -70,7 +72,9 @@ class TestTrash(TransactionCase):
         self.assertTrue(doc.legal_hold)
         self.assertTrue(doc.with_user(admin).action_trash())
         self.assertFalse(doc.active)
+        self.assertFalse(doc.restored_date)
         self.assertTrue(doc.with_user(admin).with_context(active_test=False).action_restore())
+        self.assertTrue(doc.restored_date)
         events = self.env['woow.document.log'].sudo().search([
             ('document_id', '=', doc.id)])
         self.assertTrue({'legal_hold', 'trash', 'restore'} <= set(events.mapped('event')))
@@ -119,11 +123,23 @@ class TestTrash(TransactionCase):
             'datas': base64.b64encode(b'data')})
         doc.with_user(admin).action_trash()
         old.with_user(admin).action_trash()
+        self.assertFalse(doc.active)
+        self.assertFalse(doc.restored_date)
         wizard = self.env['woow.document.restore.wizard'].with_user(admin).create({
             'document_ids': [(6, 0, [doc.id])], 'target_folder_id': target.id})
         self.assertEqual(wizard.action_restore_to()['type'], 'ir.actions.act_window_close')
         self.assertTrue(doc.active)
         self.assertEqual(doc.folder_id, target)
+        self.assertTrue(doc.restored_date)
+        # The wizard stamps a folder it restores in the same way.
+        self.assertFalse(old.active)
+        self.assertFalse(old.restored_date)
+        wizard = self.env['woow.document.restore.wizard'].with_user(admin).create({
+            'folder_ids': [(6, 0, [old.id])], 'target_folder_id': target.id})
+        self.assertEqual(wizard.action_restore_to()['type'], 'ir.actions.act_window_close')
+        self.assertTrue(old.active)
+        self.assertEqual(old.parent_id, target)
+        self.assertTrue(old.restored_date)
 
 
 @tagged('woow_docmgmt_trash')

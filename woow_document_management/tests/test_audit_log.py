@@ -7,8 +7,12 @@ import secrets
 from odoo import Command
 from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
+from odoo.tests.common import new_test_user
 
 from ..services.client_ip import hmac_ip
+
+_USER = 'woow_document_management.group_woow_document_user'
+_MANAGER = 'woow_document_management.group_woow_document_manager'
 
 
 @tagged('woow_docmgmt_core')
@@ -97,6 +101,86 @@ class TestAuditLog(TransactionCase):
                 log._log_event('upload', channel=channel)
         self.assertEqual(log.sudo().search_count([]), before)
         self.assertEqual(log._log_event('upload', channel='cron'), 1)
+
+    def test_audit_rows_are_read_by_their_user_or_the_company_administrators(self):
+        """R-L0, R-L1, R-L2 and the column groups: who reads which audit rows and columns."""
+        log = self.env['woow.document.log']
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.log_ip_mode', 'truncate')
+        company_a = self.env.company
+        company_b = self.env['res.company'].sudo().create({'name': 'Audit reader company B'})
+        user = new_test_user(self.env, login='audit_reader', groups=_USER)
+        other = new_test_user(self.env, login='audit_reader_other', groups=_USER)
+        manager = new_test_user(self.env, login='audit_reader_manager', groups=_MANAGER)
+        manager_ab = new_test_user(
+            self.env, login='audit_reader_manager_ab', groups=_MANAGER,
+            company_ids=[Command.set([company_a.id, company_b.id])])
+        portal = new_test_user(self.env, login='audit_reader_portal', groups='base.group_portal')
+
+        def logged(owner, company_id, **values):
+            """The one row that ``_log_event`` writes for ``owner``."""
+            newest = log.sudo().search([], limit=1).id or 0
+            log._log_event('download', channel='backend', user_id=owner.id,
+                           company_id=company_id, **values)
+            row = log.sudo().search([('id', '>', newest)])
+            self.assertEqual(len(row), 1)
+            return row
+
+        mine = logged(user, company_a.id, ip='203.0.113.5', user_agent='audit-reader-agent',
+                      detail={'files': 1})
+        theirs = logged(other, company_a.id)
+        no_company = logged(user, False)
+        elsewhere = logged(user, company_b.id)
+        no_user = logged(other, company_a.id)
+        no_user.sudo().write({'user_id': False})    # the row of a deleted user keeps no user
+        portal_row = logged(portal, company_a.id)
+        rows = mine | theirs | no_company | elsewhere | no_user | portal_row
+
+        def seen(reader):
+            return log.with_user(reader).search([('id', 'in', rows.ids)])
+
+        # R-L1: a document user reads the rows of their own actions and no other (R-L0 still
+        # hides the rows of a company they do not work in, and R-L1 the row of no user).
+        self.assertEqual(seen(user), mine | no_company)
+        self.assertEqual(seen(other), theirs)
+        self.assertEqual(log.with_user(user).search_count([('id', 'in', rows.ids)]), 2)
+        for reader, hidden in ((user, theirs), (user, no_user), (user, elsewhere),
+                               (other, mine), (manager, elsewhere)):
+            with self.subTest(reader=reader.login, row=hidden.id), self.assertRaises(AccessError):
+                hidden.with_user(reader).read(['event'])
+        self.assertEqual(mine.with_user(user).read(['event'])[0]['event'], 'download')
+        # R-L2 with R-L0: a document administrator reads every row of the companies they work in.
+        self.assertEqual(seen(manager), rows - elsewhere)
+        self.assertEqual(seen(manager_ab), rows)
+        # A portal user reads none, not even the row that records their own download.
+        as_portal = log.with_user(portal)
+        self.assertFalse(as_portal.has_access('read'))
+        with self.assertRaises(AccessError):
+            as_portal.search([('id', 'in', rows.ids)])
+        with self.assertRaises(AccessError):
+            portal_row.with_user(portal).read(['event'])
+        # The address columns are for administrators: a user reads their own row without them.
+        digest = hmac_ip(self.env['woow.document.settings']._audit_ip_key(), '203.0.113.5')
+        columns = ('ip_hash', 'ip_display', 'user_agent')
+        for reader in (manager, manager_ab):
+            values = mine.with_user(reader).read(columns)[0]
+            self.assertEqual((values['ip_hash'], values['ip_display'], values['user_agent']),
+                             (digest, '203.0.113.0/24', 'audit-reader-agent'))
+        for column in columns:
+            with self.subTest(column=column), self.assertRaises(AccessError):
+                mine.with_user(user).read([column])
+        # Nobody writes the log through the ORM. The append-only test above holds the
+        # administrator's write and unlink; here a user and an administrator cannot create a
+        # row, and a user can neither change nor delete one.
+        for reader in (user, manager):
+            with self.subTest(create=reader.login), self.assertRaises(AccessError):
+                log.with_user(reader).create({'event': 'upload', 'channel': 'backend'})
+        with self.assertRaises(AccessError):
+            mine.with_user(user).write({'detail': {'files': 2}})
+        with self.assertRaises(AccessError):
+            mine.with_user(user).unlink()
+        self.assertTrue(mine.exists())
+        self.assertEqual(mine.sudo().detail, {'files': 1})
 
 
 @tagged('woow_docmgmt_http')
