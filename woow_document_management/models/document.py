@@ -5,11 +5,12 @@ import base64
 import binascii
 
 from odoo import _, api, fields, models
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tools import html_sanitize
 
 from ..services import url_policy
 from ..services.constants import PORTAL_DESCRIPTION_MAX_CHARS
+from .document_folder import _m2o_value
 from .ir_attachment import NO_INDEX_CTX_KEY
 from .quota import LEDGER_KEY, QuotaLedger
 from .upload_policy import WoowUploadRejected
@@ -148,6 +149,23 @@ class WoowDocument(models.Model):
         return self.search([('id', 'in', ids), ('active', '=', True),
                             ('folder_in_trash', '=', False)], limit=limit)
 
+    @api.model
+    def _woow_owner_value(self, value, manager):
+        """The id (False for none) that a value of ``owner_id`` names, for a caller who is not the superuser.
+
+        ``_m2o_value`` reads the value the way the ORM keeps it (a float, a flag, a list with something
+        in it, a text and a dict are stored as NULL, so they have no id). What has no id, and a number
+        below 1, is refused with the message that the folder owner check gives. A caller who is not a
+        document administrator (``manager``) may only name himself. The callers write the id back into
+        the values, so that the owner that was judged is the owner that is stored.
+        """
+        owner_id = _m2o_value(value, 'res.users')
+        if owner_id is None or (owner_id is not False and owner_id < 1):
+            raise ValidationError(_('Choose a document user.'))
+        if owner_id != self.env.uid and not manager:
+            raise AccessError(_('You cannot assign a different owner.'))
+        return owner_id
+
     @api.model_create_multi
     def create(self, vals_list):
         """Validate each file before storage; keep multi-file calls atomic."""
@@ -202,8 +220,8 @@ class WoowDocument(models.Model):
                 vals['folder_id'] = folder.id
                 if not internal:
                     vals['uploaded_by_partner_id'] = self.env.user.partner_id.id
-                elif 'owner_id' in vals and vals['owner_id'] != self.env.uid and not manager:
-                    raise AccessError(_('You cannot assign a different owner.'))
+                elif 'owner_id' in vals and not self.env.su:
+                    vals['owner_id'] = self._woow_owner_value(vals['owner_id'], manager)
                 if {'shared_user_ids', 'shared_partner_ids'}.intersection(vals) and not self.env.su:
                     folder._woow_require_rank(4)
                 kind = vals.get('document_type', 'binary')
@@ -271,9 +289,9 @@ class WoowDocument(models.Model):
             if {'source_res_model', 'source_res_id'}.intersection(vals) and \
                     self.env.context.get(SOURCE_CTX_KEY) is not _SOURCE_SENTINEL:
                 raise AccessError(_('A source can only be set by the attachment wizard.'))
-            if 'owner_id' in vals and vals['owner_id'] != self.env.uid and not \
-                    self.env.user.has_group(_MANAGER):
-                raise AccessError(_('You cannot assign a different owner.'))
+            if 'owner_id' in vals:
+                vals = dict(vals, owner_id=self._woow_owner_value(
+                    vals['owner_id'], self.env.user.has_group(_MANAGER)))
         self.check_access('write')
         target = self.env['woow.document.folder'].browse(vals['folder_id']).exists() \
             if vals.get('folder_id') else self.env['woow.document.folder']
