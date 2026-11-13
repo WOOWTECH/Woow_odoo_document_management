@@ -98,6 +98,7 @@ msgstr ""
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/folder_access.py:0
 msgid "A member cannot be granted more access than on the parent folder."
 msgstr ""
@@ -342,6 +343,7 @@ msgstr ""
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/folder_access.py:0
 msgid "Choose a document user."
 msgstr ""

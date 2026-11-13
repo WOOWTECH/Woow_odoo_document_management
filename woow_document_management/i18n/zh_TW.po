@@ -105,6 +105,7 @@ msgstr "連結不能同時包含檔案。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/folder_access.py:0
 msgid "A member cannot be granted more access than on the parent folder."
 msgstr "成員的權限不能高於其在上層資料夾的權限。"
@@ -349,6 +350,7 @@ msgstr "請選擇具有有效入口網站帳號的聯絡人。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/folder_access.py:0
 msgid "Choose a document user."
 msgstr "請選擇文件使用者。"
