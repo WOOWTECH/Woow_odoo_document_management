@@ -1,11 +1,10 @@
-#! target=woow_document_management/models/share_service.py expect=SUDO-NOT-ALLOWED
+#! target=woow_document_management/models/document_log.py expect=SUDO-NOT-ALLOWED
 from odoo import api, models
 
 
-class WoowDocumentShareService(models.Model):
-    _inherit = ['woow.document.share', 'mail.thread']
+class WoowDocumentLog(models.Model):
+    _inherit = ['woow.document.log', 'mail.thread']
 
     @api.model
-    def _resolve_request_access(self, token=None, share_id=None):
-        share_sudo = self.sudo().search([('token_hash', '=', token)], limit=1)  # sudo-ok: S2
-        return share_sudo, None
+    def _log_event(self, event, **kw):
+        return self.sudo().create({'event': event})  # sudo-ok: S1

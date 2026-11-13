@@ -148,7 +148,7 @@ class TestCheckSudo(ToolCase):
         self.assertRule('sudo', 'SUDO-UNTAGGED')
 
     def test_check_sudo_counts_exact(self):
-        """T-STAT-02: S1=1, S2=2, S3=1 exactly with --g1; <= without; _inherit model (ER-44)."""
+        """T-STAT-02: S1=1, S3=1 exactly with --g1; <= without; _inherit model (ER-44)."""
         self.tree('sudo_good')
         self.assertClean('sudo', g1=True)
         self.assertClean('sudo')
@@ -167,14 +167,14 @@ class TestCheckSudo(ToolCase):
     def test_check_sudo_inherit_model_resolution(self):
         """T-STAT-02 (ER-44): the single string _inherit is the model; a list of two is not."""
         self.tree('sudo_good')
-        self.assertClean('sudo', g1=True)   # share_service.py uses _inherit='woow.document.share'
+        self.assertClean('sudo', g1=True)   # the S1 fixture names its model by _inherit only
         for name, meta, body in snippets('sudo_snippets'):
             if name == 'inherit_not_single.py':
                 self.put(meta['target'], body)
         self.assertRule('sudo', 'SUDO-NOT-ALLOWED')
 
-    def test_with_user_only_in_s2b(self):
-        """T-STAT-02: with_user( outside S2-b is rejected."""
+    def test_with_user_is_never_allowed(self):
+        """T-STAT-02: with_user( is rejected everywhere in non-test code."""
         self.snippet_cases('sudo_good', 'sudo_snippets', 'sudo')
 
     def test_aliases_detected(self):
@@ -191,30 +191,7 @@ class TestCheckSudo(ToolCase):
         self.assertNotIn('settings.py', ' '.join(str(v) for v in self.run_tool('sudo')
                                                  if 'sudo(False)' in v.message))
 
-    def test_s2_shape_enforced(self):
-        """T-STAT-18: S2-a / S2-b shapes and tuple return (sec 6.2 point 6)."""
-        self.tree('sudo_good')
-        name, meta, body = [s for s in snippets('sudo_snippets') if s[0] == 's2_shape.py'][0]
-        self.put(meta['target'], body)
-        violations = [v for v in self.run_tool('sudo') if v.rule == 'SUDO-S2-SHAPE']
-        self.assertEqual(len(violations), 3, [str(v) for v in violations])
-
-    def test_s2_conditional_lookup_allows_only_token_hash_or_id(self):
-        self.tree('sudo_good')
-        source = '''class ShareService:
-    _inherit = 'woow.document.share'
-    def _resolve_request_access(self, token=None, share_id=None):
-        share_sudo = self.sudo().search([('token_hash', '=', token)] if token else [('id', '=', share_id)], limit=1)  # sudo-ok: S2
-        scope_env = share_sudo.with_user(share_sudo.create_uid).with_context(allowed_company_ids=[share_sudo.company_id.id]).env  # sudo-drop: S2
-        return share_sudo, scope_env
-'''
-        self.put(W + 'models/share_service.py', source)
-        self.assertClean('sudo', g1=True)
-        self.put(W + 'models/share_service.py', source.replace(
-            "('id', '=', share_id)", "('create_uid', '=', share_id)"))
-        self.assertRule('sudo', 'SUDO-S2-SHAPE')
-
-    def test_share_sudo_env_reuse_rejected(self):
+    def test_sudo_env_reuse_rejected(self):
         """T-STAT-19: <name>_sudo.env is rejected anywhere."""
         self.tree('sudo_good')
         name, meta, body = [s for s in snippets('sudo_snippets') if s[0] == 'env_reuse.py'][0]
@@ -240,7 +217,7 @@ class TestCheckRoutes(ToolCase):
         _write(self.root, relpath, text.replace(old, new, 1))
 
     def test_check_routes_good_tree_and_g1(self):
-        """T-STAT-04: the 16 locked routes pass, also with --g1."""
+        """T-STAT-04: the 9 locked routes pass, also with --g1."""
         self.tree('routes_good')
         self.assertClean('routes')
         self.assertClean('routes', g1=True)
@@ -255,8 +232,8 @@ class TestCheckRoutes(ToolCase):
         self.mutate(W + 'controllers/main.py', "'/woow_document/zip'", "'/woow_document/zip2'")
         self.assertRule('routes', 'R12')
 
-    def test_check_routes_public_only_in_share(self):
-        """T-STAT-04 R3: auth='public' outside controllers/share.py."""
+    def test_check_routes_public_is_rejected(self):
+        """T-STAT-04 R3: auth='public' is not allowed in any controller."""
         self.tree('routes_good')
         self.mutate(W + 'controllers/main.py', "'/woow_document/zip', type='http', auth='user'",
                     "'/woow_document/zip', type='http', auth='public'")
@@ -274,14 +251,14 @@ class TestCheckRoutes(ToolCase):
                 self.assertRule('routes', rule)
 
     def test_check_routes_methods_required_and_post(self):
-        """T-STAT-04 R2: methods written out; upload/open/close/unlock are POST."""
+        """T-STAT-04 R2: methods written out; upload routes are POST."""
         self.tree('routes_good')
         self.mutate(W + 'controllers/main.py', "auth='user', methods=['GET'])\n    def woow_zip",
                     "auth='user')\n    def woow_zip")
         self.assertRule('routes', 'R2')
         self.tree('routes_good')
-        self.mutate(W + 'controllers/share.py', "'/woow-docs/s/open', type='http', auth='public', methods=['POST']",
-                    "'/woow-docs/s/open', type='http', auth='public', methods=['GET', 'POST']")
+        self.mutate(W + 'controllers/main.py', "'/woow_document/upload', type='http', auth='user', methods=['POST']",
+                    "'/woow_document/upload', type='http', auth='user', methods=['GET', 'POST']")
         self.assertRule('routes', 'R2')
 
     def test_check_routes_path_converter(self):
@@ -328,31 +305,6 @@ class TestCheckRoutes(ToolCase):
         os.makedirs(os.path.join(self.root, W + 'models'), exist_ok=True)
         shutil.copy(os.path.join(self.root, W + 'controllers/main.py'), os.path.join(self.root, W + 'models/main.py'))
         self.assertRule('routes', 'R1')
-
-    def test_check_routes_r11_share_entry_first(self):
-        """T-STAT-04 R11: public routes start with self._share_entry(...)."""
-        self.tree('routes_good')
-        self.mutate(W + 'controllers/share.py', "access = self._share_entry(share_id=share_id)\n        return access\n\n    @http.route('/woow-docs/s/<int:share_id>/unlock'",
-                    "x = 1\n        access = self._share_entry(share_id=share_id)\n        return access\n\n    @http.route('/woow-docs/s/<int:share_id>/unlock'")
-        self.assertRule('routes', 'R11')
-
-    def test_check_routes_r11_landing(self):
-        """T-STAT-04 R11 (ER-22): the landing page does not touch woow models, session or log."""
-        for line in ("request.env['woow.document.share'].search([])",
-                     'request.session.touch()',
-                     "request.session['woow_doc_grants'] = {}",
-                     "request.env['woow.document.log']._log_event('view', channel='share')",
-                     "http.request.env['woow.document.share'].search([])",
-                     "http.request.session['woow_doc_grants'] = {}",
-                     "env = request.env",
-                     "request.session.woow_seen = 1",
-                     "request.session.update({'k': 1})",
-                     "request.session.get('woow_doc_grants', {})['1'] = {}",
-                     "request.session.pop('woow_doc_grants', None)"):
-            with self.subTest(line=line):
-                self.tree('routes_good')
-                self.mutate(W + 'controllers/share.py', '"""Landing page."""', '"""Landing page."""\n        ' + line)
-                self.assertRule('routes', 'R11')
 
     def test_check_routes_alias_and_indirect_decorators(self):
         """T-STAT-04 R1/R3/R5: route under an import alias, a stored route object, other decorators."""
@@ -411,32 +363,32 @@ class TestCheckRoutes(ToolCase):
         self.assertRule('routes', 'R9')     # decorated, but replaces a core portal route
 
     def test_emit_entry_points_matches_routes(self):
-        """T-STAT-17: 17 entry points from the code, equal to the ones built from the lock file."""
+        """T-STAT-17: 10 entry points from the code, equal to the ones built from the lock file."""
         self.tree('routes_good')
         mod = TOOLS_MOD['routes']
         from_code = mod.entry_points([info for info in (
             mod._info(r, f, d)[0] for r, _s, f, d in mod.extract(self.root))])
         from_lock = mod.entry_points(mod.load_lock(REPO))
-        self.assertEqual(len(from_code), 17)
-        self.assertEqual(len(from_lock), 17)
+        self.assertEqual(len(from_code), 10)
+        self.assertEqual(len(from_lock), 10)
         key = lambda ep: (ep['route'], tuple(ep.get('methods') or ()), ep['auth'], ep['file'])  # noqa: E731
         self.assertEqual(sorted(map(key, from_code)), sorted(map(key, from_lock)))
         out = subprocess.run([sys.executable, '-I', os.path.join(TOOLS, 'check_routes.py'),
                               '--root', self.root, '--emit-entry-points'],
                              capture_output=True, text=True, check=False)
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(len(json.loads(out.stdout)), 17)
+        self.assertEqual(len(json.loads(out.stdout)), 10)
 
-    def test_routes_lock_has_final_16_rows(self):
-        """interface_contracts 21 B5: the lock file holds the final 16 rows on day 0."""
+    def test_routes_lock_has_final_9_rows(self):
+        """interface_contracts 21 B5: the lock file holds the final 9 rows."""
         rows = TOOLS_MOD['routes'].load_lock(REPO)
-        self.assertEqual(len(rows), 16)
+        self.assertEqual(len(rows), 9)
         by_file = {}
         for row in rows:
             by_file.setdefault(row['file'].rsplit('/', 1)[1], []).append(row)
             self.assertEqual(set(row), {'file', 'func', 'routes', 'methods', 'auth', 'type', 'website'})
-        self.assertEqual({k: len(v) for k, v in by_file.items()}, {'main.py': 4, 'portal.py': 5, 'share.py': 7})
-        self.assertTrue(all(r['auth'] == 'public' for r in by_file['share.py']))
+        self.assertEqual({k: len(v) for k, v in by_file.items()}, {'main.py': 4, 'portal.py': 5})
+        self.assertTrue(all(r['auth'] == 'user' for r in rows))
 
 
 # --------------------------------------------------------------------------- FORB
@@ -492,12 +444,12 @@ class TestCheckForbidden(ToolCase):
         self.tree('forbidden_good')   # contains request.session[KEY] = dict(...)
         self.assertClean('forbidden')
         # every in-place form on its own (each line must be caught separately)
-        for line in ("request.session.get('woow_doc_grants', {})[str(k)] = {}",
-                     "request.session.get('woow_doc_grants').pop(k)",
-                     "request.session.setdefault('woow_doc_grants', {})[k] = {}",
-                     "http.request.session['woow_doc_grants'][k] = {}",
-                     "odoo.http.request.session['woow_doc_grants'].update({})",
-                     "request.session['woow_doc_grants'][k] = {}",
+        for line in ("request.session.get('woow_doc_state', {})[str(k)] = {}",
+                     "request.session.get('woow_doc_state').pop(k)",
+                     "request.session.setdefault('woow_doc_state', {})[k] = {}",
+                     "http.request.session['woow_doc_state'][k] = {}",
+                     "odoo.http.request.session['woow_doc_state'].update({})",
+                     "request.session['woow_doc_state'][k] = {}",
                      "request.session.woow_seen = 1",
                      "request.session.update({'k': 1})",
                      "request.session.setdefault('k', 1)",
@@ -507,8 +459,8 @@ class TestCheckForbidden(ToolCase):
                          'def f(k):\n    %s\n' % line)
                 self.assertRule('forbidden', 'F-SESSION-MUT')
         self.put(W + 'controllers/y.py', 'from odoo.http import request\n\n\ndef f(k):\n'
-                 '    g = dict(request.session.get(\'woow_doc_grants\') or {})\n    g.pop(k, None)\n'
-                 '    request.session[\'woow_doc_grants\'] = g\n    request.session.should_rotate = True\n')
+                 '    g = dict(request.session.get(\'woow_doc_state\') or {})\n    g.pop(k, None)\n'
+                 '    request.session[\'woow_doc_state\'] = g\n    request.session.should_rotate = True\n')
         self.assertClean('forbidden')
 
     def test_session_uid_keys_rejected(self):
@@ -898,8 +850,8 @@ class TestCheckSweepConfig(ToolCase):
         """T-SEC-P3 (repo side): .security/ stays in always_human, so any change goes to a human."""
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         self.assertIn('.security/', cfg['always_human']['paths'])
-        # The 36 required files and the tests/test_reg_<slug>.py files that fixes added.
-        self.assertEqual(len(cfg['verify']['regression_tests']), 36 + 10)
+        # The 33 required files and the tests/test_reg_<slug>.py files that fixes added.
+        self.assertEqual(len(cfg['verify']['regression_tests']), 33 + 10)
 
     def test_check_workflow_rules(self):
         """T-STAT-10 / sec 8: no pull_request_target, read-only permissions, SHA-pinned actions."""
@@ -917,7 +869,7 @@ class TestCheckSweepConfig(ToolCase):
     def test_repo_hygiene_export_ignore_blocked(self):
         """T-STAT-12 / T-SEC-P4: export-ignore anywhere is rejected (CFG and CLEAN)."""
         self.assertClean('sweep_config')
-        _write(self.root, W + '.gitattributes', 'controllers/share.py export-ignore\n')
+        _write(self.root, W + '.gitattributes', 'controllers/main.py export-ignore\n')
         self.assertRule('sweep_config', 'CFG-ATTR')
         self.assertRule('cleanroom', 'CLEAN-TREE')
 
@@ -1020,7 +972,6 @@ class TestRepo(unittest.TestCase):
         for path in data:
             self.assertTrue(os.path.isfile(os.path.join(REPO, W, path)), path)
         self.assertEqual(set(manifest['assets']), {'web.assets_backend', 'web.assets_frontend',
-                                                   'woow_document_management.assets_share',
                                                    'web.assets_tests'})
 
     def test_tests_init_day0(self):
@@ -1033,7 +984,7 @@ class TestRepo(unittest.TestCase):
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 38 + 10)   # the ten tests/test_reg_<slug>.py files
+        self.assertEqual(len(imported), 35 + 10)   # the ten tests/test_reg_<slug>.py files
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""
@@ -1121,7 +1072,7 @@ class TestServerFieldsDeclared(unittest.TestCase):
 
     def test_every_model_declares_the_fields_that_only_the_server_sets(self):
         models = self._models()
-        self.assertGreaterEqual(len(models), 14)
+        self.assertGreaterEqual(len(models), 10)
         for model, (relpath, inherited, declares) in sorted(models.items()):
             with self.subTest(model=model):
                 if model in self.FORM_ONLY:

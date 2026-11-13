@@ -33,18 +33,13 @@ always_human:
   - woow_document_management/models/ir_attachment.py
   - woow_document_management/models/guard_mixin.py
   - woow_document_management/models/mail_thread_guard.py
-  - woow_document_management/models/document_share.py
-  - woow_document_management/models/share_service.py
   - woow_document_management/models/document_log.py
   - woow_document_management/models/settings.py
   - woow_document_management/models/quota.py
-  - woow_document_management/controllers/share.py
   - woow_document_management/controllers/streaming.py
-  - woow_document_management/services/tokens.py
   - woow_document_management/services/client_ip.py
   - woow_document_management/services/folding.py
   - woow_document_management/services/locks.py
-  - woow_document_management/static/src/share/
   - woow_document_management/tests/EXPECTED_MIN.json
   severities: [critical, high]
   topics: [token, password, sudo, access_token, session, mail.template, ir.attachment]
@@ -71,9 +66,6 @@ verify:
   - woow_document_management/tests/test_zip_builder.py
   - woow_document_management/tests/test_internal_routes.py
   - woow_document_management/tests/test_native_routes.py
-  - woow_document_management/tests/test_share_token.py
-  - woow_document_management/tests/test_share_routes.py
-  - woow_document_management/tests/test_mail_share.py
   - woow_document_management/tests/test_trash_lifecycle.py
   - woow_document_management/tests/test_audit_log.py
   - woow_document_management/tests/test_cron.py

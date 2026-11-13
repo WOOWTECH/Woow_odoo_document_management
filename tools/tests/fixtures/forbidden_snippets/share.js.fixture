@@ -1,6 +1,0 @@
-#! target=woow_document_management/static/src/share/x.js expect=F-SHARE-JS
-export function f(token) {
-    localStorage.setItem("t", token);
-    console.log(token);
-    window.parent.postMessage(token, "*");
-}

@@ -4,7 +4,7 @@
 #
 # Run every repository check: the 8 static tools, their self-tests, semgrep and gitleaks.
 #   sh tools/run_all.sh [--g1]
-# --g1 is passed to the tools (release gate: exact sudo counts, no WOOW-STUB marker, 17 entry points).
+# --g1 is passed to the tools (release gate: exact sudo counts, no WOOW-STUB marker, 10 entry points).
 # semgrep runs when it is on PATH (always in CI: WOOW_REQUIRE_SEMGREP=1 makes a missing semgrep fail).
 # gitleaks must be available (PATH or ~/.local/bin); a missing gitleaks fails.
 # Exit code: 0 when everything passed, 1 otherwise.

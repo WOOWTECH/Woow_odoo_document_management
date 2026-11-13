@@ -13,15 +13,13 @@ groups:
   group_woow_document_manager: {category: module_category_woow_document, implied: [group_woow_document_user]}
   group_woow_document_attachment_overview: {category: null, implied: [base.group_user]}
 categories: [module_category_woow_document]
-company_models: [woow.document.folder, woow.document.folder.access, woow.document, woow.document.tag, woow.document.share, woow.document.log]
+company_models: [woow.document.folder, woow.document.folder.access, woow.document, woow.document.tag, woow.document.log]
 acl:
   woow.document.folder: {user: '1110', manager: '1111', portal: '1100'}
   woow.document.folder.access: {user: '1111', manager: '1111'}
   woow.document: {user: '1110', manager: '1111', portal: '1010'}
   woow.document.tag: {user: '1010', manager: '1111'}
-  woow.document.share: {user: '1110', manager: '1111'}
   woow.document.log: {user: '1000', manager: '1000'}
-  woow.document.share.wizard: {user: '1110', manager: '1110'}
   woow.document.move.wizard: {user: '1110', manager: '1110'}
   woow.document.restore.wizard: {user: '1110', manager: '1110'}
   woow.document.purge.wizard: {user: '1110', manager: '1110'}
@@ -149,24 +147,6 @@ rules:
   groups: [user]
   perms: '1000'
   domain: "[(1, '=', 1)]"
-- id: rule_woow_document_share_company
-  ref: R-S0
-  model: woow.document.share
-  groups: []
-  perms: '1111'
-  domain: "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]"
-- id: rule_woow_document_share_user_own
-  ref: R-S1
-  model: woow.document.share
-  groups: [user]
-  perms: '1111'
-  domain: "[('create_uid', '=', user.id)]"
-- id: rule_woow_document_share_manager
-  ref: R-S2
-  model: woow.document.share
-  groups: [manager]
-  perms: '1111'
-  domain: "[(1, '=', 1)]"
 - id: rule_woow_document_log_company
   ref: R-L0
   model: woow.document.log
@@ -178,20 +158,14 @@ rules:
   model: woow.document.log
   groups: [user]
   perms: '1000'
-  domain: "['|', ('user_id', '=', user.id), ('share_id.create_uid', '=', user.id)]"
+  domain: "[('user_id', '=', user.id)]"
 - id: rule_woow_document_log_manager
   ref: R-L2
   model: woow.document.log
   groups: [manager]
   perms: '1000'
   domain: "[(1, '=', 1)]"
-# R-W1..R-W6: a wizard row is its creator's alone (core has no owner rule for transient models).
-- id: rule_woow_document_share_wizard_owner
-  ref: R-W1
-  model: woow.document.share.wizard
-  groups: [user]
-  perms: '1111'
-  domain: "[('create_uid', '=', user.id)]"
+# R-W2..R-W6: a wizard row is its creator's alone (core has no owner rule for transient models).
 - id: rule_woow_document_move_wizard_owner
   ref: R-W2
   model: woow.document.move.wizard

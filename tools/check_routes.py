@@ -4,8 +4,8 @@
 
 R1  routes only in */controllers/*.py; decorator arguments are literals (max_content_length may
     be the integer expression 95 * 1024 * 1024 or the name max_upload_body)
-R2  methods=[...] written out, GET/POST only; upload/unlock/open/close routes are POST
-R3  auth written out, 'user' or 'public'; 'public' only in woow_document_management/controllers/share.py
+R2  methods=[...] written out, GET/POST only; upload routes are POST
+R3  auth written out as 'user' (auth='public' and auth='none' are never allowed)
 R4  type absent or 'http'            R5  no csrf= argument at all
 R6  path parameters only <int:name>  R7  no cors=, readonly=True, save_session=False
 R8  upload routes set max_content_length (= 99,614,720, or max_upload_body)
@@ -15,10 +15,7 @@ R9  no path-less @route() overrides; no inherited core routes: controller classe
     own @route (an undecorated override inherits the parent's routing, http.py
     _generate_routing_rules); core CustomerPortal route methods are never overridden
 R10 no /web/, /mail/, /portal/, /website/, /json/ prefix
-R11 auth='public' functions start with self._share_entry(...); the GET /woow-docs/s landing
-    instead must not use .env[...] or bind request.env / request.session to a name, call
-    .touch( / _log_event( / create( / write( / unlink(, or change request.session (item or
-    attribute assignment, del, update/pop/setdefault/clear/popitem)
+R11 retired: no route is public, so R3 leaves nothing to check there (the numbers stay as they are)
 R1 also covers the decorator form: odoo.http.route under any import alias counts, a route
     object may only be used directly as @<route>(...), and controller functions carry no other
     decorator than staticmethod / classmethod.
@@ -26,7 +23,7 @@ R12 every route equals a row of tools/routes.lock.json (--g1: the two sets are e
 R13 website=True only in controllers/portal.py
 
 --emit-entry-points prints the entry point list (one per decorated route + the fixed
-CustomerPortal._prepare_home_portal_values entry; 17 for the final code). --from-lock builds it
+CustomerPortal._prepare_home_portal_values entry; 10 for the final code). --from-lock builds it
 from tools/routes.lock.json instead of the code. --target compares the list with a private
 target YAML file (context.entry_points).
 """
@@ -41,13 +38,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _astlib as A  # noqa: E402
 
-PUBLIC_FILE = 'woow_document_management/controllers/share.py'
 PORTAL_FILE = 'woow_document_management/controllers/portal.py'
 LOCK_FILE = 'tools/routes.lock.json'
-LANDING = '/woow-docs/s'
 MAX_BODY = 95 * 1024 * 1024
 FORBIDDEN_PREFIXES = ('/web/', '/mail/', '/portal/', '/website/', '/json/')
-POST_WORDS = ('upload', 'unlock', 'open', 'close')
+POST_WORDS = ('upload',)
 PARAM_RE = re.compile(r'<([^>]*)>')
 HOME_ENTRY = {
     'route': 'CustomerPortal._prepare_home_portal_values (core /my/counters is NOT overridden)',
@@ -62,9 +57,6 @@ CORE_PORTAL_ROUTE_METHODS = frozenset({
     'attachment_remove',
 })
 ALLOWED_PLAIN_DECORATORS = ('staticmethod', 'classmethod')
-SESSION_MUTATORS = ('update', 'pop', 'setdefault', 'clear', 'popitem')
-SESSION_SLOTS = ('can_save', 'is_dirty', 'is_new', 'should_rotate', 'sid')
-LANDING_WRITE_CALLS = ('touch', '_log_event', 'create', 'write', 'unlink')
 
 
 def _is_route_decorator(dec, aliases=None):
@@ -239,60 +231,6 @@ def _info(relpath, func, dec):
     }, problems
 
 
-def _is_request_attr(node, attr):
-    return isinstance(node, ast.Attribute) and node.attr == attr and A.req_dotted(node) == 'request.' + attr
-
-
-def _is_session_value(node):
-    """request.session[...] or request.session.get(...) / .setdefault(...)."""
-    if isinstance(node, ast.Subscript):
-        return _is_request_attr(node.value, 'session')
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-            and node.func.attr in ('get', 'setdefault'):
-        return _is_request_attr(node.func.value, 'session')
-    return False
-
-
-def _r11_landing(relpath, func, out):
-    def bad(node, message):
-        out.append(A.Violation(relpath, node.lineno, 'R11', 'landing page must not ' + message))
-
-    for node in ast.walk(func):
-        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) \
-                and node.value.attr == 'env':
-            bad(node, 'use .env[...] (no woow.* model, no data access)')
-        if isinstance(node, ast.Call):
-            name = A.call_name(node)
-            if name in LANDING_WRITE_CALLS:
-                bad(node, 'call %s(' % name)
-            if name in SESSION_MUTATORS and isinstance(node.func, ast.Attribute) and (
-                    _is_request_attr(node.func.value, 'session') or _is_session_value(node.func.value)):
-                bad(node, 'change request.session (%s()' % name)
-        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.NamedExpr)):
-            value = node.value
-            if value is not None and (_is_request_attr(value, 'env') or _is_request_attr(value, 'session')):
-                bad(node, 'bind request.env / request.session to a name')
-        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):
-            targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
-            for target in targets:
-                if isinstance(target, ast.Subscript) and A.req_dotted(target).startswith('request.session'):
-                    bad(node, 'assign request.session[...]')
-                elif isinstance(target, ast.Attribute) and _is_request_attr(target.value, 'session'):
-                    bad(node, 'assign request.session.%s' % target.attr)
-
-
-def _r11_entry(stmt):
-    if isinstance(stmt, ast.Assign):
-        value = stmt.value
-    elif isinstance(stmt, ast.Expr):
-        value = stmt.value
-    else:
-        return False
-    return (isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute)
-            and value.func.attr == '_share_entry' and isinstance(value.func.value, ast.Name)
-            and value.func.value.id == 'self')
-
-
 def check_route(relpath, func, dec, info, problems, out):
     for rule, message in problems:
         out.append(A.Violation(relpath, dec.lineno, rule, message))
@@ -309,14 +247,11 @@ def check_route(relpath, func, dec, info, problems, out):
             out.append(A.Violation(relpath, dec.lineno, 'R2', 'only GET and POST are allowed'))
         text = ' '.join([func.name.lower()] + [r.lower() for r in info['routes']])
         if any(w in text for w in POST_WORDS) and list(methods) != ['POST']:
-            out.append(A.Violation(relpath, dec.lineno, 'R2',
-                                   'upload/unlock/open/close routes must be POST only'))
+            out.append(A.Violation(relpath, dec.lineno, 'R2', 'upload routes must be POST only'))
     auth = info['auth']
-    if auth not in ('user', 'public'):
+    if auth != 'user':
         out.append(A.Violation(relpath, dec.lineno, 'R3',
-                               "auth must be written out as 'user' or 'public' (got %r)" % (auth,)))
-    if auth == 'public' and relpath != PUBLIC_FILE:
-        out.append(A.Violation(relpath, dec.lineno, 'R3', "auth='public' only in %s" % PUBLIC_FILE))
+                               "auth must be written out as 'user' (got %r)" % (auth,)))
     if info['type'] != 'http':
         out.append(A.Violation(relpath, dec.lineno, 'R4', "type must be absent or 'http'"))
     if 'csrf' in kws:
@@ -340,12 +275,6 @@ def check_route(relpath, func, dec, info, problems, out):
                                'upload routes need max_content_length=95 * 1024 * 1024'))
     if info['website'] and relpath != PORTAL_FILE:
         out.append(A.Violation(relpath, dec.lineno, 'R13', 'website=True only in %s' % PORTAL_FILE))
-    if auth == 'public':
-        if info['routes'] == [LANDING]:
-            _r11_landing(relpath, func, out)
-        elif not _r11_entry(A.first_statement(func)):
-            out.append(A.Violation(relpath, func.lineno, 'R11',
-                                   'public route must start with self._share_entry(...)'))
 
 
 def lock_key(row):
@@ -403,9 +332,9 @@ def check(root, args):
             if lock_key(row) not in code_keys:
                 out.append(A.Violation(LOCK_FILE, 1, 'R12',
                                        'locked route %s is not implemented' % row.get('func')))
-        if len(infos) + 1 != 17:
+        if len(infos) + 1 != 10:
             out.append(A.Violation(LOCK_FILE, 1, 'R12',
-                                   'expected 17 entry points, found %d' % (len(infos) + 1)))
+                                   'expected 10 entry points, found %d' % (len(infos) + 1)))
     if getattr(args, 'target', None):
         same, want, got = compare_target(entry_points(lock if args.from_lock else infos), args.target)
         if not same:

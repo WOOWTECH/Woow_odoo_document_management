@@ -5,10 +5,6 @@
 # Any pg_*advisory* outside services/locks.py fails, and locks.py must not call builtin hash().
 version: 1
 entries:
-- id: Q1
-  file: woow_document_management/models/document_log.py
-  functions: [_log_event]
-  note: denied-event bucket upsert, ER-28 point 2 SQL with the conflict key on the plain link_ref column (deleting a link clears share_id but never link_ref)
 - id: Q2
   file: woow_document_management/models/quota.py
   functions: [_usage_bytes]
@@ -18,21 +14,9 @@ entries:
   functions: [init]
   note: fixed-string DDL, folder name unique index
 - id: Q3
-  file: woow_document_management/models/document_log.py
-  functions: [init]
-  note: fixed-string DDL, denied bucket unique index on link_ref (ER-28 point 1, key column changed) with the one-time carry-over of the link ids of earlier rows and the drop of the earlier index, which is the marker for it
-- id: Q3
   file: woow_document_management/models/document_tag.py
   functions: [init]
   note: fixed-string DDL, active tag name and company unique index
-- id: Q3
-  file: woow_document_management/models/document_share.py
-  functions: [init]
-  note: fixed-string DDL, share token hash unique index
-- id: Q3
-  file: woow_document_management/wizards/share_wizard.py
-  functions: [init]
-  note: fixed-string DDL, drop the legacy plaintext password column of the share wizard
 - id: Q4
   file: woow_document_management/services/locks.py
   functions: [try_lock, lock, bounded_wait]
@@ -53,42 +37,6 @@ entries:
   file: woow_document_management/models/folder_access.py
   functions: [_lock_folders]
   note: force serializable row-version conflict under repeatable read before grant insert
-- id: Q9
-  file: woow_document_management/models/document_log.py
-  functions: [_count_share_unlock_failures]
-  note: creator-scoped aggregate of denied share unlock attempts without exposing restricted IP hashes
-- id: Q13
-  file: woow_document_management/models/document_log.py
-  functions: [_peek_source, _lock_source, _add_one, _release_source]
-  note: per-source denied counter row across share ids (no share existence oracle); snapshot read, locked read and increment that fail with serialization_failure on a stale repeatable read snapshot, removal of a row that counts nothing
-- id: Q14
-  file: woow_document_management/models/document_log.py
-  functions: [_take_slot, _short_transaction, _minute_is_full, _reserve]
-  note: per-minute denied record capacity; refused at once when the calling transaction's snapshot shows the minute full, otherwise one slot reserved in its own short read committed transaction for the calling transaction's minute, never past the maximum (a refusal's own short transaction reserves its slot on its own cursor, together with the row that needs it); the isolation level of those short transactions
-- id: Q22
-  file: woow_document_management/models/document_log.py
-  functions: [_count_below]
-  note: per-source denied counter of the refusals anybody can cause (no valid link, no grant): one statement raises the minute's row while it is below the limit, in a short read committed transaction that commits at once, so concurrent requests of one source neither wait for nor fail on each other; a new source's row is inserted with count 1 after a slot of the minute capacity
-- id: Q23
-  file: woow_document_management/models/document_log.py
-  functions: [_bump_denied_bucket]
-  note: denied audit bucket of those refusals (per event, source and minute, never per link): an existing bucket is raised by one statement, a new one is inserted after a slot, each in a short read committed transaction that commits at once
-- id: Q16
-  file: woow_document_management/models/document_log.py
-  functions: [_denied_bucket_exists]
-  note: existing per-source minute buckets (keyed like the unique index, on link_ref) do not consume another capacity slot
-- id: Q3
-  file: woow_document_management/models/document_log.py
-  functions: [init]
-  note: fixed-string DDL, global denied audit budget minute and per-IP denied counter unique indexes
-- id: Q11
-  file: woow_document_management/models/share_service.py
-  functions: [_woow_send_link]
-  note: sender row version barrier before hourly share mail count under repeatable read
-- id: Q12
-  file: woow_document_management/models/share_service.py
-  functions: [_woow_lock_share_row, _woow_count_on_share_row]
-  note: share row lock before the download count and the password failure counts under repeatable read, and the row version written only when a download or a wrong password is counted
 - id: Q17
   file: woow_document_management/models/ir_attachment.py
   functions: [_woow_field_attachment_ids, _woow_document_file_row]

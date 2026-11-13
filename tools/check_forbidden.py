@@ -33,7 +33,6 @@ Text:
   F-JS-SINK       innerHTML, outerHTML, insertAdjacentHTML, markup(, document.write, eval(,
                   new Function(, window.open( without noopener         security/*.xml, controllers,
   F-BLANK         target="_blank" without rel noopener (XML, JS)        models (T-STAT-24, ER-04)
-  F-SHARE-JS      static/src/share/**: storage, console., postMessage, location.assign(, location.href =
   F-EICAR         the EICAR test string
   F-STUB          WOOW-STUB markers in non-test files (--g1 only; T-STAT-16)
 tools/ and tools/tests/fixtures/ are not scanned (they spell the patterns out).
@@ -62,14 +61,6 @@ JS_SINKS = [
     (re.compile(r'document\.write\s*\('), 'document.write('),
     (re.compile(r'(?<![\w.])eval\s*\('), 'eval('),
     (re.compile(r'new\s+Function\s*\('), 'new Function('),
-]
-SHARE_JS = [
-    (re.compile(r'\blocalStorage\b'), 'localStorage'),
-    (re.compile(r'\bsessionStorage\b'), 'sessionStorage'),
-    (re.compile(r'\bconsole\.'), 'console.'),
-    (re.compile(r'\bpostMessage\b'), 'postMessage'),
-    (re.compile(r'location\.assign\s*\('), 'location.assign('),
-    (re.compile(r'location\.href\s*='), 'location.href ='),
 ]
 BLANK_RE = re.compile(r'target\s*=\s*["\']_blank["\']')
 STUB_MARK = 'WOOW-' + 'STUB'
@@ -370,11 +361,6 @@ def check_text(relpath, text, args, out):
                     out.append(A.Violation(relpath, n, 'F-JS-SINK', '%s is not allowed' % label))
             if re.search(r'window\.open\s*\(', code) and 'noopener' not in code:
                 out.append(A.Violation(relpath, n, 'F-JS-SINK', 'window.open( without noopener'))
-            if '/static/src/share/' in '/' + relpath:
-                for rx, label in SHARE_JS:
-                    if rx.search(code):
-                        out.append(A.Violation(relpath, n, 'F-SHARE-JS',
-                                               '%s is not allowed on the share landing page' % label))
 
 
 def check(root, args):
