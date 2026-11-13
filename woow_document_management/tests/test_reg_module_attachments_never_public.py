@@ -31,7 +31,7 @@ from odoo.tests.common import JsonRpcException
 from ..models.ir_attachment import IrAttachment
 from ..services.constants import WOOW_MODELS
 from .test_reg_chatter_attachment_tokens import _ChatterFixture, _png
-from .test_reg_server_columns_ignore_defaults import _store
+from .test_reg_server_columns_ignore_defaults import WAYS, _forget, _store
 
 # Values that are not truthy and that a Char column nevertheless keeps as text ('0', '0.0', '[]',
 # '{}', '()'): the ORM stores ``str(value)`` for everything that is not None or False.
@@ -59,6 +59,24 @@ class _OpenFiles(_ChatterFixture):
             'name': name, 'raw': content, 'type': 'binary', 'mimetype': mimetype,
             'res_model': 'mail.compose.message', 'res_id': 0,
             'public': True, 'access_token': 'pending-%s' % secrets.token_hex(8)})
+
+    def _notify_open_file(self, user, record, name, content, mimetype='text/plain'):
+        """``user`` sends a notification on ``record`` that links the pending file they made open.
+
+        ``message_notify`` takes any model and id and links the pending files as superuser, as a
+        post does. Returns the attachment and the token the poster had put on it.
+        """
+        pending = self._pending_open(user, name, content, mimetype)
+        token = pending.sudo().access_token
+        self.assertEqual(self._stored(pending), (True, token))
+        message = self.env['res.partner'].with_user(user).message_notify(
+            model=record._name, res_id=record.id, body='See the file',
+            partner_ids=[user.partner_id.id], attachment_ids=[pending.id])
+        self.env.flush_all()
+        attachment = message.sudo().attachment_ids
+        self.assertEqual(attachment, pending.sudo())
+        self.assertEqual((attachment.res_model, attachment.res_id), (record._name, record.id))
+        return attachment, token
 
     def _post_open_file(self, user, record, name, content, mimetype='text/plain'):
         """``user`` posts a comment with a file that is public and tokenised before the post.
@@ -102,15 +120,23 @@ class TestAFileOfAModuleRecordNeverOpensForAVisitor(_OpenFiles, HttpCase):
         self.assertNotEqual(response.content, content, path)
         self.assertNotIn('public', response.headers.get('Cache-Control', ''), path)
 
-    def _assert_closed_everywhere(self, attachment, token, content, route='content'):
-        """The requests that gave the file away while it was public, with and without ``unique``."""
+    @staticmethod
+    def _shapes(attachment, token, route='content'):
+        """The requests that gave the file away while it was public, with and without ``unique``.
+
+        The control (a public file of another model) makes the same requests, so that none of
+        them is closed only because the route does not exist.
+        """
         base = '/web/%s/%d' % (route, attachment.id)
         paths = [base, base + '?unique=1', base + '/open.bin', base + '/open.bin?unique=1',
                  base + '?access_token=%s' % token, base + '?access_token=%s&unique=1' % token]
         if route == 'content':
             paths += [base + '?download=1', base + '?download=1&unique=1',
                       '/web/content?model=ir.attachment&id=%d&field=raw' % attachment.id]
-        for path in paths:
+        return paths
+
+    def _assert_closed_everywhere(self, attachment, token, content, route='content'):
+        for path in self._shapes(attachment, token, route):
             self._assert_closed(path, content)
 
     def _assert_editor_still_reads(self, attachment, content):
@@ -220,7 +246,11 @@ class TestAFileOfAModuleRecordNeverOpensForAVisitor(_OpenFiles, HttpCase):
         self.assertEqual(self._stored(source), (True, 'source-token'))
 
     def test_a_public_file_of_another_model_stays_open_to_visitors(self):
-        """The control: the same requests are answered for a public file of a contact."""
+        """The control: the requests of the closed tests, answered for a public file of a contact.
+
+        Every shape is made for the file as it is made for the closed ones, with the token the file
+        of another model keeps: the same url that is a 404 above is a 200 here.
+        """
         partner = self.env['res.partner'].sudo().create({'name': 'Open control partner'})
         picture = _png()
         files = {}
@@ -229,20 +259,29 @@ class TestAFileOfAModuleRecordNeverOpensForAVisitor(_OpenFiles, HttpCase):
             files[name] = self.env['ir.attachment'].sudo().create({
                 'name': name, 'raw': content, 'type': 'binary', 'mimetype': mimetype,
                 'res_model': 'res.partner', 'res_id': partner.id, 'public': True})
+            files[name].generate_access_token()
         self.env.flush_all()
-        for name, content in (('open-control.txt', b'control bytes'),
-                              ('open-control.png', picture)):
+        for name, content, route in (('open-control.txt', b'control bytes', 'content'),
+                                     ('open-control.png', picture, 'image'),
+                                     ('open-control.png', picture, 'content')):
             attachment = files[name]
-            for path in ('/web/content/%d', '/web/content/%d?unique=1',
-                         '/web/content/%d?download=1&unique=1'):
+            self.assertEqual(self._stored(attachment), (True, attachment.access_token))
+            for path in self._shapes(attachment, attachment.access_token, route):
                 with self.subTest(path=path, file=name):
-                    response = self._visitor(path % attachment.id)
+                    response = self._visitor(path)
                     self.assertEqual((response.status_code, response.content), (200, content))
                     if 'unique=1' in path:
                         self.assertIn('public', response.headers.get('Cache-Control', ''))
-        response = self._visitor('/web/image/%d?unique=1' % files['open-control.png'].id)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, picture)
+
+    def test_a_pending_file_that_a_notification_links_is_closed_for_a_visitor(self):
+        """``message_notify`` links the pending file of its caller as superuser, as a post does."""
+        for record in self.records:
+            with self.subTest(model=record._name):
+                attachment, token = self._notify_open_file(
+                    self.editor, record, 'notice.txt', b'notice bytes')
+                self.assertEqual(self._stored(attachment), (False, None))
+                self._assert_closed_everywhere(attachment, token, b'notice bytes')
+                self._assert_editor_still_reads(attachment, b'notice bytes')
 
 
 @tagged('woow_docmgmt_core')
@@ -505,6 +544,149 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
                 self.assertEqual(self._stored(attachment), (False, None))
                 self.assertIn('/web/image/%d?access_token=' % attachment.id, str(reply.body))
 
+    # -- the files of a post, with a stored default in force ------------------------------------
+    def _defaults_in_force(self, way, defaults=None):
+        """Put the defaults of ``way`` in force and return the context keys of the 'context' way.
+
+        'personal' is what the editor stored for himself (any internal user may), 'site' what an
+        administrator stored for everybody, 'context' the ``default_`` keys of a call. Core makes
+        the files of a post as superuser under the uid of the poster, so the poster's own defaults
+        and the site's reach that create call. The keys of a context do not: ``sudo()`` takes the
+        ``default_`` keys out of the context of a caller who is not the superuser, so they reach
+        the create only in a call that was a superuser's already (``_as_the_caller``).
+        """
+        defaults = defaults or {'public': True, 'access_token': 'default-token'}
+        if way == 'context':
+            _forget(self.env, 'ir.attachment')
+            return {'default_%s' % name: value for name, value in defaults.items()}
+        _store(self.env, 'ir.attachment', defaults, user=self.editor if way == 'personal' else None)
+        return {}
+
+    def _as_the_caller(self, records, context):
+        """``records`` as the editor calls them, with the keys of ``context`` set.
+
+        Keys that are set before ``sudo()`` are dropped by it. The call is made a superuser's
+        first when there are keys (a cron or a gateway is one already), and that is the way they
+        reach the create.
+        """
+        records = records.with_user(self.editor)
+        return records.sudo().with_context(**context) if context else records
+
+    def _post_a_file(self, record, how, context):
+        """The editor posts a file on ``record``: core creates it, or links it, as superuser."""
+        poster = self._as_the_caller(record, context)
+        if how == 'a file':
+            return poster.message_post(
+                body='See the file', message_type='comment', subtype_xmlid='mail.mt_comment',
+                attachments=[('plain.txt', b'plain bytes')])
+        if how == 'a picture':
+            return poster.message_post(
+                body=Markup('<p>Look <img src="cid:pic"/></p>'), message_type='comment',
+                subtype_xmlid='mail.mt_comment',
+                attachments=[('inline.png', _png(), {'cid': 'pic'})])
+        if how == 'a notification':
+            return self._as_the_caller(self.env['res.partner'], context).message_notify(
+                model=record._name, res_id=record.id, body='See the file',
+                partner_ids=[self.editor.partner_id.id],
+                attachments=[('notice.txt', b'notice bytes')])
+        # A pending file: the editor makes it (not a row of a module record, so it takes the
+        # defaults) and the post links it.
+        pending = self.env['ir.attachment'].with_user(self.editor).with_context(**context).create(
+            self._values('pending.txt', 'mail.compose.message', 0))
+        return poster.message_post(
+            body='See the file', message_type='comment', subtype_xmlid='mail.mt_comment',
+            attachment_ids=[pending.id])
+
+    def test_a_default_of_any_kind_does_not_open_the_file_of_a_post(self):
+        """The defaults reach the create of the file in three ways, and none of them opens it.
+
+        The ones the poster stored and the ones of the site are not keys of the context, so a guard
+        that read only ``default_`` keys would leave the file public and tokenised.
+        """
+        partner = self.env['res.partner'].sudo().create({'name': 'Default control partner'})
+        for way in WAYS:
+            context = self._defaults_in_force(way)
+            with self.subTest(way=way, model='res.partner'):
+                # The control: the same post on a contact keeps what the default gave the file, so
+                # the default does reach the create call that the guard sees for a module record.
+                poster = self._as_the_caller(partner, context).sudo()
+                control = poster.message_post(
+                    body='See the file', message_type='comment',
+                    subtype_xmlid='mail.mt_comment', attachments=[('plain.txt', b'plain bytes')])
+                self.env.flush_all()
+                self.assertEqual(self._stored(control.sudo().attachment_ids),
+                                 (True, 'default-token'))
+            for record in (self.document, self.folder):
+                for how in ('a file', 'a picture', 'a notification', 'a pending file'):
+                    with self.subTest(way=way, model=record._name, how=how):
+                        message = self._post_a_file(record, how, context)
+                        self.env.flush_all()
+                        attachment = message.sudo().attachment_ids
+                        self.assertEqual(len(attachment), 1)
+                        self.assertEqual((attachment.res_model, attachment.res_id),
+                                         (record._name, record.id))
+                        self.assertEqual(self._stored(attachment), (False, None))
+
+    def test_a_default_makes_a_caller_who_is_not_the_superuser_refused(self):
+        """The same three ways, judged for the caller who stored them: the refusal of today."""
+        editor = self.env['ir.attachment'].with_user(self.editor)
+        for way in WAYS:
+            for name, value in (('public', True), ('access_token', 'default-token')):
+                with self.subTest(way=way, default=name):
+                    context = self._defaults_in_force(way, {name: value})
+                    with self.assertRaises(AccessError):
+                        editor.with_context(**context).create(
+                            self._values('refused.txt', 'woow.document', self.document.id))
+        _forget(self.env, 'ir.attachment')
+        row = editor.create(self._values('allowed.txt', 'woow.document', self.document.id))
+        self.assertEqual(self._stored(row), (False, None))
+
+    def test_a_pending_file_that_a_notification_links_ends_closed(self):
+        for record in (self.document, self.folder):
+            with self.subTest(model=record._name):
+                attachment, _token = self._notify_open_file(
+                    self.editor, record, 'notice.txt', b'notice bytes')
+                self.assertEqual(self._stored(attachment), (False, None))
+
+    # -- what the look at the rows costs --------------------------------------------------------
+    def _statements(self, rows, vals, cold):
+        """The statements that ``write(vals)`` on ``rows`` runs, its UPDATE included.
+
+        ``cold`` empties the cache of the rows first, so that reading ``res_model`` is a SELECT.
+        Every call writes a new description: the ORM skips the UPDATE of a value that the cache
+        already holds, and the count would otherwise depend on the call before.
+        """
+        self._runs = getattr(self, '_runs', 0) + 1
+        vals = dict(vals, description='run %d' % self._runs)
+        self.env.flush_all()
+        if cold:
+            rows.invalidate_recordset()
+        else:
+            rows.mapped('res_model')
+        before = self.env.cr.sql_log_count
+        rows.write(vals)
+        self.env.flush_all()
+        return self.env.cr.sql_log_count - before
+
+    def test_the_look_at_the_rows_is_one_select_for_the_whole_set(self):
+        """A write that only names the flag or the token reads ``res_model`` once; others do not."""
+        for size in (1, 5):
+            rows = self.attachments.browse([
+                self._module_row('woow.document' if index % 2 else 'woow.document.folder').id
+                for index in range(size)])
+            for name, vals in (('the flag', {'public': True}), ('the token', {'access_token': 'x'}),
+                               ('a typed token', {'access_token': 0})):
+                with self.subTest(rows=size, vals=name):
+                    cold = self._statements(rows, vals, cold=True)
+                    warm = self._statements(rows, vals, cold=False)
+                    self.assertEqual(cold - warm, 1)
+            # The model is named, or nothing of the three: no row is read for the guard, so the
+            # cache makes no difference.
+            for name, vals in (('the model', {'res_model': 'woow.document', 'res_id': 0}),
+                               ('something else', {})):
+                with self.subTest(rows=size, vals=name):
+                    self.assertEqual(self._statements(rows, vals, cold=True),
+                                     self._statements(rows, vals, cold=False))
 
 @tagged('woow_docmgmt_core')
 class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, TransactionCase):

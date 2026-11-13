@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 247,
+    "core": 252,
     "files": 120,
     "portal": 3
   },
@@ -35,7 +35,7 @@
     "test_reg_create_batch_cap.py": 3,
     "test_reg_create_ignores_personal_defaults.py": 5,
     "test_reg_document_file_not_indexed.py": 1,
-    "test_reg_module_attachments_never_public.py": 28,
+    "test_reg_module_attachments_never_public.py": 33,
     "test_reg_notification_label.py": 4,
     "test_reg_notify_attachments_need_write.py": 8,
     "test_reg_portal_description_cap.py": 5,
