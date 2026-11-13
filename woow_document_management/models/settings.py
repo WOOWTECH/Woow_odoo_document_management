@@ -20,8 +20,7 @@ _PARAM_KEYS: tuple[str, ...] = (
     'portal_max_upload_mb', 'internal_max_upload_mb', 'max_files_per_upload', 'extra_extensions',
     'zip_max_files', 'zip_max_mb', 'zip_max_depth', 'zip_concurrency', 'quota_mb',
     'quota_warn_pct', 'quota_block_pct', 'log_retention_days', 'log_ip_mode', 'allow_root_create',
-    'tag_create_policy', 'mail_subject_include_name', 'trusted_proxies', 'client_ip_header',
-    'uninstall_confirm',
+    'tag_create_policy', 'trusted_proxies', 'client_ip_header', 'uninstall_confirm',
 )
 _READABLE_KEYS: frozenset[str] = frozenset(PARAM_PREFIX + k for k in _PARAM_KEYS) | {'database.secret'}
 _INT_RANGES = {
@@ -32,7 +31,7 @@ _INT_RANGES = {
     'quota_mb': (0, 10_000_000), 'quota_warn_pct': (1, 99),
     'quota_block_pct': (2, 100), 'log_retention_days': (30, 3650),
 }
-_BOOL_KEYS = frozenset(('allow_http_links', 'allow_root_create', 'mail_subject_include_name'))
+_BOOL_KEYS = frozenset(('allow_http_links', 'allow_root_create'))
 _CHOICES = {
     'log_ip_mode': frozenset(('truncate', 'hash', 'none')),
     'tag_create_policy': frozenset(('managers', 'users')),
@@ -61,7 +60,6 @@ class WoowDocSettings:
     log_ip_mode: str = 'truncate'
     allow_root_create: bool = False
     tag_create_policy: str = 'managers'
-    mail_subject_include_name: bool = False
     trusted_proxies: tuple = ()
     client_ip_header: str = ''
     uninstall_confirm: str = ''

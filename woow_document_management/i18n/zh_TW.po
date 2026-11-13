@@ -984,11 +984,6 @@ msgid "In Trash"
 msgstr "在回收桶中"
 
 #. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Include names in email subjects"
-msgstr "在電子郵件主旨中包含名稱"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__inherit_access
 msgid "Inherit Access"
 msgstr "沿用上層權限"
@@ -1935,11 +1930,6 @@ msgstr "稽核 IP 紀錄模式"
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_log_retention_days
 msgid "Woow Doc Log Retention Days"
 msgstr "稽核紀錄保留天數"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_mail_subject_include_name
-msgid "Woow Doc Mail Subject Include Name"
-msgstr "郵件主旨包含名稱"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_max_files_per_upload

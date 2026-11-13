@@ -39,7 +39,7 @@ class TestSettingsBounds(TransactionCase):
         self.assertEqual(self.reader._get_settings(), WoowDocSettings())
 
     def test_all_params_registered_for_uninstall(self):
-        self.assertEqual(len(_PARAM_KEYS), 22)
+        self.assertEqual(len(_PARAM_KEYS), 21)
         self.assertEqual(set(_PARAM_KEYS), set(WoowDocSettings.__dataclass_fields__))
 
     def test_set_values_bounds_and_audit(self):

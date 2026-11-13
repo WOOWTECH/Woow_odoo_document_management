@@ -34,8 +34,6 @@ class ResConfigSettings(models.TransientModel):
     woow_doc_tag_create_policy = fields.Selection(
         [('managers', 'Document administrators'), ('users', 'All document users')],
         default='managers', config_parameter=_P + 'tag_create_policy')
-    woow_doc_mail_subject_include_name = fields.Boolean(
-        config_parameter=_P + 'mail_subject_include_name')
     woow_doc_trusted_proxies = fields.Char(config_parameter=_P + 'trusted_proxies')
     woow_doc_client_ip_header = fields.Selection(
         [('', 'Peer address'), ('CF-Connecting-IP', 'Cloudflare address'),

@@ -419,7 +419,7 @@ POISON_ALERT_DAYS = 3
 
 ```python
 PARAM_PREFIX = 'woow_document_management.'
-_PARAM_KEYS: tuple[str, ...]          # 下表 22 個鍵（不含前綴），順序同下表
+_PARAM_KEYS: tuple[str, ...]          # 下表 21 個鍵（不含前綴），順序同下表
 _READABLE_KEYS: frozenset[str] = frozenset(PARAM_PREFIX + k for k in _PARAM_KEYS) | {'database.secret'}
 
 @dataclasses.dataclass(frozen=True)
@@ -458,7 +458,6 @@ class WoowDocumentSettings(models.AbstractModel):
 | log_ip_mode | str | truncate | truncate、hash、none |
 | allow_root_create | bool | False（ER-05） | — |
 | tag_create_policy | str | managers | managers、users |
-| mail_subject_include_name | bool | False | — |
 | trusted_proxies | tuple[ip_network, ...] | () | CIDR 清單（經 `client_ip.parse_trusted_proxies` 解析） |
 | client_ip_header | str | '' | ''、CF-Connecting-IP、X-Real-IP、X-Forwarded-For |
 | uninstall_confirm | str | '' | 原樣保留 |

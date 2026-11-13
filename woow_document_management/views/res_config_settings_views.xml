@@ -32,7 +32,6 @@
                         <setting string="Client IP header" help="Header in which the trusted proxy names the client address. The proxy must set it on every request and drop any value the client sent; the address appears in the audit log."><field name="woow_doc_client_ip_header"/></setting>
                         <setting string="Public address for notice emails"><field name="woow_doc_notice_base_url" placeholder="https://example.invalid"/></setting>
                         <setting string="Allow HTTP document links"><field name="woow_doc_allow_http_links"/></setting>
-                        <setting string="Include names in email subjects"><field name="woow_doc_mail_subject_include_name"/></setting>
                         <setting string="Uninstall confirmation"><field name="woow_doc_uninstall_confirm"/></setting>
                     </block>
                 </app>

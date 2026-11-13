@@ -44,7 +44,7 @@ class TestSettingsDefaultsOrm(TransactionCase):
         admin = self.env.ref('base.user_admin')
         settings = self.env['res.config.settings']
         module_fields = [name for name in settings._fields if name.startswith('woow_doc_')]
-        self.assertGreaterEqual(len(module_fields), 22)
+        self.assertGreaterEqual(len(module_fields), 21)
         values = settings.with_user(admin).default_get(_FIELDS)
         self.assertEqual(values['woow_doc_trusted_proxies'], _PROXY)
         self.assertEqual(values['woow_doc_log_retention_days'], 90)
