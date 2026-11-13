@@ -116,6 +116,7 @@ class TestAuditLog(TransactionCase):
             self.env, login='audit_reader_manager_ab', groups=_MANAGER,
             company_ids=[Command.set([company_a.id, company_b.id])])
         portal = new_test_user(self.env, login='audit_reader_portal', groups='base.group_portal')
+        plain = new_test_user(self.env, login='audit_reader_plain', groups='base.group_user')
 
         def logged(owner, company_id, **values):
             """The one row that ``_log_event`` writes for ``owner``."""
@@ -159,6 +160,11 @@ class TestAuditLog(TransactionCase):
             as_portal.search([('id', 'in', rows.ids)])
         with self.assertRaises(AccessError):
             portal_row.with_user(portal).read(['event'])
+        # An internal user who is in neither document group has no access to the log either.
+        as_plain = log.with_user(plain)
+        self.assertFalse(as_plain.has_access('read'))
+        with self.assertRaises(AccessError):
+            as_plain.search([('id', 'in', rows.ids)])
         # The address columns are for administrators: a user reads their own row without them.
         digest = hmac_ip(self.env['woow.document.settings']._audit_ip_key(), '203.0.113.5')
         columns = ('ip_hash', 'ip_display', 'user_agent')
