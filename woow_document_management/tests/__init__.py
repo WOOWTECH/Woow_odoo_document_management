@@ -47,3 +47,4 @@ from . import test_reg_notify_attachments_need_write
 from . import test_reg_access_create_authorizes_before_locking
 from . import test_reg_portal_description_cap
 from . import test_reg_chatter_attachment_tokens
+from . import test_reg_module_attachments_never_public

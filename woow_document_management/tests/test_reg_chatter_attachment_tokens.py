@@ -3,10 +3,12 @@
 """The attachments of documents and folders never carry or accept an access token.
 
 Core stores a token on chatter attachments as superuser, for the portal chatter route and for the
-links in the mail of a file that is too large to send, and the guard of ``ir.attachment.write``
-skips the superuser. A token would then open the file with no session at all, after the reader
-lost access and after the document was trashed. The module closes both ends: no token is stored
-for an attachment of its records, and none is accepted for one, whoever stored it.
+links in the mail of a file that is too large to send. A token would open the file with no session
+at all, after the reader lost access and after the document was trashed. The module closes both
+ends: no token is stored for an attachment of its records (``generate_access_token`` gives none,
+and ``create`` and ``write`` of ``ir.attachment`` take it off such a row in every environment, see
+``test_reg_module_attachments_never_public.py``), and none is accepted for one, whoever stored it:
+the tests here put a stored value there around the ORM and check the routes and the access check.
 """
 import base64
 import io
@@ -90,6 +92,21 @@ class _ChatterFixture:
         self.env.cr.execute('SELECT access_token FROM ir_attachment WHERE id = %s', (attachment.id,))
         return self.env.cr.fetchone()[0]
 
+    def _store_token(self, attachments, token):
+        """Put ``token`` in the token column of ``attachments``, around the ORM.
+
+        The ORM never stores a token on a row of a record of the module, in any environment, so a
+        value that something else left there (a statement of a database administrator, a copy of an
+        older database) is put there the way it could get there. The routes and the access check
+        must refuse it all the same.
+        """
+        self.env.flush_all()
+        self.env.cr.execute('UPDATE ir_attachment SET access_token = %s WHERE id = ANY(%s)',
+                            (token, attachments.ids))
+        attachments.invalidate_recordset(['access_token'])
+        for attachment in attachments:
+            self.assertEqual(self._stored_token(attachment), token)
+
 
 @tagged('woow_docmgmt_http')
 class TestChatterAttachmentTokensOverHttp(_ChatterFixture, HttpCase):
@@ -148,8 +165,7 @@ class TestChatterAttachmentTokensOverHttp(_ChatterFixture, HttpCase):
                 text = self._post_file(record, 'secret.txt', b'secret bytes')
                 image = self._post_file(record, 'secret.png', picture, 'image/png')
                 token = 'stored-%s' % secrets.token_hex(8)
-                (text | image).sudo().write({'access_token': token})
-                self.env.flush_all()
+                self._store_token(text | image, token)
                 for value in (token, 'any-other-value'):
                     for path in ('/web/content/%d?access_token=%s',
                                  '/web/content/%d?access_token=%s&unique=1',
@@ -183,8 +199,7 @@ class TestChatterAttachmentTokensOverHttp(_ChatterFixture, HttpCase):
                 grant = self._reader_grant()
                 attachment = self._post_file(record, 'late.txt', b'late bytes')
                 token = 'stored-%s' % secrets.token_hex(8)
-                attachment.sudo().write({'access_token': token})
-                self.env.flush_all()
+                self._store_token(attachment, token)
                 path = '/web/content/%d?access_token=%s&unique=1' % (attachment.id, token)
                 self._assert_closed(path, b'late bytes')
                 self.authenticate(self.reader.login, self.reader.login)
@@ -252,7 +267,7 @@ class TestChatterAttachmentTokenCalls(_ChatterFixture, TransactionCase):
     def test_a_token_stored_by_another_way_is_not_handed_out_either(self):
         """The call never returns a token for the file of a module record, a stored one included."""
         attachment = self._post_file(self.document, 'old.txt', b'old bytes')
-        attachment.sudo().write({'access_token': 'stored-by-superuser'})
+        self._store_token(attachment, 'stored-by-a-statement')
         self.assertEqual(attachment.generate_access_token(), [False])
 
     def test_a_mixed_set_gets_a_token_for_the_other_rows_only_and_keeps_the_order(self):
@@ -279,7 +294,7 @@ class TestChatterAttachmentTokenCalls(_ChatterFixture, TransactionCase):
         other = self._row('res.partner', partner.id)
         other_token = other.generate_access_token()[0]
         owned = self._row('woow.document', self.document.id)
-        owned.sudo().write({'access_token': 'stored-by-superuser'})
+        self._store_token(owned, 'stored-by-superuser')
         public = self.env.ref('base.public_user')
         for user in (public, self.reader, self.editor, self.env.user):
             for token in ('stored-by-superuser', 'any-other-value'):

@@ -1,6 +1,13 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""Narrow attachment guard for document fields and public-link metadata."""
+"""Narrow attachment guard for document fields and for what makes a file reachable without a session.
+
+The attachments of this module's records (``res_model`` in ``WOOW_MODELS``) are never public and
+never hold an access token: after any ``create`` or ``write``, in every environment, the superuser's
+included, both columns of such a row are empty. A caller who is not the superuser is refused with
+``AccessError``. The superuser is not: core makes and moves the files of a post as superuser and
+those calls must not fail, so what would open the row is taken out of the values instead.
+"""
 from odoo import _, api, models
 from odoo.exceptions import AccessError
 
@@ -9,6 +16,8 @@ from .guard_mixin import own_default_values
 
 GUARDED_WRITE_KEYS = ('raw', 'datas', 'db_datas', 'mimetype', 'type', 'url', 'res_model', 'res_id',
                       'res_field', 'public', 'access_token', 'store_fname')
+# What makes a file reachable without a session: the public flag of core and an access token.
+OPEN_KEYS = ('public', 'access_token')
 # A context with this key set has core store no indexed content for the file it saves.
 NO_INDEX_CTX_KEY = 'woow_no_index'
 # The file of a binary field of a document or folder is made as superuser, under the uid of the
@@ -43,18 +52,28 @@ class IrAttachment(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        # Core checks only explicit res_model/res_id before ORM defaults are applied.
-        # Resolve the same defaults now, so contextual values cannot bypass either
-        # the document guard or core's write check on the target record.
+        """A row of a record of this module is created without the public flag and without a token.
+
+        Core checks only explicit res_model/res_id before ORM defaults are applied. Resolve the
+        same defaults now, so contextual values cannot bypass either the document guard or core's
+        write check on the target record. A caller who is not the superuser is refused when the
+        row will belong to a module model and be public, tokenised or back a field. The superuser
+        is not refused, core makes the files of a post as superuser (those that the body of a post
+        refers to are created with a token that core has just made): the row is created with the
+        flag and the token set to ``False``, whether the values or a default would set them.
+        """
         keys = ('res_model', 'res_id', 'res_field', 'public', 'access_token')
         defaults = self.default_get(list(keys))
         checked = []
         for incoming in vals_list:
             effective = {key: incoming.get(key, defaults.get(key)) for key in keys}
-            if not self.env.su and effective['res_model'] in WOOW_MODELS and (
-                    effective['res_field'] or effective['public'] or effective['access_token']):
-                raise AccessError(_('Document attachments must be created through the document.'))
             vals = dict(incoming)
+            if effective['res_model'] in WOOW_MODELS:
+                opens = effective['public'] or effective['access_token']
+                if not self.env.su and (effective['res_field'] or opens):
+                    raise AccessError(_('Document attachments must be created through the document.'))
+                if opens:
+                    vals.update(dict.fromkeys(OPEN_KEYS, False))
             for key in ('res_model', 'res_id'):
                 if key not in vals and key in defaults:
                     vals[key] = defaults[key]
@@ -93,17 +112,46 @@ class IrAttachment(models.Model):
         if self and {'res_model', 'res_id', 'res_field'}.intersection(vals) and (
                 'res_model' not in vals or vals['res_model'] in WOOW_MODELS):
             self._woow_check_field_target(vals)
+        if self.env.su and self and (vals.get('res_model') in WOOW_MODELS
+                                     or vals.get('public') or vals.get('access_token')):
+            return self._woow_write_closed(vals)
         return super().write(vals)
+
+    def _woow_write_closed(self, vals):
+        """A superuser's write that could open a row, with the rows of module records kept closed.
+
+        ``write`` calls this only when the values name a module model for ``res_model`` or set the
+        public flag or a token; any other write is core's and no row is read for it. The rows that
+        are, or become, rows of a module model get the flag and the token set to ``False`` in the
+        same write, so what a poster put on a pending file does not survive core's move of the
+        file onto the record; the other rows of a mixed set are written as they were asked.
+        Nothing is raised. A write that names the model reads no row; one that only sets the flag
+        or a token reads ``res_model`` of the rows (one query for the set, none when they are in
+        the cache already), and a write that sets neither does not come here.
+        """
+        if vals.get('res_model') in WOOW_MODELS:
+            return super(IrAttachment, self).write(dict(vals, **dict.fromkeys(OPEN_KEYS, False)))
+        owned = self.browse() if 'res_model' in vals else self.filtered(
+            lambda attachment: attachment.res_model in WOOW_MODELS)
+        if not owned:
+            return super(IrAttachment, self).write(vals)
+        done = super(IrAttachment, owned).write(
+            dict(vals, **{key: False for key in OPEN_KEYS if vals.get(key)}))
+        if owned != self:
+            done = super(IrAttachment, self - owned).write(vals) and done
+        return done
 
     def generate_access_token(self):
         """The attachments of this module's records never get an access token.
 
         Core stores a token on each attachment it is asked about, as superuser, and returns the
-        tokens in the order of ``self``: the portal chatter does it for the files of the messages
-        it returns, and the mail queue for the files of a message that are too large to send
-        (the mail then carries a link). The guard of ``write`` skips the superuser, so it stops
-        neither. A row of a document or folder is given none, whoever asks, and its place in the
-        list is ``False``, what a token field holds when it is empty; the other rows are core's.
+        tokens in the order of ``self``. Its callers are the portal chatter (the files of the
+        messages it returns), the mail queue (the files of a message that are too large to send:
+        the mail then carries a link), the html editor and ``mail.message.create`` (the picture in
+        the body of a message). This is the method itself, so none of them is left out, whoever
+        calls it and in whatever environment. A row of a document or folder is given none, and its
+        place in the list is ``False``, what a token field holds when it is empty; the other rows
+        are core's. ``create`` and ``write`` keep the same rule for a token that anything else sets.
         """
         owned = self.filtered(lambda attachment: attachment.res_model in WOOW_MODELS)
         if not owned:
@@ -121,7 +169,8 @@ class IrAttachment(models.Model):
         through ``ir.binary`` among them. Core returns the record as superuser once a token has
         matched, and that record is the one read here, so no escalation of the module's own is
         needed. The refusal is core's own for a token that does not match, so the answer does not
-        tell the two apart; a request without a token is not changed.
+        tell the two apart; a request without a token is not changed (``create`` and ``write`` keep
+        the public flag, which that request would follow, off the rows of this module's records).
         """
         attachment = super().validate_access(access_token)
         if access_token and attachment.res_model in WOOW_MODELS:
