@@ -684,12 +684,6 @@ msgid "Documents and folders do not accept this email."
 msgstr "文件和資料夾不接受這封電子郵件。"
 
 #. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/mail_thread_guard.py:0
-msgid "Documents cannot be created from email."
-msgstr "無法從電子郵件建立文件。"
-
-#. module: woow_document_management
 #: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_quota_ir_actions_server
 msgid "Documents: Check storage quota"
 msgstr "文件：檢查儲存空間配額"
@@ -878,12 +872,6 @@ msgstr "資料夾無法使用。"
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_folder
 msgid "Folders"
 msgstr "資料夾"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/mail_thread_guard.py:0
-msgid "Folders cannot be created from email."
-msgstr "無法從電子郵件建立資料夾。"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_follower_ids

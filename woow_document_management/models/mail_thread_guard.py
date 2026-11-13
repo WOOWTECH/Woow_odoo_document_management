@@ -5,12 +5,15 @@
 ``_get_thread_with_access`` never calls super, so the portal hash/pid/token fallback is never
 reached for module models. Non-internal users cannot post, subscribe, remove other followers,
 edit messages or write folders. Documents and folders are never created from incoming email,
-and only the superuser or a system administrator may route email to them. Attachments that
+and only the superuser or a system administrator may route email to them. An email reply to a
+document or a folder is accepted only from an active internal user who can read it, because core
+posts the reply as OdooBot and the checks above judge OdooBot, not the sender. Attachments that
 back a binary field never become chatter attachments. A follower whose account can no longer
 read the record is not notified, and folder chatter only ever names the folder itself.
 """
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError
+from odoo.tools import email_normalize
 
 from .ir_attachment import is_module_model, stored_char
 
@@ -73,6 +76,52 @@ def _readers_only(record, recipients, message, msg_vals):
             or record._woow_recipient_reads(data, scope)]
 
 
+def _reply_sender_reads(record, msg_dict):
+    """Whether the sender of an incoming email is an active internal user who can read ``record``.
+
+    The sender is the author partner that core found for the From address and put in ``msg_dict``
+    (``_routing_check_route``): a follower of the record first, then a partner who has a user,
+    then any partner; nobody when the address is unknown, and the first address when the header
+    names several. The partner must carry that very address, and one of its users must be active
+    and internal and pass the read rules of the record. The rules are asked as for a follower who
+    is notified (``_woow_recipient_reads``, no identity switch). A partner shared by several users
+    is accepted when one of them qualifies, since the email does not say which one wrote it.
+    Everything else is a refusal: portal and public users, a contact without an account (staff
+    may add one as a follower, HD-10), a partner whose user is archived, left the document group
+    or has no right on the record.
+    """
+    author_id = msg_dict.get('author_id') if isinstance(msg_dict, dict) else None
+    sent_from = msg_dict.get('email_from') if isinstance(msg_dict, dict) else None
+    if type(author_id) is not int or author_id < 1 or not isinstance(sent_from, str):
+        return False
+    partner = record.env['res.partner'].browse(author_id).exists()
+    if not partner or not partner.email_normalized \
+            or partner.email_normalized != email_normalize(sent_from, strict=False):
+        return False
+    users = partner.user_ids.filtered(lambda user: user.active and user._is_internal())
+    if not users:
+        return False
+    scope = record._woow_follower_scope()
+    scope.update(_recipient_scope(record))
+    scope['companies'] = record._woow_user_companies(users.ids)
+    return any(
+        record._woow_recipient_reads(
+            {'id': partner.id, 'uid': user.id, 'groups': user.groups_id.ids, 'ushare': False},
+            scope)
+        for user in users)
+
+
+def _sender_reads_all(records, msg_dict):
+    """Whether the sender of an incoming email may read every record in ``records``.
+
+    Core calls ``message_update`` for every route to an existing record, before it posts the
+    email and before anything is written, so a refusal there leaves no message, no file and no
+    follower. The two models raise the same error for every cause, and it does not depend on
+    the email.
+    """
+    return all(_reply_sender_reads(record, msg_dict) for record in records)
+
+
 class WoowDocumentThreadGuard(models.Model):
     _inherit = 'woow.document'
 
@@ -96,8 +145,17 @@ class WoowDocumentThreadGuard(models.Model):
 
     @api.model
     def message_new(self, msg_dict, custom_values=None):
-        """Documents are created through the upload policy only, never from email."""
-        raise AccessError(_('Documents cannot be created from email.'))
+        """Documents are created through the upload policy only, never from email.
+
+        The error is the one of ``message_update``: a refusal does not say whether the record exists.
+        """
+        raise AccessError(_('Documents and folders do not accept this email.'))
+
+    def message_update(self, msg_dict, update_vals=None):
+        """An email reaches a document only from an internal user who can read it (policy B)."""
+        if not _sender_reads_all(self, msg_dict):
+            raise AccessError(_('Documents and folders do not accept this email.'))
+        return super().message_update(msg_dict, update_vals=update_vals)
 
     def message_post(self, **kwargs):
         _deny_non_internal(self)
@@ -197,7 +255,13 @@ class WoowDocumentFolderThreadGuard(models.Model):
     @api.model
     def message_new(self, msg_dict, custom_values=None):
         """Folders follow the site root policy and parent grants, never email."""
-        raise AccessError(_('Folders cannot be created from email.'))
+        raise AccessError(_('Documents and folders do not accept this email.'))
+
+    def message_update(self, msg_dict, update_vals=None):
+        """An email reaches a folder only from an internal user who can read it (policy B)."""
+        if not _sender_reads_all(self, msg_dict):
+            raise AccessError(_('Documents and folders do not accept this email.'))
+        return super().message_update(msg_dict, update_vals=update_vals)
 
     def message_post(self, **kwargs):
         _deny_non_internal(self)
@@ -340,7 +404,9 @@ class WoowMailThreadRoute(models.AbstractModel):
         ``message_process`` is callable by any user and runs the routed thread
         methods as superuser with caller-chosen routes, so a route to this
         module's models needs the superuser (fetchmail) or a system administrator
-        (the mail gateway script).
+        (the mail gateway script). Whose email is accepted is not decided here, where only
+        the caller is known, but by ``message_update`` of the two models, which core calls for
+        every route to an existing record and which sees the sender (``_reply_sender_reads``).
         """
         if not self.env.su and not self.env.user._is_system() and any(
                 route and stored_char(route[0]) in _THREAD_MODELS for route in routes or ()):

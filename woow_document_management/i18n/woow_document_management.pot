@@ -677,12 +677,6 @@ msgid "Documents and folders do not accept this email."
 msgstr ""
 
 #. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/mail_thread_guard.py:0
-msgid "Documents cannot be created from email."
-msgstr ""
-
-#. module: woow_document_management
 #: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_quota_ir_actions_server
 msgid "Documents: Check storage quota"
 msgstr ""
@@ -870,12 +864,6 @@ msgstr ""
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_folder
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_folder
 msgid "Folders"
-msgstr ""
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/mail_thread_guard.py:0
-msgid "Folders cannot be created from email."
 msgstr ""
 
 #. module: woow_document_management

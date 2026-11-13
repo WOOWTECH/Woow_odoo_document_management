@@ -521,10 +521,13 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
                     self.assertEqual(self._stored(attachment), (False, None))
 
     def _inbound_reply(self, parent, picture):
-        """The raw mail of an outside sender who replies to ``parent`` with an inline picture."""
+        """The raw mail of the editor, who replies to ``parent`` by email with an inline picture.
+
+        Only an internal user who can read the record is accepted as the sender of a reply.
+        """
         mail = EmailMessage()
         message_id = '<%s@example.test>' % secrets.token_hex(8)
-        mail['From'] = 'Outside sender <outside-sender@example.test>'
+        mail['From'] = 'Token editor <%s>' % self.editor.email
         mail['To'] = 'nobody@example.test'
         mail['Subject'] = 'Re: a file'
         mail['Message-Id'] = message_id

@@ -309,10 +309,12 @@ class TestMailGatewayGuard(TransactionCase):
         self.assertEqual(self._counts(), before)
 
     def test_superuser_gateway_delivers_replies_but_never_creates_records(self):
+        """A reply of a user who can read the record is delivered (who else may reply: see
+        ``test_reg_inbound_mail_replies.py``); a mail never creates a record, whoever wrote it."""
         gateway = self.env['mail.thread'].sudo()
         subject = 'Reply %s' % secrets.token_hex(4)
         self.assertEqual(gateway.message_process(
-            'woow.document', _raw_email('outside@example.test', subject),
+            'woow.document', _raw_email(self.reader.email, subject),
             thread_id=self.document.id), self.document.id)
         self.assertEqual(self.env['mail.message'].sudo().search_count([
             ('model', '=', 'woow.document'), ('res_id', '=', self.document.id),
@@ -334,7 +336,7 @@ class TestMailGatewayGuard(TransactionCase):
         subject = 'Gateway reply %s' % secrets.token_hex(4)
         self.assertEqual(gateway.message_process(
             'woow.document.folder',
-            _raw_email('outside@example.test', subject), thread_id=self.folder.id), self.folder.id)
+            _raw_email(self.reader.email, subject), thread_id=self.folder.id), self.folder.id)
         self.assertEqual(self.env['mail.message'].sudo().search_count([
             ('model', '=', 'woow.document.folder'), ('res_id', '=', self.folder.id),
             ('subject', '=', subject)]), 1)
