@@ -28,28 +28,21 @@
         'views/backend/trash_views.xml',
         'views/backend/log_views.xml',
         'views/backend/attachment_overview_views.xml',
-        'views/share_views.xml',
-        'views/wizards/share_wizard_views.xml',
         'views/wizards/move_wizard_views.xml',
         'views/wizards/restore_wizard_views.xml',
         'views/wizards/purge_wizard_views.xml',
         'views/wizards/add_attachment_wizard_views.xml',
         'views/wizards/notify_wizard_views.xml',
         'views/portal_templates.xml',
-        'views/share_templates.xml',
         'views/menus.xml',
     ],
     'assets': {
         'web.assets_backend': [
             'woow_document_management/static/src/backend/**/*',
-            'woow_document_management/static/src/share_result/**/*',
             'woow_document_management/static/src/scss/**/*',
         ],
         'web.assets_frontend': [
             'woow_document_management/static/src/portal/**/*',
-        ],
-        'woow_document_management.assets_share': [
-            'woow_document_management/static/src/share/**/*',
         ],
         'web.assets_tests': [
             'woow_document_management/static/tests/tours/**/*',
