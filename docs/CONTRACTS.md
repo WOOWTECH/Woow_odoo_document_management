@@ -715,7 +715,7 @@ class WoowDocumentGuardMixin(models.AbstractModel):
 
 **伺服器設定的欄位（`_woow_own_default_fields`）**：每個 model（含 transient）都繼承 `woow.document.server.fields.mixin`（直接或經 guard mixin）並宣告自己的清單，沒有這類欄位時是 `frozenset()`；只有欄位全由使用者在表單填寫的精靈（move、restore、purge、add.attachment、notify）例外。`tools/tests/test_static_checks.py` 的 `TestServerFieldsDeclared` 在新 model 沒有宣告時失敗。清單：
 - `woow.document`：`document_type`、`datas`、`url`、`mimetype`、`owner_id`、`uploaded_by_partner_id`、`shared_user_ids`、`shared_partner_ids`、`source_res_model`、`source_res_id`、`legal_hold`、`active`、`trashed_date`、`trashed_by_id`、`restored_date`，由檔案、資料夾與日期算出的 `attachment_id`、`checksum`、`file_size`、`company_id`、`folder_in_trash`、`woow_user_can_write`、`source_display`，以及 chatter 的 `activity_ids`、`message_follower_ids`、`message_ids`、`website_message_ids`；
-- `woow.document.folder`：`_SERVER_ONLY_FIELDS`、10 個 `eff_*`、`company_id`、`legal_hold`、`inherit_access`、`active`、`trashed_date`、`trashed_by_id`、`restored_date` 與同樣的 chatter 欄位；`owner_id` 不在清單：沒有 manage 的人 create 的 `owner_id` 一律被上層資料夾的擁有者蓋過，有 manage 的人與建立根資料夾的人明確帶入本來就可以；
+- `woow.document.folder`：`_SERVER_ONLY_FIELDS`、10 個 `eff_*`、`company_id`、`legal_hold`、`inherit_access`、`active`、`trashed_date`、`trashed_by_id`、`restored_date` 與同樣的 chatter 欄位；`owner_id` 不在清單：沒有 manage 的人 create 的 `owner_id` 一律被上層資料夾的擁有者蓋過；有 manage 的人與建立根資料夾的人可以明確帶入，沒帶入時由呼叫者存的 `ir.default` 補上的也一樣，但帶入的與補上的都要過 `_woow_check_owner`（owner 要是文件使用者；不繼承的資料夾，非文件管理員另要 owner 在上層有 manage 權，見「資料夾的擁有者與授權上限」）；
 - `woow.document.folder.access`：`company_id`；`woow.document.tag`：空（每個欄位都是建立者的選擇）；
 - `woow.document.log`：全部欄位（`test_reg_server_columns_ignore_defaults.py` 檢查清單等於全部欄位）：只有伺服器寫入，`_log_event` 的稽核列自己帶齊每一欄，直接 create 沒帶的欄位只取欄位自己的 default；
 - `ir.attachment`（`ir_attachment.py` 的 `_add_missing_default_values`，用同一個 helper）：`res_model` 在 `WOOW_MODELS` 且有 `res_field` 的附件，也就是文件與資料夾 binary 欄位的檔案，其 `public`、`access_token`、`url`、`description`、`original_id`、`company_id`：欄位機制以 su、呼叫者的 uid 建立這個附件，它不會是 public 或帶 token。
@@ -731,8 +731,8 @@ class WoowDocumentGuardMixin(models.AbstractModel):
 
 ```python
     @api.model
-    def _woow_rank_domain(self, n: int) -> list:
-        """E(n)，內容見 arch §4.4。"""
+    def _woow_rank_domain(self, n: int, user=None) -> list:
+        """E(n)，內容見 arch §4.4；對象是 user，沒給就是呼叫者（`_woow_check_owner_ceiling` 用它求 owner 的 manage 權）。"""
     def _woow_filter_rank(self, n: int) -> 'woow.document.folder':
         """self 裡通過 _woow_has_rank(n) 的資料夾，只用一次 search；唯一的呼叫端是 _woow_has_rank，一次傳一個資料夾。"""
     def _woow_has_rank(self, n: int) -> bool:
@@ -753,21 +753,52 @@ class WoowDocumentGuardMixin(models.AbstractModel):
         and not settings.allow_root_create: raise AccessError(M-24)（_woow_require_root_right）。
         非文件管理員不能以 company_id 為空建立（跨公司共用資料夾只有文件管理員能建立，US-23 AC4）。
         不寄信，不自動加 follower（ER-45.4）。
-        _woow_own_default_fields（見上）：上面這些檢查只看明確帶入的鍵，沒帶入時一律是欄位自己的 default。"""
+        _woow_own_default_fields（見上）：上面這些檢查只看明確帶入的鍵，沒帶入時一律是欄位自己的 default。
+        非 su 的文件使用者：新資料夾的 owner（明確帶入的；沒帶入就是 `default_get` 的值）過 `_woow_check_owner`，
+        `inherit_access` 依 ORM 存下的值（`bool()`）判斷；編輯者（對上層只有 edit）不能選 owner，owner 一律是上層的 owner，不檢查；
+        不是文件使用者的呼叫者交給 model 的 ACL，不看 owner。"""
     def write(self, vals):
         """非 su：company_id 只有文件管理員能改（改成別家公司或改成空值；寫入目前的值不算變更），
         只有 manage 的成員不行：根資料夾改成空值或別家公司之後，子資料夾可以逐層改，等於把整棵子樹交給別家公司的管理員。
         parent_id 清空（搬到最上層）而 self 裡有資料夾原本有上層 → 和 create 一樣的根資料夾政策（M-24），
-        先於名稱檢查，所以同名與否的答案相同；原本就在最上層的不擋。"""
+        先於名稱檢查，所以同名與否的答案相同；原本就在最上層的不擋。
+        非 su：值裡有 owner_id、parent_id 或 inherit_access 時，在名稱檢查之後、任何寫入之前呼叫 `_woow_check_owners`；
+        owner 改變（含清空）寫一列 `access_change`（§8.4）。"""
+    @api.model
+    def _woow_owner_value(self, value) -> 'res.users':
+        """owner_id 的值對應的 res.users（空＝沒有 owner）；不是 id 的值（字串、浮點數、布林、0、負數）→ ValidationError('Choose a document user.')。"""
+    def _woow_check_owners(self, vals) -> None:
+        """依資料夾寫入後的上層與 inherit_access：owner 改成別人 → `_woow_check_owner`（寫入現有的 owner 不算變更）；
+        owner 不變而資料夾搬到別的上層或停止繼承 → 只做 `_woow_check_owner_ceiling`；相同 owner、上層、繼承狀態的資料夾只問一次。"""
+    @api.model
+    def _woow_check_owner(self, owner, parent, inherit_access) -> None:
+        """su 不檢查；其他人：owner 要是內部使用者而且屬於 group_woow_document_user，否則 ValidationError('Choose a document user.')，
+        再過 `_woow_check_owner_ceiling`。"""
+    @api.model
+    def _woow_check_owner_ceiling(self, owner, parent, inherit_access) -> None:
+        """資料夾不繼承（inherit_access 為假）而且有上層時，owner 要在上層有 manage 權，否則
+        ValidationError('A member cannot be granted more access than on the parent folder.')（與 `folder_access._check_parent_ceiling` 同訊息）。
+        不檢查：su、文件管理員的呼叫者、文件管理員的 owner（不需要授權）、繼承中的資料夾、沒有上層、沒有 owner。
+        上層的授權以呼叫者的身分搜尋（`search_count`，套用呼叫者的 record rule），沒有 sudo、沒有 raw SQL。"""
     def init(self):
         """Q3（固定字串）：woow_document_folder_name_uniq ON
         (COALESCE(parent_id,0), COALESCE(company_id,0), lower(name)) WHERE active。  # sql-ok: Q3"""
 ```
 
+**資料夾的擁有者與授權上限（AC-2；2026-11-13）**
+- owner 在 `_compute_effective` 一律得到 manage（rank 4），所以「不繼承的資料夾只能收窄上層的授權」（AC-2）涵蓋 owner，和涵蓋成員列一樣：不是文件管理員的人，不能讓在上層沒有 manage 權的人成為這種資料夾的 owner。原本只有成員列受限（`folder_access._check_member` 呼叫 `_check_parent_ceiling`）。
+- owner 要是文件使用者（arch §3.1）：除了 su，指定 owner 的 create 與 write 都檢查（內部使用者，而且屬於 `group_woow_document_user`），否則 `ValidationError('Choose a document user.')`，與成員列同一個訊息，翻譯目錄不增加。owner 不存在、值不是 id（字串、浮點數、布林、0、負數）也是同一個答案；清空 owner（`False`、`None`）不檢查。沒有全域的 `@api.constrains('owner_id')`：su 建立資料夾時 owner 預設是 su 自己，常不是文件使用者。
+- 誰受哪些限制：su 都不受；文件管理員只受「要是文件使用者」；其他人兩項都受，授權上限只在資料夾（寫入或建立之後）不繼承而且有上層時生效（繼承中的資料夾連成員列都沒有上限）。新 owner 要在上層有 manage 權，也就是 owner 的 `_woow_has_rank(4)`：列在上層的 `eff_manage_user_ids`、經 `eff_manage_group_ids` 的群組，或是文件管理員（不需要授權），否則 `ValidationError('A member cannot be granted more access than on the parent folder.')`，與成員列同一個訊息。
+- 檢查的位置：`create`（見上）；`write` 的 `_woow_check_owners`，依資料夾寫入後的上層與 `inherit_access`：owner 改成別人 → 完整檢查；owner 不變而資料夾搬到別的上層，或從繼承改成不繼承 → 現有的 owner 要過授權上限。所以授權上限不能分兩步繞過：先在資料夾繼承時指定 owner 再關閉繼承，或搬到 owner 沒有權限的上層。`inherit_access` 與 `owner_id` 的值依 ORM 存下的內容判斷（`0`、`None` 都是關閉繼承）。create 的 owner 包含沒帶入時由呼叫者存的 `ir.default` 補上的值；`write` 同一個 owner、上層與繼承狀態的資料夾只問一次（每次是一次 `search_count`，第一次問某個 owner 時多讀一次他的群組；文件使用者與文件管理員的身分來自 ORM 的快取），沒有帶這三個鍵的 write 不呼叫檢查；繼承中的資料夾與文件管理員的呼叫不做授權上限的搜尋；owner 改變時每個資料夾多一個 INSERT（稽核列）。
+- 看不到上層的呼叫者：上層的授權以呼叫者的身分搜尋（`search_count`，套用呼叫者的 record rule），沒有 sudo、沒有 raw SQL，sudo 與 SQL 白名單不變（S1、S3；Q 代號不增加）。呼叫者讀不到上層時搜尋沒有結果，答案和「owner 在上層沒有權限」相同（同一個 `ValidationError`），不論 owner 是誰：所以這個檢查不能拿來探測看不到的上層有哪些成員。代價：讀不到上層的 manager 不能把這種資料夾交給別人（含在上層有 manage 權的人），要由文件管理員處理；成員列在同一情況丟 AccessError，沒有改。
+- 稽核：owner 改變（含清空）每個資料夾寫一列 `access_change`（§8.4）；建立資料夾、寫入同一個 owner、被拒絕的寫入都不記。
+- 行為改變：不是文件管理員的 manager，不能再把不繼承的資料夾交給在上層沒有 manage 權的人，也不能在 owner 沒有權限的上層底下搬動它或讓它停止繼承；要先在上層給 manage 權，或由文件管理員處理。指定不是文件使用者的 owner，除了 su 都被拒絕。
+- 測試：`test_reg_owner_within_ceiling.py`。
+
 **`woow.document.folder.access`（`models/folder_access.py`）**
 - 欄位：`folder_id`、`company_id`、`subject_type`、`user_id`、`group_id`、`partner_id`、`level`。
 - 限制照 arch §3.2。唯一索引用 `create_unique_index` 建（IC-R07）。
-- 改到 access 會記 `access_change`。建立時不寄信、不加 follower（ER-45.4）。
+- 改到 access 會記 `access_change`；資料夾的 owner 改變也記一列（見上，§8.4）。建立時不寄信、不加 follower（ER-45.4）。
 - `company_id` 是 `folder_id.company_id` 的 stored related 欄位，ORM 不拒絕對它的寫入；`write` 對非 su 的呼叫者檢查：`company_id` 與該列資料夾（同一次寫入也帶 `folder_id` 時為目標資料夾）的公司不同 → AccessError（沿用 `This folder field cannot be changed directly.`；寫入目前的值不算變更，`_company_value` 解析 id、recordset、tuple）。`create` 帶的 `company_id` 會被 `modified(create=True)` 重算成資料夾的公司。
 
 **`woow.document`（`models/document.py`）**
@@ -854,6 +885,7 @@ class WoowDocumentLog(models.Model):
 | settings_change | L1 |
 
 - legal_hold 的 detail 是 `{"on": 0或1, "doc": id}` 或 `{"on": 0或1, "folder": id}`（ER-37）。
+- access_change 的 detail：成員列是 `{"member_id": id}` 或 `{"member_ids": [id, …]}`；資料夾的 owner 改變是 `{"owner_id": 新的 id, "previous_owner_id": 舊的 id}`，沒有 owner 記 0（`write` 寫入之後，owner 有變的每個資料夾一列）。
 
 ### 8.5 IF-URL：`W/services/url_policy.py` 和 `W/views/safe_url_templates.xml`
 - **提供者**：L3。
@@ -1799,3 +1831,4 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-13 | 審查修正（移除分享後） | **附件不帶也不收 token**：core 以 su 為 chatter 附件產生 access token（portal 的 `/mail/chatter_fetch`、超限信件的附件連結），`ir.attachment.write` 的守衛對 su 不生效，token 存入後不需登入就能下載，撤權與進回收桶之後仍有效。現在 `generate_access_token()` 對 `WOOW_MODELS` 的附件不寫 token（回傳清單該位置為 `False`），`validate_access` 與 `ir.binary._find_record` 對這些附件拒絕任何 token（含已存入的值與簽章 token，結果同錯誤 token）。超限的 chatter 附件仍從信裡拿掉、換成下載連結，連結沒有 token，只有已登入、能讀該記錄的內部使用者打得開，其他人含 portal 使用者得 404（設計決定）。不新增 sudo 與 raw SQL；`tools/public_methods.txt` 增列兩個覆寫，`check_forbidden` 只放行覆寫內的 `super()`（§4.6、§8.6、§10、SECURITY.md HD-04／HD-12）。測試：`test_reg_chatter_attachment_tokens.py`。**設定鍵 `mail_subject_include_name` 移除**：它只管已移除的分享信主旨，沒有讀取點；從設定讀取器、表單、兩份翻譯目錄與 §6.1 移除，鍵數 22→21。測試：`test_settings_bounds.py`，以及 `test_rpc_exposure.py` 的設定欄位下限（`woow_doc_*` 欄位至少 21 個，原為 22）。模組沒有在任何正式站安裝過，兩項都不寫資料搬移。 |
 | 2026-11-13 | 審查修正（第二輪，移除分享後） | **附件的 public 旗標與 token 在所有 env 都不留在本模組記錄的附件上**：前一列讓 `generate_access_token` 不再寫 token、取用端拒絕任何 token，但核心還有兩處以 su 寫入，create 與 write 的守衛對 su 不生效：`mail.thread._process_attachments_for_post` 以 su 的 write 把發文者的待送檔案（`mail.compose.message`、`res_id` 為 0，發文者可以對自己建立的這一列設 `public=True` 與 `access_token`）改掛到記錄上，旗標與 token 跟著上去，沒有 session 的訪客就得 200（帶 `unique=1` 時回應還能被共用快取保存一年），撤權與進回收桶之後仍然打得開；`_create_attachments_for_post` 以 su 建立內文引用的檔案，帶著 core 剛產生的 token，create 的守衛只看非 su，token 因此存進列裡（取用端雖然拒絕它，文件說的「本模組記錄的列不帶 token」並不成立）。能觸發的有編輯者，以及追蹤記錄的唯讀成員（follower 可以發文）。現在 `create` 與 `write` 在所有 env 都讓本模組 model 的列沒有 `public` 與 `access_token`：非 su 照舊 AccessError；su 不丟例外，create 以 False 取代（含 context 與 `ir.default` 的預設值），write 在 `res_model` 改成本模組 model 時對每一列一併寫入 False，只設定 `public` 或 `access_token` 時依各列目前的 `res_model` 分開寫入（混合的一組只改該改的列），其他寫入不讀任何列、不增加查詢。不新增 sudo、`with_user`、`env(su=True)` 與 raw SQL；`generate_access_token`、`validate_access` 與 `ir.binary` 的規則照舊（縱深防禦）。**超限信件**：連結沒有 token，只有已登入、能讀該記錄的內部使用者打得開，沒有 session 的人與 portal 使用者都得 404（§8.6、§10、SECURITY.md HD-04）；文件中先前與此不符的說法已更正。**文件**：R-SU 表、§8.6 的 su 描述與 `generate_access_token` 的呼叫者清單改成與程式一致。測試：`test_reg_module_attachments_never_public.py`；`test_reg_chatter_attachment_tokens.py` 的「已存入的 token」改以繞過 ORM 的敘述寫入（ORM 不再存它），並新增 portal 成員的信件與連結。**測試補強**：`validate_access` 的測試對 `WOOW_MODELS` 的每個 model 各建一列（把覆寫縮到單一 model 會失敗）；內嵌圖片的測試也檢查存入的內文網址是 `access_token=False`；測試使用者改用 `new_test_user` 並帶 `no_reset_password`（不排入註冊信）；`tools/tests` 新增 `F-TOKEN-API` 的第四個反例（覆寫內呼叫的是別的 token 函式，釘住比對呼叫名稱與覆寫名稱的那一個條件，§4.6）；設定表單的 `woow_doc_*` 欄位與 `_PARAM_KEYS` 一對一的測試（`test_settings_bounds.py`）。 |
 | 2026-11-13 | 審查修正（第三輪，移除分享後） | **token 與欄位名稱依欄位實際存下的內容判斷**：Char 欄位對每個不是 `None` 或 `False` 的值存 `str(value)`，`access_token` 或 `res_field` 為 `0`、`0.0`、`[]`、`{}`、`()` 時存成 `'0'`、`'0.0'`、`'[]'`、`'{}'`、`'()'`，守衛卻以 Python 的真值判斷，放行了它們：有文件編輯權的使用者以 ORM 或 JSON-RPC `call_kw` 建立 `access_token=0` 的列、把自己的待送檔案連同 `access_token=0` 搬上文件，su 的 create 與 write 也照存（`public` 是 Boolean，ORM 存 `bool(value)`，不受影響）。存下的值不能打開檔案（取用端拒絕任何 token），但破壞「本模組記錄的列不帶 token」的不變式，而 core 的 `_check_attachments_access` 接受存著的 token：沒有授權的使用者可以用它把受限檔案連到自己的訊息、讀到檔案的中繼資料。現在 `models/ir_attachment.py` 只有一個定義 `char_is_set(value)`（不是 `None`、不是 `False`、`str(value)` 不是空字串），create 的非 su 檢查（`res_field`、`access_token`）、write 的非 su 檢查（`res_model` 與 `res_field` 一起寫入、搬移時寫入的 `res_field` 與 `access_token`）、`_woow_check_field_target`（所有 env）與欄位檔案的 own default 都用它；`public` 照真值；`False`、`None` 與空字串照舊放行。su 的重設不再看值：create 的寫入值或預設值、write 的鍵，只要帶了 `public` 或 `access_token`（不論值），本模組 model 的列兩欄都設成 False；`_woow_write_closed` 的說明改成與程式一致（旗標與 token 一併寫入，不是只寫為真的那個鍵）；沒有帶這兩個鍵、也沒有帶本模組 model 的 write 仍然不讀任何列。不新增 sudo、`with_user`、`env(su=True)`、raw SQL 或資料庫限制式。**文件**：§8.6 內文引用的小節名稱改成現有的名稱；發行端一條不再說「兩條路」，改為指向呼叫者清單；呼叫者清單補上 `html_editor` 與 `web_editor` 的媒體對話框（以使用者自己的環境、經 RPC 呼叫，覆寫涵蓋）；寫入端寫明 `mail.compose.message` 與 `mail.thread._message_update_content` 也走到 `_process_attachments_for_post`；最後一條寫明只對非 su 拒絕、su 改由寫入端重設；成本的說法改成「一條 SELECT」；測試一條補上 portal 成員的兩項測試；SECURITY.md HD-12 補上 public 旗標，與 HD-04 合為同一條規則；`TestLargeFilesInMail` 的說明只對其他 model 說連結帶 token。**測試**：`test_reg_module_attachments_never_public.py` 新增：每個本模組 model 與 `0`、`0.0`、`[]`、`{}`、`()` 的 su create 與 write（含旗標同時寫入、搬移、混合的一組、已存入的值）、非 su 的 create 與搬移（token 與 `res_field`，ORM 與 JSON-RPC）、su 搬移為欄位附件被拒絕、空值照舊放行、其他 model 的對照、欄位檔案的 own default；預設值的三種來源（呼叫者與站台的 `ir.default`、context）對貼文、內嵌圖片、通知與待送檔案的 su create，以及對非 su 的 create；`message_notify(attachment_ids=…)` 搬移待送檔案；對照測試對其他 model 的公開檔案做與關閉測試相同的每一種請求；write 的成本以 `cr.sql_log_count` 釘住（冷快取多一條 SELECT，與列數無關）；「哪些 write 會被看一眼」的測試改成依鍵的有無，不依值。每一項都以還原對應的修正驗證測試會失敗。 |
+| 2026-11-13 | 審查修正（第四輪，移除分享後） | **資料夾的 owner 受授權上限與文件使用者的限制**：owner 在 `_compute_effective` 得到 manage（rank 4），但授權上限（不繼承的資料夾只能收窄上層的授權，AC-2）只實作在成員列：`write` 的 `owner_id` 只要求呼叫者對資料夾有 manage，不看新 owner 在上層的等級；`create` 對上層有 manage 的人放行明確帶入的 `owner_id` 與 `inherit_access=False`。對資料夾有 manage 的成員因此能把不繼承的資料夾交給在上層沒有任何授權的使用者，對方取得該資料夾與繼承它的子樹的 manage（讀、改、丟回收桶，含日後新增的文件，並可移除或調降成員），同一個動作走成員列卻被拒絕（`A member cannot be granted more access than on the parent folder.`）；`owner_id` 也不要求是文件使用者（arch §3.1），owner 變更也不留稽核列。設計決定（負責人）：AC-2 涵蓋 owner 的隱含 manage，owner 要是內部的文件使用者。現在 `create` 與 `write`（非 su）：新 owner 要是文件使用者（`Choose a document user.`，與成員列同一個訊息，翻譯目錄不增加）；資料夾（寫入或建立之後）不繼承、有上層，而呼叫者不是文件管理員時，新 owner 還要在上層有 manage 權（對象是 owner 的 `_woow_has_rank(4)`：列在上層、經群組，或是文件管理員），否則 `A member cannot be granted more access than on the parent folder.`；寫入現有的 owner 不算變更。owner 不變、資料夾搬到別的上層或停止繼承時，現有的 owner 也要過授權上限，所以不能分兩步繞過（先在繼承時指定 owner 再關閉繼承，或搬到 owner 沒有權限的上層）。create 的 owner 包含沒帶入時由呼叫者存的 `ir.default` 補上的值；編輯者（對上層只有 edit）仍不能選 owner。`inherit_access` 與 `owner_id` 的值依 ORM 存下的內容判斷（`0`、`None` 都是關閉繼承；0、負數、字串、浮點數、布林不是 owner）。呼叫者讀不到上層時，上層的授權以呼叫者的身分搜尋，找不到，答案同「owner 在上層沒有權限」，不論 owner 是誰，不洩漏看不到的上層有哪些成員；不新增 sudo、raw SQL 與白名單項目。owner 改變（含清空）寫一列 `access_change`（`detail` 是 `{"owner_id": 新, "previous_owner_id": 舊}`，沒有 owner 記 0）。**行為改變**：不是文件管理員的 manager 不能再把不繼承的資料夾交給在上層沒有 manage 權的人，也不能在 owner 沒有權限的上層底下搬動它或讓它停止繼承，要先在上層給 manage 權，或由文件管理員處理；讀不到上層的 manager 不能把這種資料夾交給別人。文件管理員與 su 不受授權上限，owner 對非 su 仍要是文件使用者。沒有全域的 `@api.constrains('owner_id')`（su 建立資料夾時 owner 預設是 su 自己，常不是文件使用者）。測試：`test_reg_owner_within_ceiling.py`。 |

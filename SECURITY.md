@@ -19,7 +19,7 @@
 ## Deliberate security design decisions (HD)
 
 These are decisions we made on purpose; reports that only restate them are not vulnerabilities.
-The full wording is supplied by the lanes that own each area (HD-01, 02, 03, 04, 07, 09, 10, 12:
+The full wording is supplied by the lanes that own each area (HD-01, 02, 03, 04, 07, 09, 10, 12, 13:
 core models and access; HD-05: trash). HD-06, HD-08 and HD-11 are retired: they described link
 sharing, which is not part of this module. Retired numbers are not reused.
 
@@ -53,6 +53,16 @@ sharing, which is not part of this module. Retired numbers are not reused.
   on the strength of an access token, whoever stored the token, and never because it is public:
   the public flag is kept off these files too (HD-04). The two decisions are one rule: no link
   opens a chatter attachment without a sign-in. *(text pending)*
+- **HD-13** A folder that does not inherit its access can only narrow what its parent grants, and its
+  owner is held to that as a member is. The owner has the manage level of the folder, so a user who is
+  not a Document Administrator can make someone its owner only if that person has the manage right on
+  the parent (listed there, through a group, or as a Document Administrator). The same holds when such a
+  folder is moved below another parent and when a folder stops inheriting its access: its owner must
+  have the manage right there. A Document Administrator and the superuser are not limited by it, and
+  the owner of a folder must be a document user for everyone but the superuser. A manager who cannot
+  read the parent is refused whoever the owner is, so the answer says nothing about the members of a
+  parent that the manager cannot see; such a manager asks a Document Administrator to hand the folder
+  over. The owner of a folder that inherits its access is not limited, as member rows are not.
 
 ## Deployment notes
 
