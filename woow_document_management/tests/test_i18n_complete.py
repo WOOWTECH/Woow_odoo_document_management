@@ -20,7 +20,7 @@ class TestTraditionalChineseCatalog(TransactionCase):
         source = {message.id for message in template if isinstance(message.id, str) and message.id}
         localized = {message.id: message for message in translated
                      if isinstance(message.id, str) and message.id}
-        self.assertGreaterEqual(len(source), 400)
+        self.assertGreaterEqual(len(source), 350)
         self.assertEqual(source, set(localized))
         placeholder = re.compile(r'%\([A-Za-z_][A-Za-z_0-9]*\)[a-z]|(?<!%)%[sd]')
         for msgid, message in localized.items():

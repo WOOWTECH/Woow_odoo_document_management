@@ -19,7 +19,7 @@
 - **IF-xxx**：一個跨 lane 介面。每節都寫明以下幾項：提供者（provider）、使用者（consumers）、模組路徑、精確簽名、例外和回傳行為、交易與鎖、su 行為、常數、L0 第 0 天的 stub。
 - 簽名用 Python 3.10 型別註記。`Recordset[...]` 指 Odoo recordset。`Response` 指 `odoo.http.Response`。
 - 「W/」＝`woow_document_management/`。
-- 本文的章節號碼沿用 lanes.json 引用的位置：§1.3 檔案表、§2.2 manifest、§3 stub 表、§4.9 public method、§9 IF-STREAM、§10 IF-SHARE、§17 IF-TEST。設計勘誤 ER-43 引用的是舊 ic 的章節號碼，換算見 §20。
+- 本文的章節號碼沿用 lanes.json 引用的位置：§1.3 檔案表、§2.2 manifest、§3 stub 表、§4.9 public method、§9 IF-STREAM、§10 IF-MAIL、§17 IF-TEST。設計勘誤 ER-43 引用的是舊 ic 的章節號碼，換算見 §20。
 - 本文自己做的決議編成 **IC-Rnn**，和 PR-xx、ER-xx 分開。
 
 ---
@@ -30,27 +30,26 @@
 1. 一個檔案只有一個擁有 lane（§1.3）。L0 第 0 天寫進 stub，**不算擁有權**（ER-32 第 2 點）。之後只有擁有的 lane 能修改。
 2. 要改本文的任何簽名、xmlid、常數或設定鍵，都要對擁有的 lane 發「契約變更請求」。擁有 lane 合併時同步更新 `docs/CONTRACTS.md` 的變更紀錄（由 L0 落實）。
 3. `depends_on_interfaces` 只代表合併順序（ER-32 第 3 點）。L0 合併後，L1～L8 和 L11 就可以對著 stub 開工。L10 要等 L3 合併，才能在沙盒跑。
-4. 合併順序：L0 → L1 → L2 → L3 → L4 → L5／L6／L7（可以並行）→ L8 → L10 → L9 → L11 收尾 → L12（IDS §1.3）。
+4. 合併順序：L0 → L1 → L2 → L3 → L4 → L6／L7（可以並行）→ L8 → L10 → L9 → L11 收尾 → L12（IDS §1.3）。L5（分享）已於 2026-11-13 移除，編號不重用。
 
 ### 1.2 共通執行規則
 
 **R-RESP：拒絕和限流一律 return Response，不准 raise（ER-29）**
-- `controllers/main.py`、`portal.py`、`share.py` 的每一條失敗路徑，都要 `return` IF-STREAM 的 `uniform_404(kind)`、`too_many_requests()`、`service_busy()`、`json_response(...)`，或 `limit_page(...)` 其中之一。
+- `controllers/main.py`、`portal.py` 的每一條失敗路徑，都要 `return` IF-STREAM 的 `uniform_404('page')`、`service_busy()`、`json_response(...)`，或 `limit_page(...)` 其中之一。
 - 路由裡的 `AccessError`、`MissingError`、`UserError`、`ValidationError`、`WoowUploadRejected`、`LockBusy`、`ZipLimitExceeded` 都在 controller 接住，再 return。
-- 禁止寫 `raise request.not_found(`、`return request.not_found(`、`raise NotFound`、`raise werkzeug.exceptions.`、`abort(`（T-STAT-23）。理由：`request.not_found()` 回傳的是 werkzeug 的 `NotFound` 例外物件（`http.py` L1892）；而 raise 會讓整個請求 rollback（`service/model.py` L163），S1／Q1 寫下的拒絕紀錄和限流計數會跟著消失。
+- 禁止寫 `raise request.not_found(`、`return request.not_found(`、`raise NotFound`、`raise werkzeug.exceptions.`、`abort(`（T-STAT-23）。理由：`request.not_found()` 回傳的是 werkzeug 的 `NotFound` 例外物件（`http.py` L1892）；而 raise 會讓整個請求 rollback（`service/model.py` L163），同一個請求裡 S1 寫下的稽核紀錄會跟著消失。
 - model 層照常 raise（AccessError、UserError 等）。只有 controller 有「轉成 Response」的義務。
-- 失敗路徑上唯一允許、而且會 commit 的寫入是 S1／Q1（I-11、ER-29 第 4 點）。其他寫入都必須在已經 rollback 的 savepoint 裡。
+- 失敗路徑上不寫任何東西：本模組沒有拒絕紀錄，S1 只記成功的事件（I-11、ER-29 第 4 點）。其他寫入都必須在已經 rollback 的 savepoint 裡。
 
 **R-TX：交易**
 - **上傳**：一批檔案共用一個 `with env.cr.savepoint():`，在裡面呼叫 `Document.create([...])`。任何一個檔案失敗，savepoint 就 rollback，然後 return 400 JSON。遇到 `LockBusy` 則 return `service_busy()`（503）。
 - **ZIP**：在請求的交易裡建到 `SpooledTemporaryFile`，鎖會一直持有到 commit。串流在 commit 之後才開始（`wrap_file` 加 `call_on_close`）。
-- **分享下載**：`lock('share:<id>')` 之後依序做三件事：在建立者 env 計算 `share_download` 的 ok 筆數、比對 `max_downloads`、用 S1 記錄。這三件事完成之後才 return 串流回應。串流在 commit 之後進行。
 - **cron**：每一筆記錄包一個 savepoint，失敗的就跳過（R2b-06）。
 - **ER-06 重建腳本**：單一交易，commit 之前先驗證（§14）。
 
 **R-LOCK：鎖（ER-24、ER-47.3）**
 - 所有 advisory lock 一律經由 `W/services/locks.py`（IF-LOCK）。其他檔案出現 `pg_advisory`、`pg_try_advisory` 就失敗（T-STAT-22）。
-- 取鎖順序：`zip`（rank 1）→ `share`（2）→ `quota`（3）。同一個交易裡先拿了高 rank、又要拿低 rank → `AssertionError`。同 rank 重入可以。
+- 取鎖順序：`zip`（rank 1）→ `quota`（2）→ `access`（3）。同一個交易裡先拿了高 rank、又要拿低 rank → `AssertionError`。同 rank 重入可以。
 - 鎖都是 transaction 級（`*_xact_lock`），commit 或 rollback 時自動釋放。
 
 **R-SU：su 的行為（ER-45.3、ER-45.4、CA-33）**
@@ -60,14 +59,13 @@
 | guard mixin 在 create 補做欄位 groups 檢查 | 略過 | 檢查，沒權限 → AccessError |
 | folder.create 的根資料夾政策（M-24） | 略過 | `not parent_id and not 文件管理員 and not allow_root_create` → AccessError |
 | ir.attachment 守衛 | 略過（框架的 `Binary` 欄位操作是 sudo，CA-07） | 檢查 |
-| share 的寫入白名單、sentinel | 略過 | 檢查 |
 | document.unlink | 允許（cron、hook） | 只有文件管理員，而且不能有 legal_hold |
 | `_woow_has_rank`、`_woow_require_rank` | 一律成立 | 依 rule |
-| `_cron_*`、`_cron_check_warn`、`_maintenance_run` | 必要條件 | 第一個陳述句就丟 AccessError |
+| `_cron_*`、`_cron_check_warn` | 必要條件 | 第一個陳述句就丟 AccessError |
 | uninstall_hook | env 本來就是 su（CA-28） | — |
 | mail_thread_guard | 看 `env.user._is_internal()`（OdooBot 是內部使用者） | 同左 |
 
-`with_user()` 產生的 env 一律是 `su=False`（CA-33）。所以 S2-b 的建立者 env 和 ER-06 的驗證 env 都會套用 rule。
+`with_user()` 產生的 env 一律是 `su=False`（CA-33）。所以 ER-06 的驗證 env 會套用 rule。
 
 **R-LOG：log 和輸出衛生**
 - `_logger` 只記 id。log 字串裡不准出現 token、password、email 或名稱類變數。
@@ -79,13 +77,12 @@
 |---|---|
 | L0 ci-sweep | `.gitignore`、`.gitattributes`、`LICENSE`、`COPYING`、`README.md`、`CLEANROOM.md`、`SECURITY.md`、`docs/CONTRACTS.md`、`.security/sweep.yaml`、`.github/workflows/security.yml`、`.github/gitleaks.toml`、`.github/pull_request_template.md`、`tools/**`（含 `tools/routes.lock.json`，IC-R12）、`W/__manifest__.py`、`W/__init__.py`、`W/{models,controllers,wizards,services}/__init__.py`、`W/security/groups.xml`（PR-01）、推送前檢查腳本與其字串清單（兩者都在 repo 外）、plat 的 target `Woow_odoo_document_management.yaml`、README target 表新增的那一列 |
 | L1 settings-ip | `W/models/settings.py`、`W/models/res_config_settings.py`、`W/views/res_config_settings_views.xml`、`W/services/client_ip.py`、`W/tests/test_settings_bounds.py`、`W/tests/test_client_ip.py` |
-| L2 upload-quota | `W/models/upload_policy.py`、`W/models/quota.py`、`W/services/naming.py`、`W/services/mime_map.py`、`W/services/locks.py`、`W/tests/test_upload_policy.py`、`test_naming.py`、`test_quota.py`、`test_locks.py`、`dev/sc/sc_quota_contention.py` |
-| L3 core-models-acl | `W/models/guard_mixin.py`、`document_folder.py`、`folder_access.py`、`document.py`、`document_tag.py`、`document_share.py`、`document_log.py`、`ir_attachment.py`、`ir_binary.py`、`mail_thread_guard.py`、`W/hooks.py`、`W/services/constants.py`、`folding.py`、`url_policy.py`、`W/security/ir.model.access.csv`、`rules.xml`、`W/data/admin_assignment.xml`、`W/views/safe_url_templates.xml`、`W/tests/test_core_models.py`、`test_security_acl.py`、`test_multicompany.py`、`test_attachment_guard.py`、`test_mail_thread_guard.py`、`test_uninstall.py`、`test_display_name_folding.py`、`test_folding_service.py`、`test_url_policy.py`、`dev/sc/sc_uninstall.py` |
+| L2 upload-quota | `W/models/upload_policy.py`、`W/models/quota.py`、`W/services/naming.py`、`W/services/mime_map.py`、`W/services/locks.py`、`W/tests/test_upload_policy.py`、`test_naming.py`、`test_quota.py`、`test_locks.py`、`dev/sc/sc_quota_contention.py`、`dev/sc/sc_http_runtime.py` |
+| L3 core-models-acl | `W/models/guard_mixin.py`、`document_folder.py`、`folder_access.py`、`document.py`、`document_tag.py`、`document_log.py`、`ir_attachment.py`、`ir_binary.py`、`mail_thread_guard.py`、`W/hooks.py`、`W/services/constants.py`、`folding.py`、`url_policy.py`、`W/security/ir.model.access.csv`、`rules.xml`、`W/data/admin_assignment.xml`、`W/views/safe_url_templates.xml`、`W/tests/test_core_models.py`、`test_security_acl.py`、`test_multicompany.py`、`test_attachment_guard.py`、`test_mail_thread_guard.py`、`test_uninstall.py`、`test_display_name_folding.py`、`test_folding_service.py`、`test_url_policy.py`、`dev/sc/sc_uninstall.py` |
 | L4 internal-routes-zip | `W/controllers/streaming.py`、`W/controllers/main.py`、`W/services/zip_builder.py`、`W/models/zip_actions.py`、`W/views/common_templates.xml`、`W/tests/test_zip_builder.py`、`test_internal_routes.py`、`test_native_routes.py` |
-| L5 share | `W/models/share_service.py`、`W/services/tokens.py`、`W/wizards/share_wizard.py`、`W/views/wizards/share_wizard_views.xml`、`W/views/share_views.xml`、`W/views/share_templates.xml`、`W/controllers/share.py`、`W/static/src/share/**`、`W/static/src/share_result/**`、`W/static/tests/tours/share/**`、`W/data/mail_templates.xml`、`W/security/share_access.xml`、`W/tests/test_share_token.py`、`test_share_routes.py`、`test_mail_share.py`、`dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py`、`dev/sc/sc_source_limit_two_links.py`、`dev/sc/sc_denied_sources_together.py`、`dev/sc/sc_denied_many_sources.py`、`dev/sc/sc_denied_one_source_together.py`、`dev/sc/sc_unlock_over_limit_together.py`、`dev/sc/sc_http_runtime.py` |
 | L6 trash-audit-cron | `W/models/trash_actions.py`、`W/models/cron_jobs.py`、`W/wizards/restore_wizard.py`、`purge_wizard.py`、`W/views/wizards/restore_wizard_views.xml`、`purge_wizard_views.xml`、`W/security/trash_access.xml`、`W/data/ir_cron.xml`、`W/tests/test_trash_lifecycle.py`、`test_audit_log.py`、`test_cron.py`、`dev/sc/sc_purge_skip_locked.py` |
 | L7 portal | `W/controllers/portal.py`、`W/views/portal_templates.xml`、`W/static/src/portal/**`、`W/tests/test_portal_routes.py`、`test_portal_upload.py` |
-| L8 backend-ui | `W/views/backend/{folder,document,tag,trash,log,attachment_overview}_views.xml`、`W/views/menus.xml`、`W/views/wizards/{move,add_attachment,notify}_wizard_views.xml`、`W/wizards/{move,add_attachment,notify}_wizard.py`、`W/models/backend_actions.py`、`W/security/backend_access.xml`、`W/static/src/{backend,scss,img}/**`、`W/static/description/**`、`W/static/tests/tours/backend/**`、`W/tests/test_attachment_overview.py`、`test_add_attachment.py`、`test_backend_views.py`、`test_backend_wizards.py` |
+| L8 backend-ui | `W/views/backend/{folder,document,tag,trash,log,attachment_overview}_views.xml`、`W/views/menus.xml`、`W/views/wizards/{move,add_attachment,notify}_wizard_views.xml`、`W/wizards/{move,add_attachment,notify}_wizard.py`、`W/models/backend_actions.py`、`W/data/mail_templates.xml`、`W/security/backend_access.xml`、`W/static/src/{backend,scss,img}/**`、`W/static/description/**`、`W/static/tests/tours/backend/**`、`W/tests/test_attachment_overview.py`、`test_add_attachment.py`、`test_backend_views.py`、`test_backend_wizards.py` |
 | L9 i18n-zh-tw | `W/i18n/woow_document_management.pot`、`W/i18n/zh_TW.po`、`docs/i18n-glossary.md`、`W/tests/test_i18n_complete.py` |
 | L10 site-rebuild（repo 外） | 重建腳本與其測試（repo 外，不在公開 repo；ER-45 第 1 點） |
 | L11 test-suites | `W/tests/__init__.py`（第 0 天版本由 L0 寫）、`W/tests/common.py`、`W/tests/EXPECTED_MIN.json`、`test_record_rules.py`、`test_core_assumptions.py`、`test_rpc_exposure.py`、`test_escaping.py`、`test_perf.py`、`W/static/tests/tours/test_suites/**`、`dev/README.md`、`dev/sandbox_test.sh`、`dev/coverage.sh`、`dev/sc/run_sc.sh`、`dev/sc/sc_ca{06,23,24,28}.py` |
@@ -97,8 +94,8 @@
 
 ### 1.4 交給 L0 的文字（README 段落、SECURITY.md 的 HD）
 - HD 文字分工（IDS §6）：
-  - L3：HD-02、03、04、07、09、10（ER-15 版）、12（ER-36）；
-  - L5：HD-01、06、08（ER-35 版）、11（ER-47.7 定稿）；
+  - L3：HD-01、02、03、04、07、09、10（ER-15 版）、12（ER-36）；
+  - HD-06、08、11 已退役（它們描述連結式分享，見 SECURITY.md），編號不重用；
   - L6：HD-05。
 - 各 lane 在 PR 描述的 `### HD` 和 `### README` 區塊交出文字，由 L0 合併進 SECURITY.md 和 README.md。
 
@@ -112,7 +109,7 @@
 | M-18、M-31 | L8 | 加入資料夾精靈、搬移精靈 |
 | M-32～M-35 | L6 | — |
 | M-40～M-45 | L4 | M-45 是 ER-24 新增的 |
-| M-50～M-56、M-60～M-66 | L5 | M-61 改用 ER-12 的新文案 |
+| M-65 | L4 | 統一的 404 頁（`uniform_404_page`）；L5 的其餘訊息（M-50～M-56、M-60～M-64、M-66）已隨分享移除，編號不再使用 |
 | M-70、M-71 | L3 | ER-30 |
 | M-80、M-81 | 廢止 | ER-27 |
 
@@ -134,7 +131,7 @@
     'name': 'Woow Document Management',
     'version': '18.0.1.0.0',
     'category': 'Productivity/Documents',
-    'summary': 'Folders, permissions, portal and expiring share links for documents',
+    'summary': 'Folders, permissions and portal access for documents',
     'license': 'LGPL-3',
     'author': 'WoowTech',
     'website': 'https://github.com/WOOWTECH/Woow_odoo_document_management',
@@ -144,7 +141,6 @@
         'data/admin_assignment.xml',
         'security/ir.model.access.csv',
         'security/rules.xml',
-        'security/share_access.xml',
         'security/trash_access.xml',
         'security/backend_access.xml',
         'data/ir_cron.xml',
@@ -158,28 +154,21 @@
         'views/backend/trash_views.xml',
         'views/backend/log_views.xml',
         'views/backend/attachment_overview_views.xml',
-        'views/share_views.xml',
-        'views/wizards/share_wizard_views.xml',
         'views/wizards/move_wizard_views.xml',
         'views/wizards/restore_wizard_views.xml',
         'views/wizards/purge_wizard_views.xml',
         'views/wizards/add_attachment_wizard_views.xml',
         'views/wizards/notify_wizard_views.xml',
         'views/portal_templates.xml',
-        'views/share_templates.xml',
         'views/menus.xml',
     ],
     'assets': {
         'web.assets_backend': [
             'woow_document_management/static/src/backend/**/*',
-            'woow_document_management/static/src/share_result/**/*',
             'woow_document_management/static/src/scss/**/*',
         ],
         'web.assets_frontend': [
             'woow_document_management/static/src/portal/**/*',
-        ],
-        'woow_document_management.assets_share': [
-            'woow_document_management/static/src/share/**/*',
         ],
         'web.assets_tests': [
             'woow_document_management/static/tests/tours/**/*',
@@ -193,7 +182,6 @@
 ```
 - 不寫 `external_dependencies`、`post_init_hook` 和 `pre_init_hook`（ER-38）。
 - data 的順序有兩個硬性規定：`data/admin_assignment.xml` 緊接在 `security/groups.xml` 之後（ER-38）；`views/menus.xml` 放最後，因為它要引用其他 lane 的 action。
-- 分享落地頁只載入自己的 bundle `woow_document_management.assets_share`（landing.js 和最少量的 CSS），不載入整包 frontend，這樣才能滿足 T-SHARE-42（CSP 不允許 inline script）。
 
 ### 2.3 `__init__.py` 的匯入順序（L0 擁有；`tests/__init__.py` 由 L11 擁有）
 - `W/__init__.py`：
@@ -201,11 +189,11 @@
   from . import services, models, wizards, controllers
   from .hooks import uninstall_hook
   ```
-- `services/__init__.py`：`constants, naming, mime_map, locks, tokens, url_policy, client_ip, folding, zip_builder`。
-- `models/__init__.py`：`guard_mixin, settings, upload_policy, quota, document_tag, document_folder, folder_access, document, document_share, document_log, ir_attachment, ir_binary, mail_thread_guard, res_config_settings, share_service, trash_actions, cron_jobs, zip_actions, backend_actions`。
-- `wizards/__init__.py`：`share_wizard, move_wizard, restore_wizard, purge_wizard, add_attachment_wizard, notify_wizard`。
-- `controllers/__init__.py`：`streaming, main, portal, share`。
-- `tests/__init__.py`（第 0 天版本）：匯入 ER-23 列出的 35 個測試檔，再加上 `test_perf`。
+- `services/__init__.py`：`constants, naming, mime_map, locks, url_policy, client_ip, folding, zip_builder`。
+- `models/__init__.py`：`guard_mixin, settings, upload_policy, quota, document_tag, document_folder, folder_access, document, document_log, ir_attachment, ir_binary, mail_thread_guard, res_config_settings, trash_actions, cron_jobs, zip_actions, backend_actions`。
+- `wizards/__init__.py`：`move_wizard, restore_wizard, purge_wizard, add_attachment_wizard, notify_wizard`。
+- `controllers/__init__.py`：`streaming, main, portal`。
+- `tests/__init__.py`（第 0 天版本）：匯入 ER-23 列出的測試檔（扣掉分享的 3 個，現為 32 個），再加上 `test_perf`。
 
 ### 2.4 XML 命名規則
 - 所有 xmlid 都不帶模組前綴寫在自己的檔案裡；跨 lane 引用時寫成 `woow_document_management.<id>`。
@@ -222,7 +210,7 @@
 
 | 檔案（擁有者） | stub 行為 | 出處 |
 |---|---|---|
-| `models/settings.py`（L1） | `_get_settings()` 回傳 §6.1 預設值組成的 frozen `WoowDocSettings`；`_share_keys()` 丟 NotImplementedError；`_read_params()` 回傳 `{}` | ER-32 |
+| `models/settings.py`（L1） | `_get_settings()` 回傳 §6.1 預設值組成的 frozen `WoowDocSettings`；`_audit_ip_key()` 丟 NotImplementedError；`_read_params()` 回傳 `{}` | ER-32 |
 | `services/client_ip.py`（L1） | `client_ip()` 只回傳 peer（`environ['REMOTE_ADDR']`）；`request_client_ip()` 同上；`truncate_ip()` 回傳 `''`；`hmac_ip()` 和 `parse_trusted_proxies()` 分別丟 NotImplementedError 和回傳 `()` | IC-R01 |
 | `models/res_config_settings.py`（L1） | 宣告欄位；`set_values()` 第一個陳述句是 `if not self.env.user.has_group('base.group_system'): raise AccessError`，接著丟 NotImplementedError | IC-R01 |
 | `models/upload_policy.py`（L2） | `_validate` 丟 `WoowUploadRejected('stub')`；`_served_mimetype` 回傳 `'application/octet-stream'`；`_inline_allowed` 回傳 False | ER-32 |
@@ -234,18 +222,15 @@
 | `models/document_folder.py`（L3） | `_woow_has_rank` 和 `_woow_portal_can_upload` 都回傳 False；`_woow_require_rank` 在非 su 時丟 AccessError；`_woow_rank_domain` 回傳 `[(0, '=', 1)]`；`woow_user_rank` 是 0；`woow_has_portal_members` 是 False；`_woow_breadcrumb` 回傳 `[(None, ELLIPSIS)]`；`_woow_portal_roots` 和 `_woow_portal_children` 回傳空 recordset | ER-32 |
 | `models/guard_mixin.py`（L3） | `create` 在非 su 時只要 vals 有任何欄位就丟 AccessError；`_require_manager` 在非 su 時丟 AccessError；`copy` 丟 UserError | IC-R01 |
 | `models/document.py`、`folder_access.py`、`document_tag.py`（L3） | 只宣告欄位；`woow_user_can_write` 是 False | IC-R01 |
-| `models/document_share.py`（L3） | `_SECRET_SENTINEL`、`SECRET_CTX_KEY` 用最終值；`create` 和 `write` 在非 su 時丟 AccessError；`_check_create_rights` 丟 AccessError；`_woow_mark_revoked` 丟 NotImplementedError | IC-R01 |
 | `models/ir_attachment.py`（L3） | 非 su 時：create 的 vals 裡 `res_model` 屬於 `WOOW_MODELS` → AccessError；write 的 vals 只要含 `GUARDED_WRITE_KEYS` 任何一鍵 → AccessError（不分 model） | IC-R01 |
 | `models/mail_thread_guard.py`（L3） | `_get_thread_with_access` 對非內部使用者回傳 `self.browse()`，對內部使用者照 core 判斷；`message_post`、`message_subscribe`、`_message_update_content` 對非內部使用者丟 AccessError | IC-R01 |
 | `hooks.py`（L3） | `uninstall_hook(env)` 丟 UserError（M-70），一律拒絕解除安裝 | IC-R01 |
 | `services/folding.py`（L3） | 函式都回傳「全部折疊」：`display_name` 回傳受限標籤；`breadcrumb` 回傳 `[(None, ELLIPSIS)]`；`roots` 和 `children_of` 回傳 `[]`；`zip_segments` 回傳 `()` | ER-32 |
 | `services/url_policy.py`（L3） | `validate` 丟 `ValueError('stub')`；`is_safe` 回傳 False | IC-R01 |
-| `controllers/streaming.py`（L4） | `uniform_404`、`too_many_requests`、`service_busy`、`json_response`、`limit_page` 回傳最小的 Response（固定 bytes、status 對應）；`serve`、`create_batch`、`zip_response` 丟 NotImplementedError；`MAX_UPLOAD_BODY`、`max_upload_body` 用最終值 | ER-32 |
+| `controllers/streaming.py`（L4） | `uniform_404`、`service_busy`、`json_response`、`limit_page` 回傳最小的 Response（固定 bytes、status 對應）；`serve`、`create_batch`、`zip_response` 丟 NotImplementedError；`MAX_UPLOAD_BODY`、`max_upload_body` 用最終值 | ER-32 |
 | `services/zip_builder.py`（L4） | dataclass 和例外用最終定義；`build_zip` 丟 NotImplementedError | IC-R01 |
-| `services/tokens.py`（L5） | `TOKEN_RE`、`MAX_LINK_LEN` 用最終值；`extract_code` 回傳 None；其他丟 NotImplementedError | IC-R01 |
-| `models/share_service.py`（L5） | `_resolve_request_access` 回傳 `(self.browse(), None)`（stub 裡沒有任何 sudo）；`_validate_for_access` 回傳 False；`_scope_documents` 回傳空 recordset；公開的 `action_*` 第一個陳述句是 `self.check_access('write')`，接著丟 NotImplementedError | IC-R01 |
 | `models/trash_actions.py`、`cron_jobs.py`、`zip_actions.py`、`backend_actions.py`、各精靈 | 公開方法的第一個陳述句是權限檢查，接著丟 NotImplementedError；`_cron_*` 的第一個陳述句是 su 檢查 | IC-R01 |
-| controllers（L4、L5、L7） | 只有類別，沒有任何 route。`tools/routes.lock.json` 第 0 天是空清單，各 lane 新增 route 時自己更新 | IC-R12 |
+| controllers（L4、L7） | 只有類別，沒有任何 route。`tools/routes.lock.json` 第 0 天是空清單，各 lane 新增 route 時自己更新 | IC-R12 |
 
 ---
 
@@ -259,15 +244,14 @@
   - 輸出每行 `<path>:<line> <RULE> <message>`。
   - 結束碼：0＝通過，1＝有違規，2＝工具本身不能用（CI 視為失敗）。
 - `tools/run_all.sh [--g1]` 依序跑 8 支，任何一支非 0 就非 0。
-- `--g1` 模式：sudo 計數改成「剛好等於」；`WOOW-STUB` 必須是 0；entry points 必須剛好 17 筆，而且等於 target。
-- `check_routes.py --emit-entry-points`：輸出 JSON 陣列。每個 decorated route 函式一筆（main 4、portal 5、share 7），再加上固定的一筆 `CustomerPortal._prepare_home_portal_values`，合計 17 筆（ER-47.5、T-STAT-17）。
+- `--g1` 模式：sudo 計數改成「剛好等於」；`WOOW-STUB` 必須是 0；entry points 必須剛好 10 筆，而且等於 target。
+- `check_routes.py --emit-entry-points`：輸出 JSON 陣列。每個 decorated route 函式一筆（main 4、portal 5），再加上固定的一筆 `CustomerPortal._prepare_home_portal_values`，合計 10 筆（ER-47.5、T-STAT-17）。
 
 ### 4.2 原始碼標記（同一行的註解）
 
 | 標記 | 意義 |
 |---|---|
-| `# sudo-ok: S1`／`S2`／`S3` | sudo 白名單 |
-| `# sudo-drop: S2` | S2-b 降權 |
+| `# sudo-ok: S1`／`S3` | sudo 白名單 |
 | `# sql-ok: Q1`～`Q6` | raw SQL 白名單 |
 | `# WOOW-STUB` | L0 寫的 stub，G1 時必須是 0 筆 |
 | CSV 那一列旁邊的 `HD-07` | portal 對 folder 的 W=1 只是探測用（check_security_matrix 檢查） |
@@ -277,10 +261,9 @@
 | 代號 | 檔案 | model（判斷方式） | 函式 | 數量 |
 |---|---|---|---|---|
 | S1 | `W/models/document_log.py` | `_name='woow.document.log'` | `_log_event` | 1：`self.sudo().create(vals)` |
-| S2 | `W/models/share_service.py` | `_inherit='woow.document.share'`（類別沒有 `_name`；取唯一一個字串型 `_inherit`） | `_resolve_request_access` | 2：(a) `self.sudo().search([(<'token_hash'｜'id'>, v)], limit=1)`；(b) `share_sudo.with_user(share_sudo.create_uid).with_context(allowed_company_ids=[...])` |
 | S3 | `W/models/settings.py` | `_name='woow.document.settings'` | `_read_params` | 1：`self.env['ir.config_parameter'].sudo().get_param(k)` |
 
-- 非測試程式裡，除了 S2-b 之外，`with_user(` 是 0 次。
+- 非測試程式裡，`with_user(` 是 0 次。
 - 整個 repo 不准出現 `<名稱以 _sudo 結尾>.env`（T-STAT-19）。
 - 每個 `_cron_*` 的第一個陳述句都必須檢查 `self.env.su`。
 
@@ -288,38 +271,29 @@
 
 | 代號 | 檔案::函式 | 內容 |
 |---|---|---|
-| Q1 | `models/document_log.py::_log_event` | ER-28 第 2 點的 SQL；衝突鍵的第三欄由 `share_id` 改成純整數欄位 `link_ref`（見變更紀錄），推斷式與索引逐字相同 |
 | Q2 | `models/quota.py::_usage_bytes` | arch §6.4 Q2；以自己的連線讀已 commit 的用量（見 §7.2） |
-| Q3 | `models/document_folder.py::init`（名稱唯一索引）、`models/document_log.py::init`（denied bucket，ER-28 第 1 點；鍵改用 `link_ref`，並把舊版 denied 列的 `link_ref` 設成各自的 `share_id` 後才建新索引、刪舊索引） | 只准固定字串的 DDL（ER-47.4） |
+| Q3 | `models/document_folder.py::init`（名稱唯一索引）、`models/document_tag.py::init`（啟用中標籤的名稱與公司唯一索引） | 只准固定字串的 DDL（ER-47.4） |
 | Q4 | `services/locks.py`（`try_lock`、`lock`、`bounded_wait`） | `SELECT pg_try_advisory_xact_lock(%s)`、`SELECT pg_advisory_xact_lock(%s)`、`SELECT current_setting('lock_timeout')`、`SELECT set_config('lock_timeout', %s, true)` |
 | Q5 | `models/quota.py::_bytes_if_new` | arch §6.4 Q5 |
 | Q6 | `models/ir_attachment.py`（守衛） | arch §6.4 Q6 |
 | Q7 | `models/folder_access.py::_check_member` | 在存取交易鎖之下，不經 record rule 數這個資料夾的全部授權列（授權上限的判斷） |
 | Q8 | `models/folder_access.py::_lock_folders` | 新增授權之前，在 Repeatable Read 下強制列版本衝突，讓並行的授權變更序列化；非 su 的呼叫者要先過 model 權限、id 的形式與 manage 權限（`_woow_manageable_folders`），之後才取鎖 |
-| Q9 | `models/document_log.py::_count_share_unlock_failures` | 建立者範圍內的分享解鎖失敗次數彙總，不暴露受限的來源雜湊 |
-| Q11 | `models/share_service.py::_woow_send_link` | 每小時寄信次數計數之前，在 Repeatable Read 下先寫寄件者那一列的版本（屏障） |
-| Q12 | `models/share_service.py::_woow_lock_share_row`、`::_woow_count_on_share_row` | 下載次數與錯誤密碼次數計數之前先鎖 share 列（Repeatable Read）；只有計入下載或錯誤密碼時才寫列版本 |
-| Q13 | `models/document_log.py::_peek_source`、`::_lock_source`、`::_add_one`、`::_release_source` | 跨分享的來源拒絕計數列（不洩漏分享是否存在）：快照讀、鎖定讀與加一（舊快照會 serialization_failure），以及移除沒有計數的列 |
-| Q14 | `models/document_log.py::_take_slot`、`::_short_transaction`、`::_minute_is_full`、`::_reserve` | 每分鐘的拒絕紀錄容量：呼叫交易的快照已顯示該分鐘滿了就直接拒絕，否則在自己的 READ COMMITTED 短交易為呼叫交易的分鐘取一個槽，不超過上限（拒絕自己的短交易用自己的連線，與需要槽的那一列一起取）；這些短交易的隔離等級 |
-| Q16 | `models/document_log.py::_denied_bucket_exists` | 已存在的來源每分鐘 bucket（鍵與唯一索引相同，用 `link_ref`）不再占用另一個容量槽 |
 | Q17 | `models/ir_attachment.py::_woow_field_attachment_ids`、`::_woow_document_file_row` | 要加進討論的附件中，哪些是某個 binary 欄位的附件；文件記錄的檔案附件（`attachment_id`，且是不帶 URL、屬於該文件 `datas` 的 binary 附件）的儲存位置，串流只從這一列建立 |
 | Q18 | `models/mail_thread_guard.py::_woow_follower_scope`、`::_woow_user_companies` | 通知對象所在記錄的讀取規則所依據的儲存欄位（state、公司、eff_* 授權、直接分享），以及被通知帳號的公司 |
 | Q19 | `models/document_folder.py::_woow_check_name_free` | 同一層、同公司、啟用中的資料夾是否已用這個名稱（與唯一索引相同的判斷），先回 M-02 |
 | Q20 | `models/document.py::_woow_portal_direct_documents` | 直接分享給呼叫者本人聯絡人的文件 id，再以呼叫者的 record rule 搜尋 |
 | Q21 | `models/trash_actions.py::_woow_lock_purge_root` | purge 讀任何 hold 之前，以 `SELECT … FOR NO KEY UPDATE` 依 id 順序鎖住這個根資料夾與子樹裡每個資料夾的列（子樹以 active_test=False 的 child_of 取得，含個別丟進回收桶的資料夾；只鎖不寫列版本）：本批快照之後 commit 的 legal hold、還原或搬移改過其中任一列，就 serialization_failure、跳過這個根；之後才開始的會等這一批結束 |
-| Q22 | `models/document_log.py::_count_below` | 任何人都能造成的拒絕（無效連結、沒有授權）的來源計數列：一條語句在低於上限時才加一，在自己的短交易（READ COMMITTED）裡立即 commit；新來源的列以 count 1 插入，並在同一個交易取容量槽；第一條語句沒有符合的列，可能是來源還沒有列，也可能是列已到上限，之後讀到低於上限的列就是別的請求在這之間建立的，在它上面再加一，只有已到上限的列才回 0 |
-| Q23 | `models/document_log.py::_bump_denied_bucket` | 同上拒絕的 denied 稽核 bucket（事件、來源、分鐘，不依連結）：已有的 bucket 一條語句加一，新的在同一個短交易插入並取槽 |
 
-- 表以 `tools/sql_allowlist.yaml` 為準（`check_sql --g1` 要求每一筆都被用到），這裡列出它的每個代號；Q10（配額的列版本屏障）與 Q15 已移除，代號不再使用。
+- 表以 `tools/sql_allowlist.yaml` 為準（`check_sql --g1` 要求每一筆都被用到），這裡列出它的每個代號；Q1、Q9～Q16、Q22、Q23 已移除（Q10 是配額的列版本屏障，其餘隨連結式分享移除），代號不再使用。
 - 其他地方出現 `pg_*advisory*`，或 locks.py 裡呼叫內建的 `hash(`，都直接失敗（T-STAT-22）。
-- tag、access、`attachment_id`、`token_hash` 的唯一索引，一律用 ORM 或 `odoo.tools.sql.create_unique_index(cr, name, table, [固定運算式])` 建在各自 model 的 `init()` 裡。這不是 raw SQL，不算 Q3（IC-R07）。
+- tag、access、`attachment_id` 的唯一索引，一律用 ORM 或 `odoo.tools.sql.create_unique_index(cr, name, table, [固定運算式])` 建在各自 model 的 `init()` 裡。這不是 raw SQL，不算 Q3（IC-R07）。
 
 ### 4.5 check_routes（sec §7，再套用 ER-22、ER-27、ER-47.2）
 - R1～R13 照 sec §7，另有以下修改：
-  - **R3**：`auth='public'` 只能出現在 `W/controllers/share.py`。
+  - **R3**：`auth` 一律寫成 `'user'`；`auth='public'` 與 `auth='none'` 都不允許。
   - **R6**：沒有任何 `<path:>` 例外。
   - **R8**：上傳路由要寫 `max_content_length=95 * 1024 * 1024`（整數字面量的乘法運算式，檢查器把它算成 99,614,720 比對）。如果寫的是 callable，名稱只能是 `max_upload_body`（IC-R03）。
-  - **R11**：`auth='public'` 的函式，第一個陳述句（docstring 除外）必須是一個呼叫 `self._share_entry(...)` 的 Assign 或 Expr。`GET /woow-docs/s` 是例外：函式裡不准出現 `request.env['woow.`、`.touch(`、`request.session[...]` 的指派，也不准出現 `_log_event(`（ER-22 第 3 點）。
+  - **R11**：已退役（沒有 public 的路由，R3 已涵蓋）；其他規則的編號不變。
 - `tools/routes.lock.json` 每一列是 `{file, func, routes[], methods[], auth, type, website}`，屬於 always_human 範圍。
 
 ### 4.6 check_forbidden（arch §6.2 加 sec §8，再加 ER 的新規則）
@@ -349,19 +323,14 @@ woow.document::action_restore
 woow.document::action_purge
 woow.document::action_set_legal_hold
 woow.document::action_download_zip
-woow.document::action_open_share_wizard
 woow.document::action_open_move_wizard
 woow.document.folder::action_trash
 woow.document.folder::action_restore
 woow.document.folder::action_purge
 woow.document.folder::action_set_legal_hold
 woow.document.folder::action_download_zip
-woow.document.folder::action_open_share_wizard
 woow.document.folder::action_open_move_wizard
 woow.document.folder::action_notify_members
-woow.document.share::action_revoke
-woow.document.share::action_reissue
-woow.document.share.wizard::action_create_links
 woow.document.move.wizard::action_move
 woow.document.restore.wizard::action_restore_to
 woow.document.purge.wizard::action_confirm_purge
@@ -396,37 +365,29 @@ LEVELS: tuple[str, ...] = ('read', 'upload', 'edit', 'manage')
 PORTAL_LEVELS: tuple[str, ...] = ('read', 'upload')
 SUBJECT_TYPES: tuple[str, ...] = ('user', 'group', 'partner')
 
-EVENTS: tuple[str, ...] = (  # 21 種，順序固定（ER-37）
+EVENTS: tuple[str, ...] = (  # 12 種，順序固定（ER-37）
     'view', 'download', 'zip', 'upload', 'replace', 'trash', 'restore', 'purge', 'move',
-    'access_change', 'legal_hold', 'share_create', 'share_send', 'share_open', 'share_access',
-    'share_download', 'share_unlock_failed', 'share_revoke', 'share_expire', 'settings_change',
-    'rate_limited',
+    'access_change', 'legal_hold', 'settings_change',
 )
-CHANNELS: tuple[str, ...] = ('backend', 'portal', 'share', 'rpc', 'cron')
-RESULTS: tuple[str, ...] = ('ok', 'denied')
+CHANNELS: tuple[str, ...] = ('backend', 'portal', 'rpc', 'cron')
+RESULTS: tuple[str, ...] = ('ok',)
 
 WOOW_MODELS: tuple[str, ...] = (
     'woow.document', 'woow.document.folder', 'woow.document.folder.access',
-    'woow.document.tag', 'woow.document.share', 'woow.document.log',
+    'woow.document.tag', 'woow.document.log',
 )
 TRASHABLE_MODELS: tuple[str, ...] = ('woow.document', 'woow.document.folder')   # I-04
 
 # context 鍵
 CTX_LOG_CHANNEL = 'woow_log_channel'       # 值只能是 'backend' 或 'rpc'；其他值一律忽略
 CTX_LEGAL_HOLD = 'woow_legal_hold'         # action_set_legal_hold(hold=None) 的預設值來源
-CTX_SHARE_URL = 'woow_share_url'           # 分享信範本
-CTX_SHARE_NOTE = 'woow_share_note'
 CTX_NOTICE_URL = 'woow_notice_url'         # 成員通知信範本
 CTX_NOTICE_NOTE = 'woow_notice_note'
-SESSION_GRANTS_KEY = 'woow_doc_grants'     # session 授權的命名空間（L5）
 
 # 上限和數值
 MIB = 1024 * 1024
 UPLOAD_HARD_CAP_MB = 95
 MAX_UPLOAD_BODY = 95 * 1024 * 1024         # 99_614_720（ER-03、ER-47.2）
-MAX_GRANTS = 20
-MAX_RECIPIENTS = 20
-MAX_SHARE_DOCUMENTS = 500
 MAX_ACCESS_ROWS_PER_FOLDER = 500
 TREE_QUERY_LIMIT = 1000
 PORTAL_PAGE_SIZE = 20
@@ -436,15 +397,9 @@ PIXEL_LIMIT = 50_000_000
 FILENAME_MAX_CHARS = 200
 SEGMENT_MAX_BYTES = 255
 URL_MAX_LEN = 2048
-LINK_MAX_LEN = 2048                        # ER-12
 USER_AGENT_MAX = 256
 LOCK_TIMEOUT_MS = 5000
-PASSWORD_MIN, PASSWORD_MAX = 8, 128
-SHARE_UNLOCK_FAIL_PER_HOUR = 50
-SHARE_UNLOCK_LOCK_MINUTES = 60
-MAIL_PER_USER_PER_HOUR = 100
-FAILED_MAIL_RETENTION_HOURS = 24
-SHARE_RECORD_RETENTION_DAYS = 90
+MAIL_PER_USER_PER_HOUR = 100               # 一次資料夾通知最多的收件人數
 PURGE_BATCH = 200
 LOG_RETENTION_BATCH = 5000
 POISON_ALERT_DAYS = 3
@@ -458,22 +413,16 @@ POISON_ALERT_DAYS = 3
 
 ### 6.1 IF-SET：`W/models/settings.py` 和 `W/models/res_config_settings.py`
 - **提供者**：L1。
-- **使用者**：L2、L3、L4、L5、L6、L7、L8、L12（L11 唯讀）。
+- **使用者**：L2、L3、L4、L6、L7、L8、L12（L11 唯讀）。
 
 ```python
 PARAM_PREFIX = 'woow_document_management.'
-_PARAM_KEYS: tuple[str, ...]          # 下表 30 個鍵（不含前綴），順序同下表
+_PARAM_KEYS: tuple[str, ...]          # 下表 22 個鍵（不含前綴），順序同下表
 _READABLE_KEYS: frozenset[str] = frozenset(PARAM_PREFIX + k for k in _PARAM_KEYS) | {'database.secret'}
 
 @dataclasses.dataclass(frozen=True)
 class WoowDocSettings:   # 欄位名稱＝鍵名稱；型別見下表
     ...
-
-@dataclasses.dataclass(frozen=True)
-class ShareKeys:
-    k_share: bytes   # HMAC-SHA256(database.secret, b"woow_document_management/share-token/v1")
-    k_hint: bytes    # 同上，label 用 b".../share-hint/v1"
-    k_ip: bytes      # 同上，label 用 b".../audit-ip/v1"
 
 class WoowDocumentSettings(models.AbstractModel):
     _name = 'woow.document.settings'
@@ -482,43 +431,37 @@ class WoowDocumentSettings(models.AbstractModel):
     def _read_params(self, keys: Iterable[str]) -> dict[str, str | None]:
         """S3。鍵不在 _READABLE_KEYS → ValueError。只回傳原始字串。"""
     def _get_settings(self) -> WoowDocSettings:
-        """型別轉換和範圍檢查。任何鍵失敗，就用下表『讀取失敗時』那一欄的值（fail closed）。不寫任何參數（I-12）。"""
-    def _share_keys(self) -> ShareKeys:
-        """只在記憶體衍生金鑰。database.secret 是空的或讀不到 → ValueError。"""
+        """型別轉換和範圍檢查。任何鍵失敗，就用該鍵的預設值（無效值一律退回預設）。不寫任何參數（I-12）。"""
+    def _audit_ip_key(self) -> bytes:
+        """HMAC-SHA256(database.secret, b"woow_document_management/audit-ip/v1")，只在記憶體衍生金鑰。database.secret 是空的或讀不到 → ValueError。"""
 ```
 
-| 鍵 | 型別（dataclass） | 預設 | 範圍 | 讀取失敗時 |
-|---|---|---|---|---|
-| trash_retention_days | int | 30 | 0～3650（0＝不自動清除；core 把設定表單的整數 0 存成沒有值，所以 `set_values` 以字串 `'0'` 寫回） | 30 |
-| share_default_days | int | 14 | 1～share_max_days | 14 |
-| share_max_days | int | 90 | 1～90（ER-17） | 90 |
-| share_link_policy | str | folder_managers | folder_managers、managers_only | managers_only |
-| share_require_password | bool | False | — | True |
-| share_session_minutes | int | 60 | 5～480 | 60 |
-| share_unlock_max_fail | int | 5 | 3～10 | 5 |
-| share_unlock_cooldown_min | int | 15 | 5～120 | 15 |
-| denied_rate_per_min | int | 10 | 3～100 | 10 |
-| share_link_base_url | str | '' | 必須是 https URL | '' |
-| allow_http_links | bool | False | — | False |
-| portal_max_upload_mb | int | 25 | 1～95 | 25 |
-| internal_max_upload_mb | int | **95** | 1～95 | **95**（ER-03） |
-| max_files_per_upload | int | 10 | 1～20 | 10 |
-| extra_extensions | tuple[str, ...] | () | 只能是 `mime_map.OPTIONAL_EXTENSIONS` 的子集 | () |
-| zip_max_files | int | 2000 | 1～5000 | 2000 |
-| zip_max_mb | int | 500 | 1～2048 | 500 |
-| zip_max_depth | int | 20 | 1～50 | 20 |
-| zip_concurrency | int | 2 | 1～4 | 2 |
-| quota_mb | int | 0 | 0～10^7（0＝不限） | 0 |
-| quota_warn_pct | int | 80 | 1～99 | 80 |
-| quota_block_pct | int | 95 | warn＋1～100 | 95 |
-| log_retention_days | int | 365 | 30～3650 | 365 |
-| log_ip_mode | str | truncate | truncate、hash、none | truncate |
-| allow_root_create | bool | False（ER-05） | — | False |
-| tag_create_policy | str | managers | managers、users | managers |
-| mail_subject_include_name | bool | False | — | False |
-| trusted_proxies | tuple[ip_network, ...] | () | CIDR 清單（經 `client_ip.parse_trusted_proxies` 解析） | () |
-| client_ip_header | str | '' | ''、CF-Connecting-IP、X-Real-IP、X-Forwarded-For | '' |
-| uninstall_confirm | str | '' | 原樣保留 | '' |
+| 鍵 | 型別（dataclass） | 預設 | 範圍 |
+|---|---|---|---|
+| trash_retention_days | int | 30 | 0～3650（0＝不自動清除；core 把設定表單的整數 0 存成沒有值，所以 `set_values` 以字串 `'0'` 寫回） |
+| notice_base_url | str | '' | 必須是 https URL（只有協定、主機和埠；通知信用，空值時用站台網址） |
+| allow_http_links | bool | False | — |
+| portal_max_upload_mb | int | 25 | 1～95 |
+| internal_max_upload_mb | int | **95** | 1～95（ER-03） |
+| max_files_per_upload | int | 10 | 1～20 |
+| extra_extensions | tuple[str, ...] | () | 只能是 `mime_map.OPTIONAL_EXTENSIONS` 的子集 |
+| zip_max_files | int | 2000 | 1～5000 |
+| zip_max_mb | int | 500 | 1～2048 |
+| zip_max_depth | int | 20 | 1～50 |
+| zip_concurrency | int | 2 | 1～4 |
+| quota_mb | int | 0 | 0～10^7（0＝不限） |
+| quota_warn_pct | int | 80 | 1～99 |
+| quota_block_pct | int | 95 | warn＋1～100 |
+| log_retention_days | int | 365 | 30～3650 |
+| log_ip_mode | str | truncate | truncate、hash、none |
+| allow_root_create | bool | False（ER-05） | — |
+| tag_create_policy | str | managers | managers、users |
+| mail_subject_include_name | bool | False | — |
+| trusted_proxies | tuple[ip_network, ...] | () | CIDR 清單（經 `client_ip.parse_trusted_proxies` 解析） |
+| client_ip_header | str | '' | ''、CF-Connecting-IP、X-Real-IP、X-Forwarded-For |
+| uninstall_confirm | str | '' | 原樣保留 |
+
+任何一個鍵不是合法值（型別或範圍不符、不在選項裡）時，`_get_settings` 一律用該鍵的預設值；`set_values` 以嚴格模式檢查，不合法就丟 ValidationError。
 
 **`res.config.settings`（`_inherit='res.config.settings'`）**
 - 欄位一律是 `woow_doc_<key>`，`config_parameter='woow_document_management.<key>'`。不用 related 帶出任何值。
@@ -541,7 +484,7 @@ class WoowDocumentSettings(models.AbstractModel):
 
 ### 6.2 IF-IP：`W/services/client_ip.py`（純 Python，不 import `odoo.models`）
 - **提供者**：L1。
-- **使用者**：L3（`_log_event`）、L5、L12（G-IP）。
+- **使用者**：L3（`_log_event`）、L12（G-IP）。
 
 ```python
 HEADERS: tuple[str, ...] = ('', 'CF-Connecting-IP', 'X-Real-IP', 'X-Forwarded-For')
@@ -561,7 +504,7 @@ def hmac_ip(k_ip: bytes, ip: str) -> str:
 ```
 
 `_log_event` 的處理方式：
-- `ip_hash` 永遠是 `hmac_ip(k_ip, 完整 ip)`。
+- `ip_hash` 永遠是 `hmac_ip(settings._audit_ip_key(), 完整 ip)`（§6.1；金鑰的 label 沒變，已存的雜湊仍可比對）。
 - `ip_display` 依 `log_ip_mode`：truncate → `truncate_ip`；hash → `ip_hash`；none → None。
 
 ---
@@ -655,7 +598,7 @@ class WoowDocumentQuota(models.AbstractModel):
 
 ### 7.3 IF-NAME：`W/services/naming.py` 和 `W/services/mime_map.py`（純 Python）
 - **提供者**：L2。
-- **使用者**：L3、L4、L5、L7。
+- **使用者**：L3、L4、L7。
 
 ```python
 # naming.py
@@ -693,12 +636,12 @@ def is_compressed(mimetype: str) -> bool: ...
 
 ### 7.4 IF-LOCK：`W/services/locks.py`（ER-24、ER-47.3）
 - **提供者**：L2。
-- **使用者**：L4（ZIP）、L5（max_downloads）、L2（quota）、L6（purge 的 `bounded_wait`，IC-R09）。
+- **使用者**：L4（ZIP）、L2（quota）、L6（purge 的 `bounded_wait`，IC-R09）。
 
 ```python
 class LockBusy(Exception): ...
-RANK: dict[str, int] = {'zip': 1, 'share': 2, 'quota': 3}
-NAME_RE = re.compile(r'^(zip:u:\d+|zip:slot:[1-4]|zip:s:\d+:[0-9a-f]{16}|share:\d+|quota(?::warn|:u:\d+)?|access:\d+)$')
+RANK: dict[str, int] = {'zip': 1, 'quota': 2, 'access': 3}
+NAME_RE = re.compile(r'^(zip:u:\d+|zip:slot:[1-4]|quota(?::warn|:u:\d+)?|access:\d+)$')
 
 def advisory_key(name: str) -> int:
     """int.from_bytes(hashlib.sha256(b'woow_docmgmt/lock/v1:' + name.encode()).digest()[:8], 'big', signed=True)
@@ -732,9 +675,8 @@ def _reset_tracker(cr) -> None:
 
 | 呼叫端 | 用法 | 取不到時 |
 |---|---|---|
-| L4 ZIP | `try_lock('zip:u:<uid>')` 或 `try_lock('zip:s:<share_id>:<ip_hash[:16]>')` → 對 i＝1..zip_concurrency 逐一 `try_lock('zip:slot:<i>')` | 回傳 `limit_page('M-42' 或 'M-43', 429)` |
-| L5 分享下載 | `lock(cr, 'share:<id>')` | `LockBusy` → `service_busy()` |
-| L2 配額 | `lock(cr, 'quota:u:<uid>')`，再 `lock(cr, 'quota')`（同為 rank 3） | `LockBusy` → 由路由回傳 `service_busy()` |
+| L4 ZIP | `try_lock('zip:u:<uid>')` → 對 i＝1..zip_concurrency 逐一 `try_lock('zip:slot:<i>')` | 回傳 `limit_page('M-42' 或 'M-43', 429)` |
+| L2 配額 | `lock(cr, 'quota:u:<uid>')`，再 `lock(cr, 'quota')`（同為 rank 2） | `LockBusy` → 由路由回傳 `service_busy()` |
 
 ---
 
@@ -742,7 +684,7 @@ def _reset_tracker(cr) -> None:
 
 ### 8.1 IF-MODEL
 - **提供者**：L3。
-- **使用者**：L4、L5、L6、L7、L8、L10、L11。
+- **使用者**：L4、L6、L7、L8、L10、L11。
 
 **guard mixin（`models/guard_mixin.py`）**
 ```python
@@ -765,24 +707,22 @@ class WoowDocumentGuardMixin(models.AbstractModel):
     def create(self, vals_list):
         """清掉 context 裡不在白名單的 default_*。
         非 su 時，補做欄位 groups 檢查（CA-10），沒權限 → AccessError。su 時略過（ER-45.4）。"""
-    def copy(self, default=None):          # folder、document、share 一律丟 UserError
+    def copy(self, default=None):          # folder、document 一律丟 UserError
     def _require_manager(self) -> None:     # 不是 su，也不在 group_woow_document_manager → AccessError
     def _woow_log_channel(self) -> str:     # su → 'cron'；share 使用者 → 'portal'；context 是 backend 或 rpc 就用它；其他 → 'rpc'
 ```
 
 **伺服器設定的欄位（`_woow_own_default_fields`）**：每個 model（含 transient）都繼承 `woow.document.server.fields.mixin`（直接或經 guard mixin）並宣告自己的清單，沒有這類欄位時是 `frozenset()`；只有欄位全由使用者在表單填寫的精靈（move、restore、purge、add.attachment、notify）例外。`tools/tests/test_static_checks.py` 的 `TestServerFieldsDeclared` 在新 model 沒有宣告時失敗。清單：
-- `woow.document`：`document_type`、`datas`、`url`、`mimetype`、`owner_id`、`uploaded_by_partner_id`、`shared_user_ids`、`shared_partner_ids`、`source_res_model`、`source_res_id`、`legal_hold`、`active`、`trashed_date`、`trashed_by_id`、`restored_date`，由檔案、資料夾與日期算出的 `attachment_id`、`checksum`、`file_size`、`company_id`、`folder_in_trash`、`effective_restored_at`、`woow_user_can_write`、`source_display`，以及 chatter 的 `activity_ids`、`message_follower_ids`、`message_ids`、`website_message_ids`；
+- `woow.document`：`document_type`、`datas`、`url`、`mimetype`、`owner_id`、`uploaded_by_partner_id`、`shared_user_ids`、`shared_partner_ids`、`source_res_model`、`source_res_id`、`legal_hold`、`active`、`trashed_date`、`trashed_by_id`、`restored_date`，由檔案、資料夾與日期算出的 `attachment_id`、`checksum`、`file_size`、`company_id`、`folder_in_trash`、`woow_user_can_write`、`source_display`，以及 chatter 的 `activity_ids`、`message_follower_ids`、`message_ids`、`website_message_ids`；
 - `woow.document.folder`：`_SERVER_ONLY_FIELDS`、10 個 `eff_*`、`company_id`、`legal_hold`、`inherit_access`、`active`、`trashed_date`、`trashed_by_id`、`restored_date` 與同樣的 chatter 欄位；`owner_id` 不在清單：沒有 manage 的人 create 的 `owner_id` 一律被上層資料夾的擁有者蓋過，有 manage 的人與建立根資料夾的人明確帶入本來就可以；
 - `woow.document.folder.access`：`company_id`；`woow.document.tag`：空（每個欄位都是建立者的選擇）；
-- `woow.document.share`：`company_id`、`token_hash`、`token_hint`、`password_hash`、`has_password`、`max_downloads`（`_check_create_rights` 只檢查明確帶入的值）、`state`、`revoked_at`、`revoked_by_id`、`sent_at`、`replaced_share_id`；
-- `woow.document.log`、`woow.document.denied.budget`、`woow.document.denied.counter`：全部欄位（`test_reg_server_columns_ignore_defaults.py` 檢查清單等於全部欄位）：只有伺服器寫入，`_log_event` 的 ok 列自己寫每一欄或取欄位自己的 default，`count` 是分享信與下載次數限制的加總依據；denied 列與計數列由語句寫入；
-- `woow.document.share.wizard`：`password_hash`（只能經 `password` 寫入）；
+- `woow.document.log`：全部欄位（`test_reg_server_columns_ignore_defaults.py` 檢查清單等於全部欄位）：只有伺服器寫入，`_log_event` 的稽核列自己帶齊每一欄，直接 create 沒帶的欄位只取欄位自己的 default；
 - `ir.attachment`（`ir_attachment.py` 的 `_add_missing_default_values`，用同一個 helper）：`res_model` 在 `WOOW_MODELS` 且有 `res_field` 的附件，也就是文件與資料夾 binary 欄位的檔案，其 `public`、`access_token`、`url`、`description`、`original_id`、`company_id`：欄位機制以 su、呼叫者的 uid 建立這個附件，它不會是 public 或帶 token。
 
 **`woow.document.folder`（`models/document_folder.py`）**
 - 欄位照 arch §3.1，**另外有以下這些**（其他 lane 會用到的名稱一律照這裡寫）：
   - 10 個 eff 欄位：`eff_read_user_ids`、`eff_upload_user_ids`、`eff_edit_user_ids`、`eff_manage_user_ids`、`eff_read_group_ids`、`eff_upload_group_ids`、`eff_edit_group_ids`、`eff_manage_group_ids`、`eff_read_partner_ids`、`eff_upload_partner_ids`。rel 表是 `woow_doc_folder_eff_{r,u,e,m}_{user,group}_rel` 和 `woow_doc_folder_eff_{r,u}_partner_rel`。
-  - `in_trash`、`subtree_restored_at`、`has_restricted_descendant`、`subtree_legal_hold`：stored、recursive。`has_restricted_descendant`、`subtree_legal_hold` 以 `with_context(active_test=False).child_ids` 計算：個別丟進回收桶的子資料夾也算，儲存值不受重算時 context 影響；`init()` 在每次安裝與更新時呼叫 `_woow_recompute_subtree_flags()` 重算所有資料夾的這兩個欄位。
+  - `in_trash`、`has_restricted_descendant`、`subtree_legal_hold`：stored、recursive。`has_restricted_descendant`、`subtree_legal_hold` 以 `with_context(active_test=False).child_ids` 計算：個別丟進回收桶的子資料夾也算，儲存值不受重算時 context 影響；`init()` 在每次安裝與更新時呼叫 `_woow_recompute_subtree_flags()` 重算所有資料夾的這兩個欄位。
   - `woow_user_rank`：Integer，非 stored，`@api.depends_context('uid')`，值是 0～4。文件管理員和 su 是 4。
   - `woow_has_portal_members`：Boolean，非 stored，條件是 `bool(eff_read_partner_ids)`（ER-15）。
   - `effective_access_lines`：Json。`document_count`、`subfolder_count`：在使用者 env 用 `_read_group` 計算。
@@ -793,7 +733,7 @@ class WoowDocumentGuardMixin(models.AbstractModel):
     def _woow_rank_domain(self, n: int) -> list:
         """E(n)，內容見 arch §4.4。"""
     def _woow_filter_rank(self, n: int) -> 'woow.document.folder':
-        """self 裡通過 _woow_has_rank(n) 的資料夾，只用一次 search（一個分享範圍的幾千份文件不再每份查一次）。"""
+        """self 裡通過 _woow_has_rank(n) 的資料夾，只用一次 search（幾千份文件不再每份查一次）。"""
     def _woow_has_rank(self, n: int) -> bool:
         """ensure_one。= bool(self._woow_filter_rank(n))：su 或文件管理員 → self.exists()（仍然套用公司 rule）。
         內部使用者 → search([('id','in',self.ids)] + E(n))。非內部使用者 → 空。"""
@@ -857,34 +797,9 @@ class WoowDocumentGuardMixin(models.AbstractModel):
 - 建立 folder 和 access 時，不寄任何信、不自動加 follower。成員通知只能透過 L8 的精靈。
 - 這兩項如果有任何改動，L3 都要通知 L10，L10 再重跑 T-RB-02～T-RB-05。
 
-### 8.2 IF-SHARE-SCHEMA：`models/document_share.py`
-- **提供者**：L3。
-- **使用者**：L5、L6、L11。
-
-```python
-_SECRET_SENTINEL = object()
-SECRET_CTX_KEY = 'woow_doc_share_secret'
-
-class WoowDocumentShare(models.Model):
-    _name = 'woow.document.share'
-    _inherit = ['woow.document.guard.mixin']      # 不繼承 mail.thread
-    # 欄位照 arch §3.6；token_hash 和 password_hash 的 groups 是 base.group_system
-    @api.model_create_multi
-    def create(self, vals_list):
-        """非 su 時：context[SECRET_CTX_KEY] 不是 _SECRET_SENTINEL，而 vals 有 token_hash 或 password_hash → AccessError。
-        每一筆都呼叫 self._check_create_rights(vals)。"""
-    def write(self, vals):
-        """非 su 時只准寫 name，以及縮短 expire_at；其他欄位一律 AccessError。"""
-    def _check_create_rights(self, vals: dict) -> None:
-        """L3 的版本一律丟 AccessError（fail closed）。L5 在 share_service.py 覆寫。"""
-    def _woow_mark_revoked(self) -> None:
-        """呼叫端已經做過 check_access('write')。
-        用 super().write 寫 revoked_at、revoked_by_id、state='revoked'。撤銷後不能復活。"""
-```
-
 ### 8.3 IF-FOLD：`W/services/folding.py`（純 Python）
 - **提供者**：L3。
-- **使用者**：L4、L5、L7（L3 自己的 display_name 也用它）。
+- **使用者**：L4、L7（L3 自己的 display_name 也用它）。
 
 ```python
 ELLIPSIS = '…'
@@ -907,34 +822,26 @@ def zip_segments(root_id: int | None, path_ids: Sequence[int], readable: Mapping
 
 ### 8.4 IF-LOG：`models/document_log.py`
 - **提供者**：L3。
-- **使用者**：L1、L4、L5、L6、L7、L8、L11。
+- **使用者**：L1、L4、L6、L7、L8、L11。
 
 ```python
 class WoowDocumentLog(models.Model):
     _name = 'woow.document.log'
     @api.model
-    def _log_event(self, event: str, *, result: str = 'ok', channel: str,
+    def _log_event(self, event: str, *, channel: str,
                    user_id: int | None = None, partner_id: int | None = None,
-                   share_id: int | None = None, document_id: int | None = None,
-                   folder_id: int | None = None, company_id: int | bool | None = None,
+                   document_id: int | None = None, folder_id: int | None = None,
+                   company_id: int | bool | None = None,
                    ip: str | None = None, user_agent: str | None = None,
                    detail: Mapping[str, int | bool | list[int]] | None = None) -> int:
-        """S1 加 Q1。
-        - event、result、channel 不在 constants 的清單裡 → ValueError（屬於程式錯誤）；
+        """S1。
+        - event、channel 不在 constants 的清單裡 → ValueError（屬於程式錯誤）；
         - detail 的值只能是整數、布林值或整數清單，否則 ValueError；
-        - ip 沒有傳入，而且有 http request 時，用 client_ip.request_client_ip 取得；user_agent 截斷到 256；
+        - ip 沒有傳入，而且有 http request 時，用 client_ip.request_client_ip 取得；user_agent 先移除控制字元（含 NUL），再截斷到 256；
         - user_id 預設是 env.uid（public 使用者記 None）；company_id 預設（None）是 env.company.id，False（沒有公司的資料夾，
           `folder.company_id.id` 讀出來就是 False）記成空公司，R-L0 讓每家公司的管理員都讀得到；其他型別 → ValueError。
-        result == 'ok'：self.sudo().create(vals)   # sudo-ok: S1   → 回傳 1（vals 沒有的 count、link_ref、bucket_minute 取欄位自己的 default，不取呼叫者存的預設值）。
-        result == 'denied'：flush_model() → Q1（ER-28 第 2 點；衝突鍵用 `COALESCE(link_ref, 0)`，見變更紀錄）  # sql-ok: Q1
-                           → invalidate_model() → 回傳 RETURNING count（同一個分鐘桶的累計數）。
-        denied 列不寫 document_id 和 folder_id，需要時放進 detail。"""
-    def init(self):    # Q3：ER-28 第 1 點的唯一索引，現為 woow_document_log_denied_link_bucket（鍵用 link_ref）  # sql-ok: Q3
+        self.sudo().create(vals)   # sudo-ok: S1   → 回傳 1。vals 帶齊每一欄（`result` 一律是 'ok'），所以呼叫者存的預設值不會進到稽核列。"""
 ```
-
-**限流判斷**：呼叫端拿 `count > settings.denied_rate_per_min` 判斷，成立就 return `too_many_requests()`，並另外記一筆 `rate_limited`（denied）。
-
-**任何人都能造成的拒絕（`ATOMIC_EVENTS`＝`share_access`）**走 `_refuse(event, ip, *, limit, channel='share')`：來源計數列由一條語句在低於上限時才加一（`_count_below`，Q22），audit bucket 由一條語句加一（`_bump_denied_bucket`，Q23），各在自己的短交易（READ COMMITTED，`registry.cursor()`，立即 commit）裡，所以同一來源的並行請求不互相等待、不 serialization_failure、不被 core 睡眠重試；計入的恰好是上限筆，其餘回 429（第一條語句找不到列時，之後讀到低於上限的列是別的請求在這之間建立的，就再加一，所以同時送出本分鐘第一筆的請求不會被誤當成已到上限；已到上限的來源只花一條加一語句和一次讀取）。新列在同一個短交易取容量槽，沒有槽就不建立該列（槽數＝寫入的列數，不因並行而浪費）。回傳 `'counted'`（回 404）、`'limited'`（已記 `rate_limited`，回 429）或 `'busy'`（新來源沒有容量、輪次或連線：回 429，沒有寫任何東西）。錯誤密碼（`share_unlock_failed`）仍走鎖定的來源計數列，在 `share_unlock` 的鎖之下判斷；但來源本分鐘的上限已用完的解鎖請求不走這條路：請求快照已證明上限（同一分鐘內計數只增不減），`share_unlock` 在取任何鎖之前以 `_source_limited` 回 429，只用 `_bump_denied_bucket`（一條語句、自己的 READ COMMITTED 短交易、立即 commit）在來源的 `rate_limited` bucket 加一，不鎖來源計數列、不寫 share 列、請求交易裡不持有任何鎖，也不會因其他請求 serialization_failure 而被 core 睡眠重試（T-SHARE-49）。取不到連線時所有這類拒絕都回 429，沒有槽或連線時該筆拒絕不記錄。
 
 **事件 → 記錄的 lane**
 
@@ -943,15 +850,13 @@ class WoowDocumentLog(models.Model):
 | upload、replace、move、access_change | L3 |
 | view、download、zip | L4 的 `serve` 和 `zip_response`（portal 也經由它們） |
 | trash、restore、purge、legal_hold | L6 |
-| share_create、share_send、share_open、share_access、share_download、share_unlock_failed、share_revoke、share_expire、rate_limited | L5（share_expire 由 L6 的 cron 經 `_maintenance_run` 觸發） |
 | settings_change | L1 |
 
 - legal_hold 的 detail 是 `{"on": 0或1, "doc": id}` 或 `{"on": 0或1, "folder": id}`（ER-37）。
-- 分享 ZIP 記 `share_download`，detail 是 `{"zip": 1, "files": n, "bytes": b}`，計入 max_downloads（IC-R11）。
 
 ### 8.5 IF-URL：`W/services/url_policy.py` 和 `W/views/safe_url_templates.xml`
 - **提供者**：L3。
-- **使用者**：L8；L5 和 L7 的範本也會用到。
+- **使用者**：L8；L7 的範本也會用到。
 
 ```python
 def validate(url: str, *, allow_mailto: bool = False) -> str:
@@ -1005,7 +910,7 @@ class _Guard(models.AbstractModel):   # 實際上分別 _inherit woow.document �
 ```
 - `mail.message` 的標籤：core 的 `Many2one.convert_to_read`、`web_read` 的 `display_name` 與 `read_group` 以 `sudo()` 取 many2one 標籤（uid 不變），`mail.notification` 對 `base.group_user` 開放 read，唯一的規則只管 write，`mail_message_id` 的標籤就是訊息的 `record_name`：任何內部使用者（不必是 Document User、不分公司）因此讀得到受限文件的檔名與資料夾的名稱（只要討論串發過有通知對象的訊息）。標籤改在 `mail.message._compute_display_name` 依真正呼叫者折疊（上述）；作者、收件者與讀得到記錄的人看到的名稱不變，`mail.notification` 的 ACL 與規則不動，`search_read`、`read`、`read_group`、`web_read_group`、`web_search_read` 一次涵蓋。
 - `mail.thread._message_route_process`：路由目標是這兩個 model 時，只有 su（fetchmail）或 `base.group_system`（mail gateway 腳本）能處理；其他人經 `message_process` 送信一律 AccessError。
-- `ir.binary`（`models/ir_binary.py`）：`_find_record` 對本模組 model 的記錄，只要帶 `access_token`（參數或 query）就 MissingError，`/web/content` 回 404、`/web/image` 回 placeholder，回應不會被標成 public；`_record_to_stream` 對 `woow.document.datas` 一律從文件自己的 `attachment_id` 建立串流（Q17 讀出儲存位置；必須是不帶 URL、屬於該文件 `datas` 的 binary 附件，否則 MissingError）。下載、預覽、portal、分享、ZIP 與 `/web/content`、`/web/image` 都經過這裡，其他宣稱同一欄位的附件即使存在也不會被送出。
+- `ir.binary`（`models/ir_binary.py`）：`_find_record` 對本模組 model 的記錄，只要帶 `access_token`（參數或 query）就 MissingError，`/web/content` 回 404、`/web/image` 回 placeholder，回應不會被標成 public；`_record_to_stream` 對 `woow.document.datas` 一律從文件自己的 `attachment_id` 建立串流（Q17 讀出儲存位置；必須是不帶 URL、屬於該文件 `datas` 的 binary 附件，否則 MissingError）。下載、預覽、portal、ZIP 與 `/web/content`、`/web/image` 都經過這裡，其他宣稱同一欄位的附件即使存在也不會被送出。
 - `message_ids`、`website_message_ids`、`has_message`（mail.thread 的欄位，在 `woow.document` 與 `woow.document.folder` 上）加 `groups='base.group_user'`：auto_join 的 one2many 在 domain 裡以子查詢直接查 `mail_message`，不經 R-M0，portal 使用者能對自己讀得到的記錄測試內部 log note 的文字；`guard_mixin._search` 與 `_read_group_groupby` 對 domain 與 groupby 的第一段欄位名檢查欄位 groups，portal 因此得到 AccessError，內部使用者不變。
 - `ir.binary._record_to_stream` 對文件的 `datas` 回傳 `_DocumentStream`：類型固定為上傳政策對這個檔案提供的類型（`_served_mimetype` 的 base type，由回應補 charset），`ir.binary._get_stream_from` 指派的 `mimetype`（`/web/content`、`/web/image` 的 `?mimetype=`）無效；只有 `INLINE_WHITELIST` 的類型可以 inline，其餘一律 attachment；CSP 固定為 `default-src 'none'; sandbox`。`res_field` 屬於本模組 model 的附件 id（`/web/content/<附件 id>`、`/web/image/<附件 id>`）→ MissingError：文件的檔案只有經由文件這一條路由。
 - **ir.attachment write** 另依「寫入後的值」判斷：`res_model` 改成本模組 model 時，若該列原本或寫入後帶 `res_field`、`public` 或 `access_token` → AccessError（兩步驟搬移也擋）。
@@ -1020,7 +925,7 @@ def uninstall_hook(env) -> None:
     1. 以 active_test=False 查 folder 和 document，只要有任何一筆 legal_hold → UserError(M-71)，訊息只附筆數（ER-30）；
     2. 還有任何 woow.document（含已封存的），而且 uninstall_confirm 不等於 database.uuid → UserError(M-70)。
        database.uuid 用 env['ir.config_parameter'].get_param 讀取（env 是 su，不加 sudo）；
-    3. 以 ORM 依序刪除 documents → folders（由深到淺）→ shares；
+    3. 以 ORM 依序刪除 documents → folders（由深到淺）；
     4. 刪除 PARAM_PREFIX + _PARAM_KEYS 的所有參數。
     只用 ORM，沒有 raw SQL。"""
 ```
@@ -1031,39 +936,37 @@ def uninstall_hook(env) -> None:
 
 ### 9.1 IF-STREAM：`W/controllers/streaming.py`（模組層級函式，不是 Controller 類別）
 - **提供者**：L4。
-- **使用者**：L5、L7、L11、L12。
+- **使用者**：L7、L11、L12。
 
 ```python
 from ..services.constants import MAX_UPLOAD_BODY        # 99_614_720
 def max_upload_body(controller=None) -> int:            # ER-47.2 的 callable 簽名；回傳 MAX_UPLOAD_BODY
     ...
 
-def uniform_404(kind: Literal['share', 'page']) -> Response:
+def uniform_404(kind: Literal['page']) -> Response:
     """status 404。
     body 用 eager render：request.env['ir.ui.view']._render_template('woow_document_management.uniform_404_<kind>', {})，
     只依請求的語言而定，不放任何記錄資料、使用者名稱或 csrf_token。
     同一個 kind、同一個語言的 body bytes 完全相同（I-07）。
-    標頭：kind='share' 套用 share 標頭，kind='page' 套用 page 標頭。"""
-def too_many_requests() -> Response:        # 429，M-66 頁
+    標頭：kind='page' 套用 page 標頭；其他 kind → ValueError。"""
 def service_busy() -> Response:             # 503，M-45 頁
 def limit_page(message_id: Literal['M-41','M-42','M-43','M-44'], status: int, **params) -> Response:
     """ZIP 的上限或忙碌頁面。M-41 用 400，M-42、M-43 用 429，M-44 用 503。"""
 def json_response(payload: dict, status: int = 200) -> Response:
     """application/json，套用 no-store 和 nosniff。"""
-def apply_common_headers(response: Response, kind: Literal['file', 'page', 'share', 'portal', 'json']) -> Response:
+def apply_common_headers(response: Response, kind: Literal['file', 'page', 'portal', 'json']) -> Response:
     """一律加 Cache-Control: no-store, private 和 X-Content-Type-Options: nosniff。
     file：CSP default-src 'none'; sandbox，加 Cross-Origin-Resource-Policy: same-origin；
-    share：Referrer-Policy no-referrer、X-Robots-Tag noindex, nofollow、CSP frame-ancestors 'none'；
     portal：CSP frame-ancestors 'self'（T-PORTAL-18）。"""
-def serve(doc, *, inline: bool, channel: Literal['backend', 'portal', 'share'],
-          event: Literal['download', 'view'] | None, share_id: int | None = None) -> Response:
-    """呼叫端已經在 doc 所屬的 env 做過權限檢查（內部、portal，或分享建立者的 env）。
+def serve(doc, *, inline: bool, channel: Literal['backend', 'portal'],
+          event: Literal['download', 'view'] | None) -> Response:
+    """呼叫端已經在 doc 所屬的 env 做過權限檢查（內部或 portal）。
     stream = doc.env['ir.binary']._get_stream_from(doc, 'datas', filename=doc.name,
                                                     mimetype=policy._served_mimetype(doc))
-    as_attachment = not (inline and channel != 'share' and policy._inline_allowed(mimetype))
+    as_attachment = not (inline and policy._inline_allowed(mimetype))
     resp = stream.get_response(as_attachment=…, content_security_policy="default-src 'none'; sandbox")
     檔名經 content_disposition() 處理並去掉 CR/LF；套用 file 標頭；event 有值就記 S1。
-    AccessError 或 MissingError → return uniform_404('page'；channel 是 share 時用 'share')。"""
+    AccessError 或 MissingError → return uniform_404('page')。"""
 def create_batch(folder, uploads: Sequence['werkzeug.datastructures.FileStorage'], *,
                  channel: Literal['backend', 'portal']) -> Response:
     """folder 屬於使用者 env。
@@ -1074,14 +977,13 @@ def create_batch(folder, uploads: Sequence['werkzeug.datastructures.FileStorage'
     - AccessError → uniform_404('page')；LockBusy → service_busy()；
     - 成功 → 200 {"ok": true, "document_ids": [...]}。"""
 def zip_response(documents, *, folders=None, root_folder=None,
-                 channel: Literal['backend', 'portal', 'share'],
-                 share_id: int | None = None, ip_hash: str | None = None) -> Response:
+                 channel: Literal['backend', 'portal']) -> Response:
     """documents 和 folders 是呼叫端 env（使用者 env 或 scope_env）裡已經 search 過的 recordset。
-    鎖（§7.4）：share → zip:s:<share_id>:<ip_hash[:16]>；其他 → zip:u:<uid>；接著取 slot。
+    鎖（§7.4）：`zip:u:<uid>`；接著取 slot。
     路徑用 folding.zip_segments 加 naming.sanitize_segment 組成。
     讀任何 bytes 之前先用 stored 的 file_size 檢查上限。
     tempfile.SpooledTemporaryFile(max_size=ZIP_SPOOL_MAX_BYTES)，用 wrap_file 加 call_on_close，出錯時在 finally 關檔。
-    ZipLimitExceeded → limit_page('M-41' 或 'M-44')；channel 不是 share 時記 zip（detail 是 files 和 bytes）。"""
+    ZipLimitExceeded → limit_page('M-41' 或 'M-44')；成功時記 zip（detail 是 files 和 bytes）。"""
 ```
 
 **L0 stub**：見 §3。T-ZIP-27 驗證 `uniform_404()` 回傳的是 Response 實例。
@@ -1090,7 +992,7 @@ def zip_response(documents, *, folders=None, root_folder=None,
 
 ### 9.2 IF-ZIP：`W/services/zip_builder.py`（純 Python）
 - **提供者**：L4。
-- **使用者**：L5、L7、L8。
+- **使用者**：L7、L8。
 
 ```python
 @dataclasses.dataclass(frozen=True)
@@ -1143,180 +1045,28 @@ class WoowDocumentController(http.Controller):
   - 回傳 `{'type': 'ir.actions.act_url', 'url': '/woow_document/zip?document_ids=…&folder_ids=…', 'target': 'download'}`。
 
 **QWeb（`views/common_templates.xml`）**
-- `uniform_404_share`、`uniform_404_page`（M-65）、`too_many_requests_page`（M-66）、`service_busy_page`（M-45）、`zip_limit_page`（M-41～M-44）。
+- `uniform_404_page`（M-65）、`service_busy_page`（M-45）、`zip_limit_page`（M-41～M-44）。
 - 這些都是獨立的最小 HTML，不呼叫 `web.layout`、`portal.portal_layout`，沒有 inline script。
 
 ---
 
-## 10. 分享（L5）：IF-TOKEN、IF-SHARE、IF-ROUTE-SHARE、IF-MAIL
+## 10. IF-MAIL（原「分享」章節已於 2026-11-13 移除）
 
-### 10.1 IF-TOKEN：`W/services/tokens.py`（純 Python；passlib）
-- **提供者**：L5。
-- **使用者**：L5 自己、L11。
+連結式分享不是本模組的功能，已於 2026-11-13 移除：原 §10.1～10.3（IF-TOKEN、IF-SHARE、IF-ROUTE-SHARE）連同它們的 model、精靈、路由、範本與設定一併刪除，編號不再使用。
 
-```python
-TOKEN_RE = re.compile(r'^[A-Za-z0-9_-]{43}$')
-MAX_LINK_LEN = 2048
-def new_token() -> str:                                   # secrets.token_urlsafe(32)
-def token_hash(k_share: bytes, token: str) -> str:        # HMAC-SHA256(k_share, token).hexdigest()
-def token_hint(k_hint: bytes, token: str) -> str:         # HMAC(k_hint, token).hexdigest()[:6]
-def verify(k_share: bytes, token: str, stored_hash: str) -> bool:   # hmac.compare_digest
-def extract_code(raw: str) -> str | None:
-    """ER-12：len(raw) > 2048 → None；有 '#' → 取最後一個 '#' 後面那段；strip；
-    不 fullmatch TOKEN_RE → None。'#' 前面的主機或路徑一律不看。"""
-def hash_password(password: str) -> str:   # CryptContext(['pbkdf2_sha512'])；長度不在 8～128 → ValueError
-def check_password(password: str, stored: str) -> bool:   # stored 不是 rounds 在 1～PASSWORD_ROUNDS_MAX（200000）的 pbkdf2_sha512 → False，不呼叫 verify
-def is_acceptable_hash(stored: str) -> bool: ...          # 同一個檢查；passlib 的 verify 會跑完雜湊內寫的全部 rounds
-```
-
-### 10.2 IF-SHARE：`W/models/share_service.py`（ER-44）
-- **提供者**：L5。
-- **使用者**：L6（cron、legal hold）、L8（按鈕、精靈）、L11。
-
-```python
-class WoowDocumentShareService(models.Model):
-    _inherit = 'woow.document.share'          # 沒有 _name（check_sudo 依 ER-44 第 2 點判斷）
-
-    @api.model
-    def _issue(self, vals: dict) -> tuple['woow.document.share', str]:
-        """產生 token 和 hash，context 帶 {SECRET_CTX_KEY: _SECRET_SENTINEL} 呼叫 create；記 share_create。
-        明文 token 只出現在回傳值裡（I-05）。"""
-    def _check_create_rights(self, vals: dict) -> None:
-        """DEC-09：建立者是內部文件使用者；share_link_policy 是 folder_managers 時，每個目標資料夾都要 rank 4，
-        是 managers_only 時要在管理員群組，否則 UserError(M-52)；目標不在回收桶；同公司；
-        expire_at 必須 now < expire_at ≤ now + share_max_days（M-50）。"""
-    @api.model
-    def _resolve_request_access(self, token: str | None = None, share_id: int | None = None
-                                ) -> tuple['woow.document.share', 'odoo.api.Environment | None']:
-        """S2，剛好 2 行：
-          share_sudo = self.sudo().search([('token_hash', h)], limit=1)   # sudo-ok: S2
-              （或 [('id', int(share_id))]）
-          scope_env = share_sudo.with_user(share_sudo.create_uid).with_context(
-              allowed_company_ids=[share_sudo.company_id.id]).env      # sudo-drop: S2
-        找不到 → return (self.browse(), None)。token 的情況下另外用 tokens.verify 比對。
-        建立者已被刪除（create_uid 為空）→ 同樣 return (self.browse(), None)：with_user(空 recordset) 會保留 superuser 的 env，
-        _validate_for_access 會把請求的使用者當成建立者，列出整個範圍的文件名稱。
-        一律回傳 tuple。呼叫端禁止使用 share_sudo.env。"""
-    def _validate_for_access(self, scope_env) -> bool:
-        """self 是 share_sudo。第一步（B2）：`scope_env is None`、或 `_woow_check_scope_env(scope_env)` 不成立（su、uid 不是建立者、公司不符）→ False。
-        接著依序檢查 arch §8.5 第 1～5、7 步，任何一步不成立就回傳 False，不 raise。"""
-    def _scope_domain(self) -> list: ...                                 # arch §8.5 第 6 步
-    def _scope_documents(self, scope_env, extra_domain: list | None = None) -> 'woow.document':
-        """在 scope_env 裡 search，所以會套用建立者的 rule、回收桶和公司。"""
-    def _woow_link_url(self, token: str) -> str:
-        """share_link_base_url 或 get_base_url()，接上 '/woow-docs/s#' + token。
-        不是 https 而且沒開 allow_http_links → UserError(M-54)；host 是 IP 字面量 → UserError(M-54)。"""
-    def _woow_send_link(self, token: str, note: str | None) -> None:
-        """template.with_context(woow_share_url=…, woow_share_note=…).send_mail(self.id, force_send=False,
-        email_values={'email_to': self.recipient_email, 'recipient_ids': [], 'email_from': sender, 'auto_delete': True},
-        email_layout_xmlid='mail.mail_notification_light')；記 share_send。取不到寄件人 → UserError(M-55)。"""
-    download_count = fields.Integer(compute=…)   # 在使用者 env 從 log 的 share_download（ok）計算
-    def action_revoke(self) -> bool:        # 第一個陳述句：self.check_access('write')；_woow_mark_revoked；記 share_revoke
-    def action_reissue(self) -> dict:       # check_access('write')；只有建立者本人（create_uid 不是呼叫者 → AccessError，舊連結不動）；撤銷舊的，用同一個範圍 _issue 新的；回傳 client action
-    def _maintenance_run(self) -> None:
-        """第一個陳述句：if not self.env.su: raise AccessError。內容是 arch §8.6（state 改 expired 並記 share_expire、
-        刪除到期或撤銷超過 90 天的分享、刪除失敗超過 24 小時的 mail.mail 並建立 activity M-56）。"""
-
-class WoowDocumentShareButtons(models.Model):   # 兩個類別，分別 _inherit 'woow.document' 和 'woow.document.folder'
-    def action_open_share_wizard(self) -> dict:  # 第一個陳述句：self.check_access('read')；接著檢查 DEC-09
-```
-
-**精靈 `woow.document.share.wizard`（`wizards/share_wizard.py`）**
-- `action_create_links(self) -> dict` 回傳 `{'type': 'ir.actions.client', 'tag': 'woow_document_share_result', 'params': {'links': [...]}}`。
-- 明文 token 只放在回應的 params 裡。password 不儲存：精靈列 create / write 時立即以 `tokens.hash_password` 存成 `password_hash`（長度 8～128 於儲存時以 UserError 檢查），成功後清空，不記 log；呼叫端不得直接提供 `password_hash`（AccessError）；`_issue` 對收到的 `password_hash` 套用 `tokens.is_acceptable_hash`，不合 → UserError。
-
-### 10.3 IF-ROUTE-SHARE：`W/controllers/share.py`（7 個 decorated 函式，全部 `auth='public'`、`type='http'`）
-- **提供者**：L5。
-- **使用者**：L9、L11、L12（G-IP、G-CACHE）。
-
-```python
-class ShareAccess(NamedTuple):
-    share_sudo: 'woow.document.share'   # 只能讀分享自己的欄位
-    scope_env: 'odoo.api.Environment'
-    ip: str
-    ip_hash: str
-    grant: dict | None
-
-class WoowDocShareController(http.Controller):
-    def _share_entry(self, *, token: str | None = None, share_id: int | None = None,
-                     require_grant: bool = True, require_unlocked: bool = True,
-                     resolve: bool = True) -> 'ShareAccess | Response':
-        """所有 public 路由的第一個陳述句（R11），GET /woow-docs/s 除外。
-        失敗一律回傳 Response，不 raise：
-        - 拒絕事件用 _log_event(..., result='denied') 記錄；回傳的 count > denied_rate_per_min → too_many_requests()，
-          否則 → uniform_404('share')；
-        - token 路徑：tokens.extract_code(raw) 是 None → 記 denied 並回 404；之後才做 S2 和 _validate_for_access；
-        - 有效 token 和已授權的 session，永遠不會因為 IP 桶滿了被擋（arch §15）；
-        - id 路徑（require_grant=True）：先讀 session 裡這個 id 的授權（_session_grant）；沒有、過期或格式不對 → 直接 _denied，
-          不做 S2 和 _validate_for_access。不存在、已撤銷與有效的 id 做一樣的事（查詢數相同，所以時間也相同）、回一樣的答案；
-          有授權時才解析、驗證分享，再比對 h 與 pw；
-        - resolve=False（只給 /close 用）：不呼叫 S2，也不碰 DB，回傳 ShareAccess(share_sudo=空 recordset, scope_env=None, …)。"""
-
-    @http.route('/woow-docs/s', type='http', auth='public', methods=['GET'])
-    def share_landing(self, **kw) -> Response:
-        """ER-22：可以 request.render('woow_document_management.share_landing')，內嵌 request.csrf_token()。
-        不碰 woow model、不寫資料、不 touch、不指派 session、不記 log。"""
-    @http.route('/woow-docs/s/open', type='http', auth='public', methods=['POST'])
-    def share_open(self, **post) -> Response:
-        """raw = post.get('token') or post.get('link') or ''（ER-12）；永遠不讀 query string（T-SHARE-21）。
-        成功：request.session.should_rotate = True；把授權寫進 session（見下方）；記 share_open；
-        303 轉址到 '/woow-docs/s/%d' % share.id（request.redirect(local=True)）。"""
-    @http.route('/woow-docs/s/<int:share_id>', type='http', auth='public', methods=['GET'])
-    def share_page(self, share_id: int, **kw) -> Response:        # 記 share_access；需要密碼時顯示密碼表單（M-62）
-    @http.route('/woow-docs/s/<int:share_id>/unlock', type='http', auth='public', methods=['POST'])
-    def share_unlock(self, share_id: int, **post) -> Response:
-        """冷卻檢查在 pbkdf2 之前：同一個 (share, ip_hash) 失敗 share_unlock_max_fail 次，冷卻 share_unlock_cooldown_min 分鐘；
-        同一個分享每小時失敗 50 次，鎖 60 分鐘（M-64）。失敗記 share_unlock_failed（M-63）。
-        來源本分鐘的 denied_rate_per_min 已用完 → 在取任何鎖之前回 429（_source_limited：記一筆 rate_limited，
-        不鎖來源計數列、不寫 share 列、不被重試，T-SHARE-49）。
-        成功設 pw=True，並再換一次 sid。"""
-    @http.route('/woow-docs/s/<int:share_id>/file/<int:document_id>', type='http', auth='public', methods=['GET'])
-    def share_file(self, share_id: int, document_id: int, **kw) -> Response:
-        """文件必須在 _scope_documents 的結果裡。lock(cr, 'share:<id>') → 計算 share_download 的 ok 筆數，
-        和 max_downloads 比對 → 記 share_download → serve(doc_in_scope_env, inline=False, channel='share', event=None)。
-        document_id 來自網址：不在資料庫 integer 的範圍（1～2**31-1）內的 id 不可能有列，視為範圍裡找不到：
-        不查詢，和其他找不到的 id 一樣走 _denied（404，計入來源計數、受限流），不可讓資料庫報錯而回 500。"""
-    @http.route('/woow-docs/s/<int:share_id>/zip', type='http', auth='public', methods=['GET'])
-    def share_zip(self, share_id: int, **kw) -> Response:
-        """zip_response(channel='share', share_id=…, ip_hash=…)。取鎖順序：zip:s → slot → share（IC-R11）。"""
-    @http.route('/woow-docs/s/<int:share_id>/close', type='http', auth='public', methods=['POST'])
-    def share_close(self, share_id: int, **post) -> Response:     # _share_entry(resolve=False)；從 session 移除授權
-```
-
-**session 授權（ER-39、R2b-03）**
-- 鍵是 `request.session[SESSION_GRANTS_KEY][str(share_id)]`，值是 `{'exp': int(epoch 秒), 'h': token_hash[:16], 'pw': bool}`。
-- `exp = min(now + share_session_minutes, expire_at)`。
-- 一律先 `g = dict(request.session.get(SESSION_GRANTS_KEY) or {})`，修改之後整個重新指派。最多保留 MAX_GRANTS 筆，超過時丟掉最舊的，過期的順手清掉。
-- 不碰 `session.uid`、`pre_uid`、`authenticate`、`finalize`。
-- `share_close` 只在 session 確實持有這個 id 的授權時才重新指派（寫回 session）；沒有授權的請求不寫 session：落地頁的表單 token 屬於尚未儲存的 session id，任何人都能用 GET 落地頁加 POST close 兩個請求換一個 session 檔，違反「未驗證的請求不持久化 session」（R2b-02）。
-
-**公開分享事件的身分**：`share_open`、`share_access`、`share_download` 以請求的環境（`request.env`）記錄，也就是訪客本人（匿名訪客的 `user_id` 為空，已登入的內部訪客記自己），不用建立者的 `scope_env`（`user_id` 與 `create_uid` 都會變成分享建立者，稽核無法歸責）。建立者的 `scope_env` 只用來決定範圍與計算 `max_downloads`；建立者仍可經 R-L1 的 `share_id.create_uid` 讀到這些列。`share._record_download(scope_env, log_env, ip, detail)` 的 `log_env` 是必填。
-
-**拒絕的計數**：`_denied` 對 `ATOMIC_EVENTS` 走 `log._refuse`（§8.4），不等待、不因同一來源的其他請求失敗；`share_file` 的 `document_id` 範圍檢查、`_share_entry` 的順序不變。
-
-**分享頁的公司名稱（ER-16）**
-- 用 `scope_env['res.company'].browse(share_sudo.company_id.id).name`。
-- 頁面不出現任何 `/web/image` 網址，也沒有 logo。
-
-**QWeb 範本**：`share_landing`、`share_page`、`share_password`（都在 `views/share_templates.xml`）。落地頁只載入 `woow_document_management.assets_share`。
-
-**landing.js（`static/src/share/landing.js`）**
-- 讀 `location.hash` → 符合 TOKEN_RE 才繼續 → `history.replaceState` 到固定路徑 → 用欄位 `token` 自動 POST。
-- 只用 `textContent`。不用 storage、console、`postMessage`。
-- 停用 JS 時，`<form method="post" action="/woow-docs/s/open">` 有一個文字欄位 `link`（`maxlength=2048`、`autocomplete=off`），訊息是 M-61 的新文案。
+| 規則 | 內容 |
+|---|---|
+| 取得文件的方式 | 本模組沒有以連結取得文件的功能：沒有帶秘密 token 的網址、沒有 `auth='public'` 的路由。能讀、下載或上傳，只由資料夾的權限（成員授權）和已登入的頁面（後台與 `/my/docs`）決定。 |
 
 ### 10.4 IF-MAIL：`W/data/mail_templates.xml`（`noupdate="1"`，程式永遠不寫入，I-14）
-- **提供者**：L5。
-- **使用者**：L8（member_notice）、L9。
+- **提供者**：L8。
+- **使用者**：L9（翻譯）。
 
 | xmlid | model | 用到的 context 鍵 | 寄送方 |
 |---|---|---|---|
-| `woow_document_management.mail_template_woow_document_share_link` | woow.document.share | `woow_share_url`、`woow_share_note` | L5 的 `_woow_send_link` |
 | `woow_document_management.mail_template_woow_document_member_notice` | woow.document.folder | `woow_notice_url`、`woow_notice_note` | L8 的 `notify.wizard.action_send`：內部成員一批（帶後台網址），portal 成員一批（帶 `/my/docs/folder/<id>`）；信裡沒有 token |
 
-- 兩者一律 `send_mail(..., force_send=False)`，收件人在每次寄送時傳入（ER-35）。
-- `woow_document_management.action_woow_document_share`：`ir.actions.act_window`，model 是 woow.document.share，定義在 `views/share_views.xml`（L5）。L8 在選單上引用它。
-- OWL client action 的 tag 是 `woow_document_share_result`（`static/src/share_result/`，L5）。
+- 一律 `send_mail(..., force_send=False)`，收件人在每次寄送時傳入（ER-35）。
 
 ---
 
@@ -1341,7 +1091,7 @@ def action_set_legal_hold(self, hold: bool | None = None) -> bool:
     記 legal_hold，detail 照 ER-37 第 4 點。"""
 def _woow_purge(self) -> tuple[int, int]:
     """內部用，只有 su 或文件管理員能呼叫。由深到淺；legal_hold 或 subtree_legal_hold → M-34；
-    每筆包在 savepoint 和 locks.bounded_wait 裡，失敗的記 purge（denied，detail 只放 id）後跳過。回傳 (done, failed)。
+    每筆包在 savepoint 和 locks.bounded_wait 裡，失敗的只在 log 記下 id 與例外的類別（不寫文字）就跳過。回傳 (done, failed)。
     同一次執行中已隨上層一起刪除的記錄直接略過，不算 done 也不算 failed。
     資料夾的每個根先以 _woow_lock_purge_root（Q21）鎖住自己與子樹裡每個資料夾的列（含個別丟進回收桶的），再讀 active 與子樹的 hold；
     文件的 hold 與刪除是同一列。所以在本交易快照之後 commit 的 legal hold、還原或搬移（子樹任何一個資料夾），會讓該根或該文件
@@ -1357,13 +1107,12 @@ def _woow_purge(self) -> tuple[int, int]:
 
 ### 11.2 IF-CRON：`W/models/cron_jobs.py` 和 `W/data/ir_cron.xml`
 - **提供者**：L6。
-- **使用者**：L2（`_cron_check_warn`）、L5（`_maintenance_run`）、L11、L12。
+- **使用者**：L2（`_cron_check_warn`）、L11、L12。
 
 | xmlid | 方法（在 `woow.document` 上，`@api.model`） | 頻率 | 內容 |
 |---|---|---|---|
 | `ir_cron_woow_document_purge_trash` | `_cron_purge_trash()` | 每天 | 每批最多刪除 PURGE_BATCH 筆記錄（文件和資料夾都算，不論回收桶資料夾多大）；`ir.cron._notify_progress(done=刪除筆數, remaining=)`；失敗的（含本批快照之後才 commit 的 legal hold、還原）跳過、整批照常 commit，不算進 remaining；同一筆連續失敗 POISON_ALERT_DAYS 天，就對管理員建立 activity（R2b-06）。實作：每日的 cron 會試每一筆保留期已過的記錄，所以本次失敗、而且保留期結束已超過 POISON_ALERT_DAYS 天（`trashed_date < cutoff - POISON_ALERT_DAYS 天`）的記錄，就是已連續失敗那麼多天；每位文件管理員每天最多一個 activity（掛在自己的聯絡人上，只寫筆數，不寫名稱），建立失敗只記 log、不讓 purge 失敗 |
-| `ir_cron_woow_document_share_maintenance` | `_cron_share_maintenance()` | 每小時 | 呼叫 `share._maintenance_run()` |
-| `ir_cron_woow_document_log_retention` | `_cron_log_retention()` | 每週 | 每批 LOG_RETENTION_BATCH 筆，依 id 由小到大取（最舊的先，取滿批就停），不對剩下的列計數：批滿（剛好 LOG_RETENTION_BATCH 筆）才回報 `remaining` 大於 0，由框架接著跑下一批，不足一批表示已讀到表尾。原因：`create_date` 沒有索引，模型順序是新到舊（`id desc`），過期的列 id 最小，依該順序取批要先倒著走過主鍵上所有未過期的列，剩下的列數則是全表掃描，每一批都這樣；同一次也清兩天前的分鐘計數列 |
+| `ir_cron_woow_document_log_retention` | `_cron_log_retention()` | 每週 | 每批 LOG_RETENTION_BATCH 筆，依 id 由小到大取（最舊的先，取滿批就停），不對剩下的列計數：批滿（剛好 LOG_RETENTION_BATCH 筆）才回報 `remaining` 大於 0，由框架接著跑下一批，不足一批表示已讀到表尾。原因：`create_date` 沒有索引，模型順序是新到舊（`id desc`），過期的列 id 最小，依該順序取批要先倒著走過主鍵上所有未過期的列，剩下的列數則是全表掃描，每一批都這樣 |
 | `ir_cron_woow_document_quota` | `_cron_quota()` | 每天 | 呼叫 `quota._cron_check_warn()` |
 
 - 所有 cron 都 `user_id=base.user_root`。
@@ -1418,7 +1167,6 @@ class WoowDocumentPortal(CustomerPortal):
 | `menu_woow_document_root` | 選單 | App 根選單：en「Documents」、zh_TW「文件」；groups 是 group_woow_document_user 和 group_woow_document_attachment_overview |
 | `menu_woow_document_config` | 選單 | Configuration，groups 是 group_woow_document_manager |
 | `menu_woow_document_settings` | 選單 | 引用 L1 的 `action_woow_document_config_settings`；`groups="base.group_system"`（ER-14） |
-| `menu_woow_document_share` | 選單 | 引用 L5 的 `action_woow_document_share` |
 | `action_woow_document_folder`、`action_woow_document_document` | act_window | — |
 | `action_woow_document_trash` | act_window | 資料夾的還原按鈕只對 `woow_user_rank == 4` 顯示 |
 | `action_woow_document_log`、`action_woow_document_tag` | act_window | — |
@@ -1479,13 +1227,12 @@ class WoowDocumentPortal(CustomerPortal):
 5. **發布**：`/approve` 一律由人送出。G5 的 digest 和沙盒不同時，L11 要在新 digest 重跑 G1 和 G1-CA（ER-19 第 3 點）。
 6. **獨立站**：改 Helm values 的 init 清單，釘 G5 的 SHA，然後 helm upgrade、重啟、`-i` 或 `-u`。不用 kubectl 直接改。
 7. **G-CACHE**（ER-10）：
-   - Cache Rule 的條件是 `http.request.uri.path contains "/web/content"`、`"/woow-docs/"`、`"/woow_document/"`、`"/my/docs"` 四者 OR，動作是 bypass；
-   - WAF 對 `/woow-docs/` 依 IP 限流，最低要求是 10 秒 60 次；
+   - Cache Rule 的條件是 `http.request.uri.path contains "/web/content"`、`"/woow_document/"`、`"/my/docs"` 三者 OR，動作是 bypass；
    - 驗收是 T-E2E-04；
    - 上線時間：在 GM7 的 `/approve` 之前，而且在 G6 之前。
 8. **`docs/release/v18.0.1.0.0.md` 欄位**：
    - G0～G5、G1-CA、G1-COV（`sha256:` digest、百分比、各目錄的數字）、G-IP、G-COOKIE、G-CACHE；
-   - SC 執行紀錄：T-SHARE-32、44、45、46、47、48、49（L5），T-UPL-32（L2），T-TRASH-10（L6），T-UNINST-03、05（L3），sc_ca*（L11）。
+   - SC 執行紀錄：T-UPL-32（L2），T-TRASH-10（L6），T-UNINST-03、05（L3），sc_ca*（L11）。
    - 不寫站名、筆數和主機名稱；registry 只寫 `sha256:` 開頭的 digest（ER-47.9）。
 9. **repo 外的檔案**：`ops/release/{owner-actions,g6-runbook,g6-record}.md`、`site-values.patch`、`ops/g-cache/{ruleset.json,apply.sh,verify.sh}`、`ops/g-ip/verify.sh`、`ops/g-cookie/verify.sh`、`ops/residual-check/**`（T-REL-06，唯讀，只印計數）。
 
@@ -1537,7 +1284,7 @@ class WoowDocHttpCase(WoowDocFixtureMixin, odoo.tests.HttpCase): ...
 - fixture 只用合成資料，IP 只用 192.0.2.0/24、198.51.100.0/24、203.0.113.0/24、2001:db8::/32 和 127.0.0.1（ER-47.9）。
 
 ### 17.2 tag、docstring、檔案
-- tag 一律是 `@tagged('post_install', '-at_install', 'woow_docmgmt', 'woow_docmgmt_<core|share|portal|files>')`。
+- tag 一律是 `@tagged('post_install', '-at_install', 'woow_docmgmt', 'woow_docmgmt_<core|portal|files>')`。
 - `test_perf.py` 用 `('woow_docmgmt_perf', '-standard')`，只在指定 tag 時跑（ER-42）。
 - docstring 第一行寫正規測試 ID，有對應的 T-SEC 時一起寫，例如 `T-ACL-46 / T-SEC-21`。
 - U 類測試放在 `W/tests/`，類別繼承 `odoo.tests.BaseCase`。
@@ -1547,7 +1294,7 @@ class WoowDocHttpCase(WoowDocFixtureMixin, odoo.tests.HttpCase): ...
 - 只裝一個模組（ER-42 第 4 點）。各 lane 都不修改 沙盒工具（`$WOOW_SBX`）（ER-47.8）。
 - `W/tests/EXPECTED_MIN.json` 由 L11 維護，屬於 always_human。格式：
   ```json
-  {"version": 1, "batches": {"core": 0, "share": 0, "portal": 0, "files": 0},
+  {"version": 1, "batches": {"core": 0, "portal": 0, "files": 0},
    "files": {"test_core_models.py": 0}}
   ```
   任何一項低於下限，或總數是 0，就失敗。
@@ -1557,48 +1304,44 @@ class WoowDocHttpCase(WoowDocFixtureMixin, odoo.tests.HttpCase): ...
 
 ## 18. lane → 介面矩陣（P＝提供，C＝使用；L11 依 ER-47.13 唯讀使用全部介面）
 
-| 介面 | L0 | L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| IF-SKEL | P | C | C | C | C | C | C | C | C | C | ·（間接） | C | C |
-| IF-STATIC | P | C | C | C | C | C | C | C | · | · | · | C | C |
-| IF-CONST | ·（第 0 天代寫） | C | C | P | C* | C* | C* | C* | C | · | C | C | · |
-| IF-SET | · | P | C | C | C | C | C | C | C | · | · | C | C |
-| IF-IP | · | P | · | C | · | C | · | · | · | · | · | C | C |
-| IF-LOG | · | C | · | P | C | C | C | C | C | · | · | C | · |
-| IF-UPL | · | · | P | C | C | · | · | C | ·* | · | · | C | · |
-| IF-QUOTA | · | · | P | C | · | · | C | · | · | · | · | C | · |
-| IF-NAME | · | · | P | C | C | ·* | · | ·* | · | · | · | C | · |
-| IF-LOCK | · | · | P | · | C | C | C* | · | · | · | · | C | · |
-| IF-MODEL | · | · | · | P | C | C | C | C | C | · | C | C | · |
-| IF-SHARE-SCHEMA | · | · | · | P | · | C | ·* | · | · | · | · | C | · |
-| IF-FOLD | · | · | · | P | C | C | · | C | · | · | · | C | · |
-| IF-URL | · | · | · | P | · | ·* | · | ·* | C | · | · | C | · |
-| IF-GUARD | · | · | · | P | · | · | · | · | · | · | · | C | · |
-| IF-UNINST | C | · | · | P | · | · | · | · | · | · | · | C | C* |
-| IF-STREAM | · | · | · | · | P | C | · | C | · | · | · | C | · |
-| IF-ZIP | · | · | · | · | P | C | · | C | C | · | · | C | · |
-| IF-ROUTE-INT | · | · | · | · | P | · | · | · | C | · | · | C | C |
-| IF-TOKEN | · | · | · | · | · | P | · | · | · | · | · | C | · |
-| IF-SHARE | · | · | · | · | · | P | C | · | C | · | · | C | · |
-| IF-ROUTE-SHARE | · | · | · | · | · | P | · | · | · | C | · | C | C |
-| IF-MAIL | · | · | · | · | · | P | · | · | C | C | · | C | · |
-| IF-TRASH | · | · | · | · | · | · | P | · | C | · | · | C | · |
-| IF-CRON | · | · | C* | · | · | C* | P | · | · | · | · | C | · |
-| IF-PORTAL | · | · | · | · | · | · | · | P | · | C | · | C | C |
-| IF-UI | · | C*（選單） | · | · | · | · | · | · | P | C | · | C | · |
-| IF-TEST | · | ·* | ·* | C | C | C | C | C | C | C | C | P | C |
-| IF-RB | · | · | · | P（IF-RB-1～5） | · | · | · | · | · | · | P | C | C |
-| IF-REL | · | · | · | · | · | · | · | · | · | · | · | C | P |
-| PR-01 | P | C | C | C | C | C | C | C | C | · | C | C | · |
-| PR-02 | P（骨架） | · | · | · | · | · | · | · | · | · | · | P | · |
-| PR-14 | · | · | · | P | · | · | · | · | · | · | C | C | · |
+| 介面 | L0 | L1 | L2 | L3 | L4 | L6 | L7 | L8 | L9 | L10 | L11 | L12 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| IF-SKEL | P | C | C | C | C | C | C | C | C | ·（間接） | C | C |
+| IF-STATIC | P | C | C | C | C | C | C | · | · | · | C | C |
+| IF-CONST | ·（第 0 天代寫） | C | C | P | C* | C* | C* | C | · | C | C | · |
+| IF-SET | · | P | C | C | C | C | C | C | · | · | C | C |
+| IF-IP | · | P | · | C | · | · | · | · | · | · | C | C |
+| IF-LOG | · | C | · | P | C | C | C | C | · | · | C | · |
+| IF-UPL | · | · | P | C | C | · | C | ·* | · | · | C | · |
+| IF-QUOTA | · | · | P | C | · | C | · | · | · | · | C | · |
+| IF-NAME | · | · | P | C | C | · | ·* | · | · | · | C | · |
+| IF-LOCK | · | · | P | · | C | C* | · | · | · | · | C | · |
+| IF-MODEL | · | · | · | P | C | C | C | C | · | C | C | · |
+| IF-FOLD | · | · | · | P | C | · | C | · | · | · | C | · |
+| IF-URL | · | · | · | P | · | · | ·* | C | · | · | C | · |
+| IF-GUARD | · | · | · | P | · | · | · | · | · | · | C | · |
+| IF-UNINST | C | · | · | P | · | · | · | · | · | · | C | C* |
+| IF-STREAM | · | · | · | · | P | · | C | · | · | · | C | · |
+| IF-ZIP | · | · | · | · | P | · | C | C | · | · | C | · |
+| IF-ROUTE-INT | · | · | · | · | P | · | · | C | · | · | C | C |
+| IF-MAIL | · | · | · | · | · | · | · | P | C | · | C | · |
+| IF-TRASH | · | · | · | · | · | P | · | C | · | · | C | · |
+| IF-CRON | · | · | C* | · | · | P | · | · | · | · | C | · |
+| IF-PORTAL | · | · | · | · | · | · | P | · | C | · | C | C |
+| IF-UI | · | C*（選單） | · | · | · | · | · | P | C | · | C | · |
+| IF-TEST | · | ·* | ·* | C | C | C | C | C | C | C | P | C |
+| IF-RB | · | · | · | P（IF-RB-1～5） | · | · | · | · | · | P | C | C |
+| IF-REL | · | · | · | · | · | · | · | · | · | · | C | P |
+| PR-01 | P | C | C | C | C | C | C | C | · | C | C | · |
+| PR-02 | P（骨架） | · | · | · | · | · | · | · | · | · | P | · |
+| PR-14 | · | · | · | P | · | · | · | · | · | C | C | · |
 
 - 標 `*` 的是本文建議補進 lanes.json `depends_on_interfaces` 的依賴（實際會用到，但 lanes.json 沒有列）：
-  - L4、L5、L6、L7 加 IF-CONST；
+  - L4、L6、L7 加 IF-CONST；
   - L6 加 IF-LOCK（`bounded_wait`）；
-  - L5 和 L7 加 IF-NAME、IF-URL（ZIP 檔名、範本裡的網址）；
+  - L7 加 IF-NAME、IF-URL（ZIP 檔名、範本裡的網址）；
   - L1 和 L2 加 IF-TEST；
-  - L2 和 L5 加 IF-CRON（被 cron 呼叫）；
+  - L2 加 IF-CRON（被 cron 呼叫）；
   - L12 加 IF-UNINST（README 和 runbook）。
 - L8 依 ER-47.13 加上 IF-LOG 和 IF-CONST，矩陣已經納入。
 
@@ -1608,21 +1351,17 @@ class WoowDocHttpCase(WoowDocFixtureMixin, odoo.tests.HttpCase): ...
 
 | # | 衝突 | 解法 |
 |---|---|---|
-| 1 | sec §6.1 把 S2 放在 `document_share.py`；ER-44 放在 `share_service.py`，用 `_inherit` 判斷 model | 採 ER-44：S2 在 `models/share_service.py::_resolve_request_access`；`document_share.py`（L3）只放 schema |
 | 2 | arch §7.1 寫 `max_content_length`＝callable min(95 MiB, 設定)；§7.2 寫 ×檔數；sec R8 要求 callable；sec R1 要求 route 參數都是字面量；lanes L7 寫 `=streaming.max_upload_body` | 採 ER-03 和 ER-47.2：decorator 寫整數運算式 `95 * 1024 * 1024`；check_routes R1 和 R8 接受「值等於 99,614,720 的整數常數運算式」，或名稱是 `max_upload_body` 的 callable；`streaming.max_upload_body(controller=None)` 保留給測試比對（**IC-R03**） |
 | 3 | arch §11、§16 的內部上限預設 50 MiB | 改成 95（ER-03） |
-| 4 | arch §7.3 的落地頁要 `session.touch()`；sec R11 要求「沒有任何 request.env」 | 採 ER-22：可以 render、可以用 csrf_token，但不碰 woow model、不 touch、不寫 session、不記 log |
 | 5 | sec R11 允許 `_legacy_gone()`；R3 和 R6 有 legacy 例外 | 刪除（ER-27） |
-| 6 | target 寫 `/close` 的 sudo 是 0；R11 卻要求 public 函式的第一個陳述句是 `_share_entry` | `_share_entry(resolve=False)` 不呼叫 S2，也不碰 DB（**IC-R04**） |
 | 7 | arch §10.2 用 Python 的 `hash()` 產生鎖的鍵 | 改用 sha256 的 `advisory_key`（ER-24） |
 | 8 | ER-24 寫 `SET LOCAL lock_timeout` 再 `TO DEFAULT`；ER-47.3 改成 `set_config(...)`，沒寫還原 | 用 ER-47.3 的 set_config，再用同一個語句還原原本的值，四個語句都列進 Q4（**IC-R08**） |
-| 9 | arch §6.4 的 Q1 寫 `ON CONFLICT (索引名稱)`、`count = count + 1`；§3.7 的索引沒有 COALESCE(ip_hash) | 採 ER-28 的 SQL，逐字照抄 |
-| 10 | ER-47.4 規定 Q3 只有兩個位置；arch §3.2、§3.5 卻要求 access 和 tag 的運算式唯一索引 | 這兩個（以及 attachment_id、token_hash）改在 `init()` 用 `odoo.tools.sql.create_unique_index` 建立（`tools/sql.py` L563），不寫 raw SQL；Q3 維持兩個位置（**IC-R07**） |
+| 10 | ER-47.4 規定 Q3 只有兩個位置；arch §3.2、§3.5 卻要求 access 和 tag 的運算式唯一索引 | 這兩個（以及 attachment_id）改在 `init()` 用 `odoo.tools.sql.create_unique_index` 建立（`tools/sql.py` L563），不寫 raw SQL；Q3 維持兩個位置（**IC-R07**） |
 | 11 | arch §13.4 的 purge 用 `SKIP LOCKED`，但 Q1～Q6 沒有這一條 SQL；IDS 的 T-TRASH-10 又要求「跳過被鎖住的列」 | 不新增 SQL。改用 `locks.bounded_wait(cr, ms)`：在每一筆的 savepoint 裡短暫設定 lock_timeout，逾時就跳過。語句沿用 Q4 的 set_config（**IC-R09**，L2 提供、L6 使用） |
-| 12 | arch §14 有 22 種事件、含 legacy channel | 改成 21 種、5 個 channel（ER-37） |
+| 12 | arch §14 有 22 種事件、含 legacy channel | 改成 12 種、4 個 channel（ER-37；連結式分享的 9 種事件與 share channel 已於 2026-11-13 移除） |
 | 13 | arch §1.3、§4.1 和 L10 細部規格 §4.1 的註腳都說 admin 透過 groups.xml 的 users 欄位加入 | 改用 `data/admin_assignment.xml`，是 noupdate 的 `<function>`（ER-38、ER-45.5、PR-14） |
 | 14 | arch §25 的 HD-10，以及 sec R2b-01「HD-10 第二階段才適用」 | 採 ER-15 的改寫版，並顯示提醒 |
-| 15 | arch §8.7 的寄信用 `force_send=True` | 改成 `force_send=False`，HD-08 改寫（ER-35） |
+| 15 | arch §8.7 的寄信用 `force_send=True` | 改成 `force_send=False`（ER-35） |
 | 16 | arch §19 的 uninstall 順序沒有 legal hold | 先檢查 legal hold（M-71），再檢查確認碼（M-70）（ER-30） |
 | 17 | arch §3.4、§10.1、§11 和 target 的 note 都有 `policy_flag` 和 `legacy_unverified` | 刪除；`_served_mimetype` 照 ER-36 |
 | 18 | 舊 ic 寫 checksum 用 sha1、`exp` 是 float | 改成 `_compute_checksum`，`exp` 用整數 epoch（ER-39） |
@@ -1634,19 +1373,14 @@ class WoowDocHttpCase(WoowDocFixtureMixin, odoo.tests.HttpCase): ...
 | 24 | arch §4.6 沒有說文件管理員和 su 的 `_woow_has_rank` 怎麼算（他們不在 eff 集合裡，但 rule R-F4 全開） | su 和文件管理員一律成立（仍然套用公司 rule），`woow_user_rank` 是 4（**IC-R05**） |
 | 25 | arch §12 說「mailto 可以設定開啟」，但 §16 沒有對應的設定鍵 | MVP 固定 `allow_mailto=False`，不新增設定鍵（**IC-R13**） |
 | 26 | arch §3.8 寫 `_validate(name, data, channel)`、`quota._check(add_bytes)`；lanes 寫 `_validate(name, data)`；ER-24 要求在 checksum 之後才取配額鎖 | `_validate(name, data)`，通道依 env.user（arch §11 本身也這樣寫）；`_check(checksum, size)` |
-| 27 | arch §8.5 寫 `_scope_domain(scope_env)`；lanes 寫 `_scope_documents` | 兩者都提供：`_scope_domain()` 回傳 domain，`_scope_documents(scope_env)` 回傳 recordset |
 | 28 | lanes L7 說有 6 個 entry point；ER-47.5 說有 5 個 decorated 函式 | 兩者一致：5 個 decorated 函式，加上 `_prepare_home_portal_values`；「文件頁加下載」共用一個函式，用固定的路徑結尾分辨（**IC-R14**） |
-| 29 | 分享 ZIP 要不要計入 max_downloads，沒有任何文件定義 | 計入：在 `lock('share:<id>')` 之內記一筆 `share_download`（detail 帶 zip=1）；取鎖順序是 zip → share（**IC-R11**） |
 | 30 | sec §8 的 check_public_methods 只允許覆寫 create、write、unlink、copy；但 `set_values`、`message_post`、`message_subscribe`、`init`、精靈的 `default_get` 都必須覆寫 | public_methods.txt 增加 [override] 區段（§4.9），規則是「必須呼叫 super，或直接丟錯」（**IC-R10**） |
-| 31 | lanes L4 寫 M-65 用在 page 和 share 兩種 kind，但 M-65 的文案是給分享頁的 | 兩種 kind 都用 M-65 的文案，只有標頭不同；如果要改文案，送 L4 和 L9 |
 | 32 | 舊 ic §10 說 CA-23 不成立就「擋發版」 | 改成 L2 從 INLINE_WHITELIST 拿掉 `application/pdf`（ER-47.14） |
 | 33 | arch §1.2 寫 private repo 和 README.rst | 改成 public repo 和 README.md（ER-01） |
 | 34 | IDS §2.2 寫 test_static_checks 涵蓋 T-STAT-01～13、15～25 | 依 ER-47.6：01～13、16～25；T-STAT-15 放在 test_core_assumptions（PR-02） |
-| 35 | sec §10 列 28 支 regression_tests | 改成 36 支（ER-23） |
-| 36 | ER-07 和 sec §11 的 sensitive_code 是 23 項 | 改成 24 項，加上 share_service.py；always_human 也加上同一個檔案（ER-44 第 3 點） |
+| 35 | sec §10 列 28 支 regression_tests | 改成 36 支（ER-23）；分享的 3 支移除後是 33 支 |
 | 37 | constants.py 歸 L3，但其他 lane 第 0 天就要用到上限值 | L0 第 0 天依 §5 寫進最終值，之後由 L3 擁有（**IC-R02**） |
-| 38 | ER-32 的 stub 表沒有涵蓋 tokens、share_service、守衛、hook 等檔案 | §3 補上，全部 fail closed（**IC-R01**） |
-| 39 | 落地頁載入整包 frontend assets 會帶入 inline script，和 T-SHARE-42 衝突 | 另外建一個 bundle `woow_document_management.assets_share`（§2.2）（**IC-R06**） |
+| 38 | ER-32 的 stub 表沒有涵蓋守衛、hook 等檔案 | §3 補上，全部 fail closed（**IC-R01**） |
 
 ---
 
@@ -1661,7 +1395,6 @@ class WoowDocHttpCase(WoowDocFixtureMixin, odoo.tests.HttpCase): ...
 | §4.2（checksum） | §7.1 |
 | §4.3（EVENTS、CHANNELS） | §5、§8.4 |
 | §4.4（Response） | §9.1 |
-| §4.6（session 授權、落地頁） | §10.3 |
 | §4.8 | 刪除（搬遷） |
 | §5 | §1.2 R-RESP |
 | §6 | §4.3、§4.4 |
@@ -1675,27 +1408,7 @@ class WoowDocHttpCase(WoowDocFixtureMixin, odoo.tests.HttpCase): ...
 
 ## 21. 審查勘誤（contract verifier，2026-11-07；綁定，優先於本文前面各節）
 
-以下 B1～B7 的取代文字直接取代所指章節的原文；實作以本節為準。
-## B1：S2 的 domain 改成三元 tuple
-
-§4.3 表格 S2 列的「數量」欄，換成：
-> 2：(a) `self.sudo().search([(<'token_hash'｜'id'>, '=', v)], limit=1)`（單一三元 tuple，第一個元素是字面量 `'token_hash'` 或 `'id'`，運算子是字面量 `'='`）；(b) `share_sudo.with_user(share_sudo.create_uid).with_context(allowed_company_ids=[...])`
-
-§10.2 `_resolve_request_access` docstring 的前三行，換成：
-```
-share_sudo = self.sudo().search([('token_hash', '=', h)], limit=1)   # sudo-ok: S2
-    （或 [('id', '=', int(share_id))]）
-```
-
-## B2：superuser 建立者
-§1.2 R-SU 表格下方那一段，換成：
-> `with_user(u)` 產生的 env 是 `su=False`（CA-33），**只有 u 是 base.user_root（uid == SUPERUSER_ID）時例外**：`api.Environment.__new__` 會強制 su=True（`api.py` L572）。另外，`with_user(空 recordset)` 會直接回傳原 recordset（`models.py` L6306–6307）。因此：(1) S2-b 只能在確認 `share_sudo` 非空之後才執行；(2) `_validate_for_access(scope_env)` 的第一步是 `if scope_env is None or scope_env.su: return False`；(3) `_check_create_rights` 和 `_issue` 在 `self.env.su` 時也要執行，建立者是 base.user_root 就丟 UserError(M-52)。測試一律用 `env_as(role)` 建立分享。ER-06 的驗證 env 使用一般使用者，不受影響。
-
-§10.2 `_validate_for_access` docstring，換成：
-> self 是 share_sudo。第一步：`scope_env is None or scope_env.su` → False（建立者是 superuser 的分享一律無效）。接著依序檢查 arch §8.5 第 1～5、7 步，任何一步不成立就回傳 False，不 raise。
-
-`check_sudo` 的別名清單有 `SUPERUSER_ID`，所以實作要用 `scope_env.su` 判斷，不要寫 `SUPERUSER_ID`。
-
+以下 B3、B5～B7 的取代文字直接取代所指章節的原文；實作以本節為準。B1、B2、B4 隨連結式分享移除，編號不再使用。
 ## B3：except 的順序
 §1.2 R-RESP 第二點後面加一句：
 > Odoo 18 的 `AccessError`、`MissingError`、`ValidationError` 都繼承 `UserError`（`exceptions.py` L64、L85、L94），`WoowUploadRejected` 也是。所以 except 一律依這個順序：`LockBusy` → `(AccessError, MissingError)` → `WoowUploadRejected` → `(ValidationError, UserError)`。`AccessError`／`MissingError` 一律回 `uniform_404`，不帶任何訊息。
@@ -1711,32 +1424,9 @@ share_sudo = self.sudo().search([('token_hash', '=', h)], limit=1)   # sudo-ok: 
 `serve` docstring 最後一句改成：
 > 只接 `AccessError`、`MissingError` → return uniform_404(…)；不接一般的 UserError。
 
-## B4：分享 ZIP 的掛鉤
-§9.1 `zip_response` 簽名改成：
-```python
-def zip_response(documents, *, folders=None, root_folder=None,
-                 channel: Literal['backend', 'portal', 'share'],
-                 share_id: int | None = None, ip_hash: str | None = None,
-                 before_build: 'Callable[[], Response | None] | None' = None,
-                 before_stream: 'Callable[[ZipStats], Response | None] | None' = None) -> Response:
-    """…（原文保留）…
-    順序：取 zip 鎖（zip:s 或 zip:u）→ 取 slot → 檢查候選文件筆數及讀取權限
-    → before_build() 在任何檔案讀取、壓縮與暫存檔建立之前取得 share 鎖並檢查下載次數；
-      回傳 Response 時直接拒絕，None 才繼續 → 用 stored file_size 檢查上限並 build_zip
-    → before_stream(actual_stats) 記錄成功下載事件 → 串流。
-    channel == 'share' 時兩個 callback 都必填（沒有就 AssertionError）；
-    share 鎖持有到交易結束，故建檔期間沒有另一個請求可超額。"""
-```
-
-§10.3 `share_zip` docstring，換成：
-> `zip_response(docs, channel='share', share_id=…, ip_hash=…, before_build=preflight, before_stream=record)`。preflight() 依序做：`lock(cr, 'share:<id>')`（rank 2，在 zip 鎖之後）→ 在 scope_env 計算 share_download 的 ok 筆數，和 max_downloads 比對，超過就 return uniform_404('share')；record(actual_stats) 在建檔成功後記 `share_download`，detail 是 `{"zip": 1, "files": stats.files, "bytes": stats.bytes}`。LockBusy 由 zip_response 轉成 service_busy()。取鎖順序：zip:s → slot → share（IC-R11）。
-
-§19 #29 解法末尾加：
-> 由 `zip_response(before_build=…, before_stream=…)` 實作（L4 提供掛鉤，L5 提供 callback）。
-
 ## B5：單一擁有權
-§3 最後一列「controllers（L4、L5、L7）」的 stub 行為，換成：
-> 只有類別，沒有任何 route。`tools/routes.lock.json` 在第 0 天由 L0 依本文 §9.3、§10.3、§12 寫好全部 16 列的最終內容，之後各 lane 不修改。check_routes R12 在非 `--g1` 模式檢查「抽到的每個 route 都和 lock 檔的某一列完全相同」（子集）；`--g1` 模式檢查兩者相等。route 要改，就送契約變更請求給 L0（IC-R12）。
+§3 最後一列「controllers（L4、L7）」的 stub 行為，換成：
+> 只有類別，沒有任何 route。`tools/routes.lock.json` 在第 0 天由 L0 依本文 §9.3、§12 寫好全部 9 列的最終內容，之後各 lane 不修改。check_routes R12 在非 `--g1` 模式檢查「抽到的每個 route 都和 lock 檔的某一列完全相同」（子集）；`--g1` 模式檢查兩者相等。route 要改，就送契約變更請求給 L0（IC-R12）。
 
 §19 #20 的解法，換成上面這段的最後兩句。
 
@@ -1751,7 +1441,6 @@ lanes L11 deliverable「記入 docs/CONTRACTS.md 變更請求」照這個方式�
 ## B6：補上 stub
 §3 表格補以下幾列，或擴充原列：
 | `controllers/streaming.py`（L4） | 原列再加：`apply_common_headers(response, kind)` 回傳加上最終標頭的 response（純函式，第 0 天就寫最終邏輯，不標 WOOW-STUB 也可以） | ER-32 |
-| `models/share_service.py`（L5） | 原列再加：`_maintenance_run()` 第一個陳述句是 `if not self.env.su: raise AccessError`，之後不做事、回傳 None；`_issue` 丟 NotImplementedError；`download_count` 的 compute 給 0 | IC-R01 |
 | `models/document.py`（L3） | 原列再加：module-level `SOURCE_CTX_KEY = 'woow_doc_source'`、`_SOURCE_SENTINEL = object()` 用最終值 | IC-R01 |
 | `services/zip_builder.py`（L4） | 原列再加：`limits_from_settings(settings)` 用最終邏輯（純函式） | IC-R01 |
 
@@ -1768,8 +1457,8 @@ lanes L11 deliverable「記入 docs/CONTRACTS.md 變更請求」照這個方式�
 【不擋的觀察，建議一起修】
 1. §7.4 `lock()` 用 `cr.savepoint(flush=False)`，另外讀取並還原 lock_timeout。ER-47.3 寫的是 `cr.savepoint()`。這是相容的強化，但要在 §19 #8 註明偏離 ER-47.3 的字面寫法。`bounded_wait` 包住的是 ORM unlink，應該用預設的 flushing savepoint，rollback 時才會清掉 ORM cache。
 2. 配額：同一批上傳的前幾個檔案在 `_check` 時還沒寫入，`_usage_bytes` 看不到，整批可能超過配額。建議在 §8.1 寫明 document.create 逐筆「validate → create → flush」，或在 `_check` 加 pending_bytes 參數。
-3. IDS §2.2 寫 `static/tests/tours/**` 歸 L8（T-CA-21 的 tour 例外歸 L11）。ic 和 lanes 再把 tours/share/** 切給 L5（T-SHARE-40）、tours/test_suites/** 切給 L11（T-ESC tour）。這和 IDS 的位階不一致，建議在 §19 補一列說明，並送 IDS 勘誤。
-4. L3 的 `_log_event` 正常路徑需要 L1 的 `_share_keys`（ER-32 規定第 0 天的 stub 丟 NotImplementedError），所以 L3 要等 L1 合併後 rebase 才能把測試跑綠。合併順序本來就是 L1 先，不擋，但建議第 0 天先放 `hmac_ip`／`truncate_ip` 的最終純函式。
+3. IDS §2.2 寫 `static/tests/tours/**` 歸 L8（T-CA-21 的 tour 例外歸 L11）。ic 和 lanes 再把 tours/test_suites/** 切給 L11（T-ESC tour）。這和 IDS 的位階不一致，建議在 §19 補一列說明，並送 IDS 勘誤。
+4. L3 的 `_log_event` 正常路徑需要 L1 的 `_audit_ip_key`（ER-32 規定第 0 天的 stub 丟 NotImplementedError），所以 L3 要等 L1 合併後 rebase 才能把測試跑綠。合併順序本來就是 L1 先，不擋，但建議第 0 天先放 `hmac_ip`／`truncate_ip` 的最終純函式。
 
 
 
@@ -1786,9 +1475,8 @@ lanes L11 deliverable「記入 docs/CONTRACTS.md 變更請求」照這個方式�
 | L0 | `ci-sweep` | repo 骨架、第 0 天介面 stub、static tools、CI、sweep 設定、私有 target、推送前檢查 | 加 stub（ER-32）、推送前檢查（ER-01）；target 改 56 類加 review_units（ER-07） |
 | L1 | `settings-ip` | 設定（S3）和真實客戶 IP | 內部上限 95 MiB（ER-03） |
 | L2 | `upload-quota` | 上傳政策、配額、naming、mime_map、**advisory lock**（`services/locks.py`） | 加 locks.py 和 test_locks.py（ER-24） |
-| L3 | `core-models-acl` | 核心 model、權限、附件守衛、mail_thread_guard（R2b-01）、log 和 share 的 schema、Q1、uninstall_hook | 加 R2b-01 和 test_mail_thread_guard.py（ER-20）、legal hold 拒絕解除安裝（ER-30）、admin noupdate（ER-38）、移除 `policy_flag` |
+| L3 | `core-models-acl` | 核心 model、權限、附件守衛、mail_thread_guard（R2b-01）、log 的 schema、uninstall_hook | 加 R2b-01 和 test_mail_thread_guard.py（ER-20）、legal hold 拒絕解除安裝（ER-30）、admin noupdate（ER-38）、移除 `policy_flag` |
 | L4 | `internal-routes-zip` | streaming（Response 契約）、內部路由、ZIP、原生路由測試 | 加 test_native_routes.py、`service_busy`（ER-24、ER-29、ER-36） |
-| L5 | `share` | 分享連結、session 授權、密碼、限流、寄信 | **由 `share-legacy` 改名**，拿掉 legacy_urls 的部分 |
 | L6 | `trash-audit-cron` | 回收桶、法律保留、稽核行為、所有 cron | 加 poison record（R2b-06）、資料夾還原需要管理（ER-13） |
 | L7 | `portal` | `/my/docs` 瀏覽、下載、原子上傳、麵包屑折疊 | 請求上限固定 95 MiB（ER-03） |
 | L8 | `backend-ui` | 後台 UI、附件總覽、加入資料夾、搬移和通知精靈 | 加 HD-10 提醒（ER-15）；通知信改成佇列寄送 |
@@ -1798,7 +1486,6 @@ lanes L11 deliverable「記入 docs/CONTRACTS.md 變更請求」照這個方式�
 | L12 | `paas-release` | 打包、平台關卡（G-IP、G-COOKIE、G-CACHE）、runbook、發版紀錄、殘留檢查 | 刪除搬遷時序；加 G-CACHE（ER-10）、殘留檢查（ER-34）；「G-7」改名 G-SIM |
 
 舊 key 的別名只用在換算，新文件不准再寫：
-- `share-legacy` → `share`
 - `migration` → `site-rebuild`（repo 外）
 
 ### 1.2 舊編號 → 正規 lane
@@ -1808,14 +1495,13 @@ lanes L11 deliverable「記入 docs/CONTRACTS.md 變更請求」照這個方式�
 | arch §24（以及 sec §1 的 lane 欄） | L1 | L3 `core-models-acl` |
 | 同上 | L2 | L1 `settings-ip` ＋ L2 `upload-quota`（log 歸 L3） |
 | 同上 | L3 | L8 `backend-ui` |
-| 同上 | L4 | L5 `share` |
 | 同上 | L5 | L7 `portal` |
 | 同上 | L6 | L4 `internal-routes-zip` |
 | 同上 | L7 | L6 `trash-audit-cron` |
 | 同上 | L8 | L10 `site-rebuild`（repo 外）（範圍改成 ER-06；legacy 部分刪除） |
 | 同上 | L9 | L0 `ci-sweep` ＋ L11 `test-suites` |
 | 同上 | L10 | L12 `paas-release` |
-| lanes.json | L0～L12 | 號碼相同；L5 和 L10 改名，見 §1.1 |
+| lanes.json | L0～L12 | 號碼相同；L10 改名，見 §1.1（L5 已移除） |
 
 ### 1.3 合併順序（依賴的意思是「合併」，不是「開工」；ER-32）
 1. L0 合併
@@ -1823,7 +1509,7 @@ lanes L11 deliverable「記入 docs/CONTRACTS.md 變更請求」照這個方式�
 3. L2
 4. L3
 5. L4
-6. L5、L6、L7（可以並行）
+6. L6、L7（可以並行）
 7. L8
 8. L10
 9. L9
@@ -1841,14 +1527,13 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | L2 | `W/services/locks.py`、`W/tests/test_locks.py` | — |
 | L3 | `W/tests/test_mail_thread_guard.py`、`W/data/admin_assignment.xml`、`dev/sc/sc_uninstall.py` | `policy_flag` 欄位 |
 | L4 | `W/tests/test_native_routes.py` | — |
-| L5 | — | `LU/**`、T-LG 系列 |
 | L6 | `dev/sc/sc_purge_skip_locked.py` | — |
 | L7 | — | — |
 | L8 | — | — |
 | L9 | — | `LU/i18n/*` |
 | L10 | 重建腳本（repo 外） | `MS/**` 全部 |
 | L11 | `dev/coverage.sh`、`dev/sc/sc_ca*.py`（CA-06、23、24、28）、`W/tests/EXPECTED_MIN.json` | `dev/sandbox_test.sh` 裡三個模組的部分 |
-| L12 | `ops/residual-check/**`（repo 外）、G-CACHE 的 ruleset 和套用腳本、`dev/sc/sc_share_max_downloads_race.py` 的執行紀錄 | 舊的搬遷 runbook；`cloud-addons.list` 裡的 legacy_urls |
+| L12 | `ops/residual-check/**`（repo 外）、G-CACHE 的 ruleset 和套用腳本 | 舊的搬遷 runbook；`cloud-addons.list` 裡的 legacy_urls |
 
 `dev/sc/` 底下每支腳本的擁有者，以上表和 §2.2 為準。這是「`dev/**` 歸 L11」的例外。
 
@@ -1870,10 +1555,9 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | T-CA | Odoo core 假設 CA-01～35 | test_core_assumptions.py；SC 放在 dev/sc/ |
 | T-STAT | static tools、repo 衛生 | tools/tests/test_static_checks.py；CI |
 | T-ACL | 權限、欄位 groups、RPC 暴露、附件守衛、mail 守衛、名稱折疊 | 見 §2.2 |
-| T-MC | 多公司 | test_multicompany.py（T-MC-04 在 test_share_routes.py） |
+| T-MC | 多公司 | test_multicompany.py |
 | T-SET | 設定、URL 政策、客戶 IP | test_settings_bounds.py、test_url_policy.py、test_client_ip.py |
 | T-ESC | 輸出跳脫 | test_escaping.py |
-| T-SHARE | 分享的 model、路由、信件 | test_share_token.py、test_share_routes.py、test_mail_share.py |
 | T-PORTAL | portal | test_portal_routes.py、test_portal_upload.py |
 | T-ZIP | ZIP、下載回應、原生路由、Response 契約 | test_zip_builder.py、test_internal_routes.py、test_native_routes.py |
 | T-UPL | 上傳政策、naming、配額、鎖、內部上傳路由 | test_upload_policy.py、test_naming.py、test_quota.py、test_locks.py、test_core_models.py、test_internal_routes.py |
@@ -1914,10 +1598,6 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | test_zip_builder.py | L4 | T-ZIP-01、02、04～07、13、27 |
 | test_internal_routes.py | L4 | T-ZIP-03、08～12、14、20～25；T-UPL-20～23 |
 | test_native_routes.py | L4 | T-ZIP-26 |
-| test_share_token.py | L5 | T-SHARE-01～11 |
-| test_share_routes.py | L5 | T-SHARE-20～31、33～43；T-MC-04 |
-| test_mail_share.py | L5 | T-SHARE-12、50～57 |
-| `dev/sc/sc_share_max_downloads_race.py`、`dev/sc/sc_denied_count_real_http.py`、`dev/sc/sc_source_limit_two_links.py`、`dev/sc/sc_denied_sources_together.py`、`dev/sc/sc_denied_many_sources.py`、`dev/sc/sc_denied_one_source_together.py`、`dev/sc/sc_unlock_over_limit_together.py` | L5 | T-SHARE-32、44、45、46、47、48、49 |
 | test_trash_lifecycle.py | L6 | T-TRASH-01～08、13 |
 | test_cron.py | L6 | T-TRASH-09、11、12 |
 | `dev/sc/sc_purge_skip_locked.py` | L6 | T-TRASH-10 |
@@ -1950,7 +1630,7 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | 04 | T-ACL-22 | L11 |
 | 05 | T-ACL-11 | L11 |
 | 06 | T-MC-03 | L3 |
-| 07 | T-MC-04 | L5 |
+| 07 | 廢止（T-MC-04 隨分享一起移除） | — |
 | 08 | T-ACL-12 | L3 |
 | 09 | T-ACL-13 | L3 |
 | 10 | T-ACL-12 | L3 |
@@ -1967,30 +1647,9 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | 21 | T-ACL-46 | L3 |
 | 22 | T-ACL-47 | L3 |
 | 23 | T-ACL-52（TC）、T-PORTAL-09（HC） | L3、L7 |
-| 24 | T-SHARE-01、02 | L5 |
-| 25 | T-SHARE-04 | L5 |
-| 26 | T-SHARE-03 | L5 |
-| 27 | T-SHARE-24 | L5 |
-| 28 | T-SHARE-25 | L5 |
-| 29 | T-SHARE-26 | L5 |
-| 30 | T-SHARE-22、30、31 | L5 |
-| 31 | T-SHARE-23 | L5 |
-| 32 | T-SHARE-23、30 | L5 |
-| 33 | T-SHARE-28、29 | L5 |
-| 34 | T-SHARE-10 | L5 |
-| 35 | T-SHARE-31、32 | L5 |
-| 36 | T-SHARE-35、36 | L5 |
-| 37 | T-SHARE-30 | L5 |
-| 38 | T-SHARE-34、38 | L5 |
-| 39 | T-SHARE-33 | L5 |
-| 40 | T-SHARE-20、41 | L5 |
-| 41 | T-SHARE-37 | L5 |
-| 42 | T-SHARE-35、T-PORTAL-18 | L5、L7 |
-| 43 | T-SHARE-50 | L5 |
-| 44 | T-SHARE-51、52 | L5 |
-| 45 | T-SHARE-53 | L5 |
-| 46 | T-SHARE-54、12 | L5 |
-| 47 | T-SHARE-55 | L5 |
+| 24～41 | 廢止（連結式分享已移除） | — |
+| 42 | T-PORTAL-18 | L7 |
+| 43～47 | 廢止（連結式分享已移除） | — |
 | 48 | T-ACL-40～44、T-ACL-45、T-PORTAL-05 | L3、L11、L7 |
 | 49 | T-PORTAL-11、03 | L7 |
 | 50 | T-ESC-01 | L11 |
@@ -2014,19 +1673,19 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 | 68 | T-ZIP-26、T-PORTAL-08、T-CA-30 | L4、L7、L11 |
 | 69～74 | 廢止 | — |
 | 75 | T-STAT-01～13、16～25 | L0 |
-| 76 | T-SHARE-27、28、T-ACL-17 | L5、L3 |
-| 77 | T-SHARE-42、T-STAT-05 | L5、L0 |
+| 76 | T-ACL-17 | L3 |
+| 77 | T-STAT-05 | L0 |
 | 78 | T-UPL-30 | L2 |
 | 79 | T-ACL-02 | L3 |
 | 80 | T-ACL-52 | L3 |
-| 81（新） | T-SHARE-43、44，T-ZIP-27，T-STAT-23（Response 不 raise，ER-29） | L5、L4、L0 |
+| 81（新） | T-ZIP-27，T-STAT-23（Response 不 raise，ER-29） | L4、L0 |
 | 82（新） | T-UNINST-08（有 legal hold 就拒絕解除安裝，ER-30） | L3 |
 | 83（新） | T-ACL-53（portal hash／pid／token fallback，ER-20） | L3 |
-| 84（新） | T-SHARE-40、21（貼上完整連結；query string 不採用，ER-12） | L5 |
+| 84（新） | 廢止（連結式分享已移除） | — |
 | 85（新） | T-TRASH-05（資料夾還原需要管理，ER-13） | L6 |
 | 86（新） | T-UPL-30、31，T-STAT-22（鎖的鍵、lock_timeout、503，ER-24） | L2、L0 |
 | 87（新） | T-RB-01～10（重建只給檢視、冪等、只印 id，ER-06） | L10 |
-| 88（新） | T-SHARE-54（佇列寄送後沒有 token，ER-35） | L5 |
+| 88（新） | 廢止（連結式分享已移除） | — |
 | 89（新） | T-ACL-54（admin noupdate，ER-38） | L3 |
 | 90（新） | T-E2E-04（G-CACHE 紀錄，ER-10） | L12 |
 
@@ -2039,10 +1698,10 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | R2b | 嚴重度 | 正規 lane | 測試 | 設計勘誤 |
 |---|---|---|---|---|
 | R2b-01 | high | L3 `core-models-acl` | T-ACL-46、47、53（T-SEC-21、22、83） | ER-20 |
-| R2b-02 | medium | L5 `share`（static 規則在 L0） | T-SHARE-20、41，T-STAT-21（T-SEC-40） | ER-22 |
-| R2b-03 | medium | L5 `share`（static 規則在 L0） | T-SHARE-34、38，T-STAT-21（T-SEC-38） | ER-39 |
+| R2b-02 | medium | 不適用（連結式分享已移除；static 規則仍在 L0） | T-STAT-21 | ER-22 |
+| R2b-03 | medium | 不適用（連結式分享已移除；static 規則仍在 L0） | T-STAT-21 | ER-39 |
 | R2b-04 | medium | L4 `internal-routes-zip`（殘餘）；HD-12 文字由 L3 提供；CA-35 由 L11 撰寫 | T-ZIP-26，T-CA-35（T-SEC-68） | ER-36（搬遷部分不適用） |
-| R2b-05 | medium | L2 `upload-quota`（使用者是 L4、L5） | T-UPL-13、30、31，T-STAT-22（T-SEC-54、78、86） | ER-24 |
+| R2b-05 | medium | L2 `upload-quota`（使用者是 L4） | T-UPL-13、30、31，T-STAT-22（T-SEC-54、78、86） | ER-24 |
 | R2b-06 | low～medium | L6 `trash-audit-cron` | T-TRASH-13（T-SEC-58） | ER-32 |
 | R2b-07 | low | 不適用 | — | ER-25 |
 | R2b-08 | medium | 不適用 | — | ER-26 |
@@ -2119,3 +1778,4 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-13 | 審查修正（第十一輪） | **回收桶保留天數 0**：core 把設定表單的整數 0 存成沒有值（刪掉參數），讀回是預設的 30 天，每日 purge 因此照常刪除。現在 `res.config.settings.set_values` 在 core 之後把 0 以字串 `'0'` 寫回。測試：`test_settings_bounds.py`。 |
 | 2026-11-13 | 審查修正（第十二輪） | **替換分享連結**：`models/share_service.py:361`（修正前的行號）的 `action_reissue` 讓新連結以按下按鈕的人為建立者，範圍規格由他的環境讀出，之後每個公開請求都以新建立者的環境重算範圍。文件管理員替換別人的連結時，新連結因此多涵蓋原建立者看不到的受限子資料夾與已失去權限的文件，和「同一個範圍」的約定不符；持有新連結的人可列出並下載原連結範圍之外的文件。現在只有建立者本人能替換：`create_uid` 不是呼叫者 → `AccessError`，舊連結不動；管理員要結束別人的連結用 `action_revoke`（不變），要發新連結走分享精靈，由他自己明確選範圍。測試：`test_share_routes.py` 的 `TestShareReplacementIsForTheCreator`。 |
 | 2026-11-13 | 審查修正（第十二輪） | **並行測試**：補上三組釘住既有行為的測試，沒有改任何非測試檔案：配額的站台鎖 `lock('quota')`（`test_quota.py`）、`_bump_denied_bucket` 與 `_count_below` 取不到容量槽時的 `rollback`（`test_audit_log.py`）、`share_unlock` 比對密碼前的 `_lock_password_attempts` 與計入失敗時寫 share 列（`test_share_routes.py`）；每一項都以刪除被守護的程式行驗證測試會失敗。 |
+| 2026-11-13 | 移除連結式分享 | **移除連結式分享**（負責人決定：不使用）。本模組沒有以連結取得文件的功能：移除 model `woow.document.share`、`woow.document.share.wizard`、`woow.document.denied.budget`、`woow.document.denied.counter`，七條 `/woow-docs/s` 公開路由（`auth='public'` 的路由不再有）、`services/tokens.py`（token 與密碼雜湊）、分享信範本、分享維護 cron、分享用的設定鍵（8 個，另 `share_link_base_url` 改名為 `notice_base_url`，只給成員通知信用）、9 種稽核事件與 `share` channel、`denied` 結果（稽核欄 `result` 只剩 `ok`，`share_id`、`link_ref`、`bucket_minute`、`count` 欄位移除）、`effective_restored_at` 與 `subtree_restored_at`（只給分享範圍用）、CA-15 與 SC 的分享執行器，以及對應的測試、靜態檢查的規則與清單、翻譯。保留：資料夾權限與直接授權（`shared_user_ids`、`shared_partner_ids` 是授權，不是連結）、portal 頁面與已登入使用者的下載和 ZIP、上傳政策與配額、回收桶、搬移與通知精靈、稽核紀錄（12 種事件；客戶端 IP 的雜湊與顯示照舊，`trusted_proxies`、`client_ip_header`、`log_ip_mode` 保留，雜湊金鑰改由 `settings._audit_ip_key()` 取得，label 不變）。數字：model 19→15、路由 16→9（entry point 17→10）、設定鍵 30→22、事件 21→12、ACL 26→22、rule 33→29、cron 4→3、郵件範本 2→1。模組沒有在任何正式站安裝過，不寫資料搬移、不留相容層，版本維持 18.0.1.0.0。以上各節與先前變更紀錄中提到分享的部分，以本列為準。 |

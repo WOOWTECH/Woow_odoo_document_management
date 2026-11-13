@@ -9,7 +9,6 @@ What it provides (design scope):
 - folders with members and four permission levels (view, upload, edit, manage), inherited down the tree;
 - documents stored as Odoo attachments with server-side upload validation, quota and audit log;
 - a portal area under `/my/docs` for portal contacts;
-- expiring, revocable share links under `/woow-docs/s` (the token lives only in the URL fragment);
 - trash, legal hold, scheduled clean-up and an attachment overview for selected internal users.
 
 > Status: implemented and under review before release. The checks and the gates that a release has
@@ -40,8 +39,8 @@ Every tool is `python3 -I tools/check_<name>.py [--g1] [--root <repo>]`, prints
 
 | Tool | Checks |
 |---|---|
-| `check_sudo.py` | the three allowed privilege escalations S1-S3, aliases, S2 shape, cron su checks |
-| `check_routes.py` | route rules R1-R13 against `tools/routes.lock.json`; `--emit-entry-points` |
+| `check_sudo.py` | the two allowed privilege escalations S1 and S3, aliases, cron su checks |
+| `check_routes.py` | route rules R1-R10, R12 and R13 (R11 is retired) against `tools/routes.lock.json`; `--emit-entry-points` |
 | `check_forbidden.py` | forbidden Python, QWeb and JS constructs |
 | `check_sql.py` | raw SQL only at the statements of `tools/sql_allowlist.yaml`; advisory locks only in `services/locks.py` |
 | `check_sweep_config.py` | `.security/sweep.yaml`, CI workflow and repository hygiene |
