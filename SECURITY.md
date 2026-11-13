@@ -30,6 +30,10 @@ sharing, which is not part of this module. Retired numbers are not reused.
 - **HD-04** Chatter attachments on documents and folders follow Odoo's native upload rules, with
   one exception: they are never public and never carry or accept an access token, in any
   environment, so no link opens them without a sign-in (HD-12 is the same rule for what is served).
+  The rule is kept by the module when a file is made or changed, and the database refuses to store
+  such a file as well (a CHECK constraint on the attachment table, built from the list of the
+  module's models), so a path that the module does not know fails with an error instead of leaving
+  a file that a visitor can fetch.
   A file that is too large to be mailed is still taken out of the mail and replaced by a download
   link, but the link has no token. It opens only for a signed-in internal user who can read the
   record. Everybody else gets a not-found answer (HTTP 404) and no file: visitors without a
@@ -51,18 +55,29 @@ sharing, which is not part of this module. Retired numbers are not reused.
 - **HD-12** Chatter attachments keep Odoo's native content-type rules; every streamed response
   carries a `default-src 'none'` content security policy. A chatter attachment is never served
   on the strength of an access token, whoever stored the token, and never because it is public:
-  the public flag is kept off these files too (HD-04). The two decisions are one rule: no link
-  opens a chatter attachment without a sign-in. *(text pending)*
+  the public flag is kept off these files too, and since no such row can be stored (HD-04: the
+  database refuses it), a public file of a document or folder does not exist to be served. The two
+  decisions are one rule: no link opens a chatter attachment without a sign-in. *(text pending)*
 - **HD-13** A folder that does not inherit its access can only narrow what its parent grants, and its
   owner is held to that as a member is. The owner has the manage level of the folder, so a user who is
   not a Document Administrator can make someone its owner only if that person has the manage right on
   the parent (listed there, through a group, or as a Document Administrator). The same holds when such a
   folder is moved below another parent and when a folder stops inheriting its access: its owner must
-  have the manage right there. A Document Administrator and the superuser are not limited by it, and
-  the owner of a folder must be a document user for everyone but the superuser. A manager who cannot
-  read the parent is refused whoever the owner is, so the answer says nothing about the members of a
-  parent that the manager cannot see; such a manager asks a Document Administrator to hand the folder
-  over. The owner of a folder that inherits its access is not limited, as member rows are not.
+  have the manage right there. A Document Administrator and the superuser are not limited by it.
+  Whoever is named as the owner of a folder must be a document user, for everyone but the superuser; the
+  owner that an editor's new folder takes from its parent, the owner of a folder that the superuser made
+  and an owner who stays are named by nobody and are not asked. A manager who cannot read the parent is
+  refused for every owner who needs a grant on the parent, so the answer says nothing about the members
+  of a parent that the manager cannot see; a Document Administrator as the new owner needs no grant, and
+  that handover is accepted. Such a manager asks a Document Administrator to hand the folder over to
+  anyone else. A restricted folder whose current owner has no manage right on its parent (the
+  superuser, which owns the folders that a cron job or a script made, or a user who left the document
+  group) cannot be moved or restricted again by a manager who is not a Document Administrator, and the
+  refusal is the member ceiling message although the cause is the current owner; a write that names a
+  valid new owner in the same call is accepted. The owner of a folder that inherits its access is not
+  limited, as member rows are not. The rules are asked of the state that the ORM stored (the owner, the
+  parent, the access and the company that the folder has after the call) and not only of the values that
+  came in, so a value of another type or a default of another kind cannot leave a folder outside them.
 
 ## Deployment notes
 
