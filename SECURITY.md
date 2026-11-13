@@ -48,8 +48,8 @@ sharing, which is not part of this module. Retired numbers are not reused.
 ## Deployment notes
 
 - **Trusted proxies.** Behind a reverse proxy, set the trusted proxy networks and the client IP
-  header in the settings. Without them every visitor counts as one source, the address of the
-  proxy, and their audit records carry that address.
+  header in the settings. Without them the audit records of requests that came through the proxy
+  carry the address of the proxy, not the address of the client.
 - **Quota.** With a storage quota set, the files of one upload are checked together, last, and
   the stored bytes are measured once through a database connection of their own after the
   upload took the quota lock. One account has one upload transaction at a time: its other

@@ -108,7 +108,8 @@ def check(root, args):
             if isinstance(node, ast.Attribute) and node.attr == 'env' \
                     and isinstance(node.value, ast.Name) and node.value.id.endswith('_sudo'):
                 out.append(A.Violation(relpath, node.lineno, 'SUDO-ENV-REUSE',
-                                       '%s.env must not be used; use the scope env' % node.value.id))
+                                       '%s.env must not be used; use the current env or the '
+                                       'explicit env' % node.value.id))
         if test_file:
             continue
         for node, kind, text in _escalations(src):

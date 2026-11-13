@@ -252,7 +252,7 @@
 | 標記 | 意義 |
 |---|---|
 | `# sudo-ok: S1`／`S3` | sudo 白名單 |
-| `# sql-ok: Q1`～`Q6` | raw SQL 白名單 |
+| `# sql-ok: Q2`～`Q8`、`Q17`～`Q21` | raw SQL 白名單（現有的代號，以 `tools/sql_allowlist.yaml` 為準；Q1 已移除） |
 | `# WOOW-STUB` | L0 寫的 stub，G1 時必須是 0 筆 |
 | CSV 那一列旁邊的 `HD-07` | portal 對 folder 的 W=1 只是探測用（check_security_matrix 檢查） |
 
@@ -675,7 +675,7 @@ def _reset_tracker(cr) -> None:
 
 | 呼叫端 | 用法 | 取不到時 |
 |---|---|---|
-| L4 ZIP | `try_lock('zip:u:<uid>')` → 對 i＝1..zip_concurrency 逐一 `try_lock('zip:slot:<i>')` | 回傳 `limit_page('M-42' 或 'M-43', 429)` |
+| L4 ZIP | `lock(cr, 'zip:u:<uid>')`（會等；逾時就是 `LockBusy`），再對 i＝1..zip_concurrency 逐一 `try_lock('zip:slot:<i>')`（只有 slot 用 `try_lock`） | `zip:u` 逾時：`LockBusy` → `zip_response` 回傳 `service_busy()`（503）；沒有空的 slot：回傳 `limit_page('M-43', 429)` |
 | L2 配額 | `lock(cr, 'quota:u:<uid>')`，再 `lock(cr, 'quota')`（同為 rank 2） | `LockBusy` → 由路由回傳 `service_busy()` |
 
 ---
@@ -733,7 +733,7 @@ class WoowDocumentGuardMixin(models.AbstractModel):
     def _woow_rank_domain(self, n: int) -> list:
         """E(n)，內容見 arch §4.4。"""
     def _woow_filter_rank(self, n: int) -> 'woow.document.folder':
-        """self 裡通過 _woow_has_rank(n) 的資料夾，只用一次 search（幾千份文件不再每份查一次）。"""
+        """self 裡通過 _woow_has_rank(n) 的資料夾，只用一次 search；唯一的呼叫端是 _woow_has_rank，一次傳一個資料夾。"""
     def _woow_has_rank(self, n: int) -> bool:
         """ensure_one。= bool(self._woow_filter_rank(n))：su 或文件管理員 → self.exists()（仍然套用公司 rule）。
         內部使用者 → search([('id','in',self.ids)] + E(n))。非內部使用者 → 空。"""
@@ -978,7 +978,7 @@ def create_batch(folder, uploads: Sequence['werkzeug.datastructures.FileStorage'
     - 成功 → 200 {"ok": true, "document_ids": [...]}。"""
 def zip_response(documents, *, folders=None, root_folder=None,
                  channel: Literal['backend', 'portal']) -> Response:
-    """documents 和 folders 是呼叫端 env（使用者 env 或 scope_env）裡已經 search 過的 recordset。
+    """documents 和 folders 是呼叫端 env（使用者 env）裡已經 search 過的 recordset。
     鎖（§7.4）：`zip:u:<uid>`；接著取 slot。
     路徑用 folding.zip_segments 加 naming.sanitize_segment 組成。
     讀任何 bytes 之前先用 stored 的 file_size 檢查上限。
@@ -1522,7 +1522,7 @@ L0 合併之後，L1～L8 和 L11 就可以開工。L10 要等 L3 合併後才�
 
 | lane | 新增 | 刪除 |
 |---|---|---|
-| L0 | `ops/prepush-check.sh`（repo 外）、`tools/sql_allowlist.yaml`（Q1～Q6）、`tools/cleanroom_forbidden.txt`（只放 ER-33 的內容） | LU 和 MS 的 manifest 與 `__init__.py`；plat 的 sh target 退役改成 G3 交付 |
+| L0 | `ops/prepush-check.sh`（repo 外）、`tools/sql_allowlist.yaml`（現有的代號：Q2～Q8、Q17～Q21）、`tools/cleanroom_forbidden.txt`（只放 ER-33 的內容） | LU 和 MS 的 manifest 與 `__init__.py`；plat 的 sh target 退役改成 G3 交付 |
 | L1 | — | — |
 | L2 | `W/services/locks.py`、`W/tests/test_locks.py` | — |
 | L3 | `W/tests/test_mail_thread_guard.py`、`W/data/admin_assignment.xml`、`dev/sc/sc_uninstall.py` | `policy_flag` 欄位 |

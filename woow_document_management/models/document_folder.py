@@ -518,8 +518,11 @@ class WoowDocumentFolder(models.Model):
     def _woow_filter_rank(self, n):
         """The folders of ``self`` that pass ``_woow_has_rank(n)``, found with one search.
 
-        Checking each folder of a long list one by one costs a query per folder (a few
-        thousand documents would take thousands), however few folders hold them.
+        The superuser keeps the folders that exist, a user who is not internal gets none, and
+        anyone else gets the folders that a search under the user's record rules finds: all of
+        them for a document administrator, for another user those whose effective grants name
+        the user, or a group of the user, at rank ``n`` or above. Its only caller is
+        ``_woow_has_rank``, which passes one folder.
         """
         if not self:
             return self
