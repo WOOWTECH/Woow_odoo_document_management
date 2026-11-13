@@ -1,13 +1,21 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""A portal contact's description of a file is short: core sanitises HTML, and that costs time.
+"""A portal contact's description of a file is short and carries no styling.
 
 The description is an HTML field that core sanitises twice on every create, and for some markup the
 cost grows with the square of its length. A portal contact may send a description with a file, so
 the module refuses a long one before anything is stored or sanitised.
+
+Core's sanitiser keeps the ``style`` and ``class`` attributes. Staff read the description in their own
+form, in the page of the backend, so a block with ``position: fixed`` that a portal contact wrote
+covers the whole page, a fake notice on top of the real one. The description of a portal contact is
+sanitised again without styles and classes when the file is created (portal contacts cannot write a
+document, so that is the only place); links and images stay. The description of a document user is
+not touched.
 """
 import base64
 import json
+import re
 import secrets
 from unittest.mock import patch
 
@@ -21,6 +29,16 @@ from ..services.constants import PORTAL_DESCRIPTION_MAX_CHARS
 # markup with nothing to close: the cheapest text that makes the sanitiser work hard
 _PATHOLOGICAL = '<' * (10 * PORTAL_DESCRIPTION_MAX_CHARS)
 
+# a notice that covers the page of whoever reads it, with a link to sign in again
+_OVERLAY = (
+    '<div style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:2000;'
+    'background:#fff url(https://example.test/p.png)" class="o_view_nocontent text-bg-danger">'
+    '<p class="lead" STYLE="font-size:40px">Your session has expired</p>'
+    "<a href='https://example.test/login' style='color:red' CLASS='btn btn-primary'>Sign in again</a>"
+    '<img src="https://example.test/a.png" style="position:fixed" class="img-fluid"/></div>')
+_STYLING = re.compile(r'(?i)(?<![\w-])(style|class)\s*=')
+_STRICT = dict(sanitize_attributes=True, sanitize_style=True, strip_style=True, strip_classes=True)
+
 
 def _fixture(env, suffix, password=None):
     """A portal contact and a document user, each allowed to upload to one folder."""
@@ -32,10 +50,13 @@ def _fixture(env, suffix, password=None):
     if password:
         portal_vals['password'] = password
     portal = env['res.users'].sudo().create(portal_vals)
-    member = env['res.users'].sudo().create({
+    member_vals = {
         'name': 'Description member %s' % suffix, 'login': 'wdoc-desc-member-%s' % suffix,
         'groups_id': [Command.set([
-            env.ref('woow_document_management.group_woow_document_user').id])]})
+            env.ref('woow_document_management.group_woow_document_user').id])]}
+    if password:
+        member_vals['password'] = password
+    member = env['res.users'].sudo().create(member_vals)
     folder = env['woow.document.folder'].sudo().create({
         'name': 'Description folder %s' % suffix, 'owner_id': env.ref('base.user_admin').id})
     access = env['woow.document.folder.access'].sudo()
@@ -91,6 +112,48 @@ class TestPortalDescriptionCapOrm(TransactionCase):
         self.assertNotIn('script', scripted.sudo().description)
         self.assertEqual(self._count(), 4)
 
+    def test_a_portal_description_keeps_its_text_and_loses_its_styles_and_classes(self):
+        """The overlay becomes plain markup: the words, the link and the image stay."""
+        description = self.documents.with_user(self.portal).create(
+            _values(self.folder, 'overlay.txt', _OVERLAY)).sudo().description
+        self.assertEqual(str(description), str(html_sanitize(_OVERLAY, **_STRICT)))
+        self.assertNotRegex(description, _STYLING)
+        self.assertNotIn('position', description)
+        self.assertNotIn('z-index', description)
+        self.assertIn('Your session has expired', description)
+        self.assertIn('Sign in again', description)
+        self.assertIn('href="https://example.test/login"', description)
+        self.assertIn('src="https://example.test/a.png"', description)
+        # what has no styling is stored as it was, and the other shapes of the value are as before
+        for label, plain in (('plain', '<p>Plain <b>words</b> and <a href="https://example.test/">a link</a></p>'),
+                             ('empty', ''), ('none', False)):
+            with self.subTest(description=label):
+                document = self.documents.with_user(self.portal).create(
+                    _values(self.folder, 'plain-%s.txt' % label, plain))
+                self.assertEqual(document.sudo().description, plain)
+
+    def test_every_description_of_a_portal_batch_loses_its_styling(self):
+        created = self.documents.with_user(self.portal).create([
+            _values(self.folder, 'first.txt', _OVERLAY),
+            _values(self.folder, 'second.txt', '<p>no styling</p>'),
+            _values(self.folder, 'third.txt', '<span style="color:red">red</span>')])
+        for document in created.sudo():
+            with self.subTest(file=document.name):
+                self.assertNotRegex(document.description, _STYLING)
+        self.assertEqual(created.sudo().mapped('description')[1], '<p>no styling</p>')
+        self.assertIn('red', created.sudo().mapped('description')[2])
+
+    def test_the_description_of_a_document_user_keeps_its_styling(self):
+        """Staff format their own text: only the text of a portal contact is held to this."""
+        for label, documents in (('document user', self.documents.with_user(self.member)),
+                                 ('superuser', self.documents.sudo())):
+            with self.subTest(user=label):
+                description = documents.create(
+                    _values(self.folder, label + '-overlay.txt', _OVERLAY)).sudo().description
+                self.assertIn('position:fixed', description)
+                self.assertIn('class="o_view_nocontent text-bg-danger"', description)
+                self.assertRegex(description, _STYLING)
+
     def test_every_file_of_a_batch_is_checked(self):
         with self.assertRaises(WoowUploadRejected):
             self.documents.with_user(self.portal).create([
@@ -138,3 +201,21 @@ class TestPortalDescriptionCapRpc(HttpCase):
         self.assertNotIn('error', created)
         self.assertEqual(len(created['result']), 1)
         self.assertEqual(count(), 1)
+
+    def test_a_portal_user_cannot_send_styling_over_rpc_and_a_document_user_can(self):
+        """The call of the web client, from the account that is not staff and from the one that is."""
+        password = secrets.token_urlsafe(16)
+        portal, member, folder = _fixture(self.env, 'rpc-style', password=password)
+        stored = {}
+        for who, user in (('portal', portal), ('document user', member)):
+            self.authenticate(user.login, password)
+            answer = self._call_kw('woow.document', 'create',
+                                   [[_values(folder, who.replace(' ', '-') + '.txt', _OVERLAY)]])
+            self.assertNotIn('error', answer, answer)
+            stored[who] = self.env['woow.document'].sudo().browse(answer['result']).description
+        self.assertNotRegex(stored['portal'], _STYLING)
+        self.assertNotIn('position', stored['portal'])
+        self.assertIn('Your session has expired', stored['portal'])
+        self.assertIn('href="https://example.test/login"', stored['portal'])
+        self.assertIn('position:fixed', stored['document user'])
+        self.assertRegex(stored['document user'], _STYLING)

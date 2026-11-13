@@ -6,6 +6,7 @@ import binascii
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
+from odoo.tools import html_sanitize
 
 from ..services import url_policy
 from ..services.constants import PORTAL_DESCRIPTION_MAX_CHARS
@@ -177,6 +178,14 @@ class WoowDocument(models.Model):
                     # core sanitises the HTML twice per create, and for some markup the cost
                     # grows with the square of its length
                     raise WoowUploadRejected('content')
+                if not internal and isinstance(vals.get('description'), str) and vals['description']:
+                    # Staff read the description in their own form, where a style or a class that a
+                    # portal contact wrote (a block fixed over the whole page, say) restyles the page
+                    # around it. The text, the links and the images stay; the styling does not. Portal
+                    # contacts have no write, so create is the only place that stores their text.
+                    vals['description'] = html_sanitize(
+                        vals['description'], sanitize_attributes=True, sanitize_style=True,
+                        strip_style=True, strip_classes=True)
                 if {'source_res_model', 'source_res_id'}.intersection(vals) and not self.env.su \
                         and self.env.context.get(SOURCE_CTX_KEY) is not _SOURCE_SENTINEL:
                     raise AccessError(_('A source can only be set by the attachment wizard.'))
