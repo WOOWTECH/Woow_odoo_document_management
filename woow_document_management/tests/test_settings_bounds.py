@@ -42,6 +42,15 @@ class TestSettingsBounds(TransactionCase):
         self.assertEqual(len(_PARAM_KEYS), 21)
         self.assertEqual(set(_PARAM_KEYS), set(WoowDocSettings.__dataclass_fields__))
 
+    def test_the_settings_form_has_one_field_for_each_key_and_no_other(self):
+        """``set_values`` reads ``woow_doc_<key>`` for each key: a key with no field, or a field
+        with no key (a leftover of a removed setting), would go unnoticed otherwise."""
+        prefix = 'woow_doc_'
+        form = {name[len(prefix):] for name in self.env['res.config.settings']._fields
+                if name.startswith(prefix)}
+        self.assertEqual(form - set(_PARAM_KEYS), set(), 'fields of the form without a key')
+        self.assertEqual(set(_PARAM_KEYS) - form, set(), 'keys without a field of the form')
+
     def test_set_values_bounds_and_audit(self):
         form = self.env['res.config.settings'].create({'woow_doc_internal_max_upload_mb': 120})
         with self.assertRaises(ValidationError):

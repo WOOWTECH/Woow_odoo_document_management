@@ -18,7 +18,6 @@ import secrets
 from markupsafe import Markup
 from PIL import Image
 
-from odoo import Command
 from odoo.addons.mail.tests.common import MockEmail
 from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
@@ -28,6 +27,7 @@ from odoo.tools.misc import limited_field_access_token
 from ..services.constants import WOOW_MODELS
 
 _USER = 'woow_document_management.group_woow_document_user'
+_NO_SIGNUP_MAIL = {'no_reset_password': True}
 
 
 def _png():
@@ -40,14 +40,13 @@ class _ChatterFixture:
     """A folder with a document, an editor of the folder and a reader of the folder."""
 
     def _fixture(self):
-        users = self.env['res.users'].sudo()
-        group = self.env.ref(_USER)
-        self.editor = users.create({
-            'name': 'Token editor', 'login': 'wdoc-token-editor',
-            'email': 'token-editor@example.test', 'groups_id': [Command.set([group.id])]})
-        self.reader = users.create({
-            'name': 'Token reader', 'login': 'wdoc-token-reader',
-            'email': 'token-reader@example.test', 'groups_id': [Command.set([group.id])]})
+        # No signup mail is queued for the fixture users (the mail tests count the mail they get).
+        self.editor = new_test_user(
+            self.env, login='wdoc-token-editor', groups=_USER, name='Token editor',
+            email='token-editor@example.test', context=_NO_SIGNUP_MAIL)
+        self.reader = new_test_user(
+            self.env, login='wdoc-token-reader', groups=_USER, name='Token reader',
+            email='token-reader@example.test', context=_NO_SIGNUP_MAIL)
         self.folder = self.env['woow.document.folder'].sudo().create({
             'name': 'Token folder', 'owner_id': self.env.ref('base.user_admin').id})
         self.env['woow.document.folder.access'].sudo().create({
@@ -75,7 +74,7 @@ class _ChatterFixture:
             'name': 'Token portal contact', 'email': 'token-portal@example.test'})
         portal = new_test_user(
             self.env, login='wdoc-token-portal', groups='base.group_portal',
-            partner_id=partner.id, email=partner.email, context={'no_reset_password': True})
+            partner_id=partner.id, email=partner.email, context=_NO_SIGNUP_MAIL)
         self.env['woow.document.folder.access'].sudo().create({
             'folder_id': self.folder.id, 'subject_type': 'partner', 'partner_id': partner.id,
             'level': 'read'})
@@ -328,23 +327,28 @@ class TestChatterAttachmentTokenCalls(_ChatterFixture, TransactionCase):
         partner = self.env['res.partner'].sudo().create({'name': 'Token check partner'})
         other = self._row('res.partner', partner.id)
         other_token = other.generate_access_token()[0]
-        owned = self._row('woow.document', self.document.id)
-        self._store_token(owned, 'stored-by-superuser')
+        # One row for each model of the module: the refusal is not for the documents alone.
+        owned = {model: self._row(model, self.document.id if model == 'woow.document' else 0)
+                 for model in WOOW_MODELS}
+        self._store_token(self.env['ir.attachment'].union(*owned.values()), 'stored-by-superuser')
         public = self.env.ref('base.public_user')
         for user in (public, self.reader, self.editor, self.env.user):
-            for token in ('stored-by-superuser', 'any-other-value'):
-                with self.subTest(user=user.login, token=token):
-                    with self.assertRaises(AccessError) as caught:
-                        owned.with_user(user).validate_access(token)
-                    self.assertEqual(str(caught.exception), 'Invalid access token')
+            for model, row in owned.items():
+                for token in ('stored-by-superuser', 'any-other-value'):
+                    with self.subTest(user=user.login, model=model, token=token):
+                        with self.assertRaises(AccessError) as caught:
+                            row.with_user(user).validate_access(token)
+                        self.assertEqual(str(caught.exception), 'Invalid access token')
             # Core's own answers for the file of another record are unchanged.
             with self.subTest(user=user.login, row='other'):
                 self.assertEqual(other.with_user(user).validate_access(other_token), other)
                 with self.assertRaises(AccessError):
                     other.with_user(user).validate_access('any-other-value')
         # Without a token the call is core's: the file is returned as it was asked for.
-        self.assertEqual(owned.with_user(public).validate_access(None), owned)
-        self.assertEqual(owned.with_user(public).validate_access(''), owned)
+        for model, row in owned.items():
+            with self.subTest(model=model, token='none'):
+                self.assertEqual(row.with_user(public).validate_access(None), row)
+                self.assertEqual(row.with_user(public).validate_access(''), row)
 
     def test_a_picture_inside_the_message_gets_no_token_and_the_post_goes_through(self):
         """Core stores a token on the file of an embedded picture, as the poster does it."""
@@ -359,6 +363,10 @@ class TestChatterAttachmentTokenCalls(_ChatterFixture, TransactionCase):
                 self.assertEqual((attachment.res_model, attachment.res_id),
                                  (record._name, record.id))
                 self.assertIsNone(self._stored_token(attachment))
+                # The text that core writes into the body is the one the contract describes: the
+                # picture shows its placeholder, the url has no token to open anything with.
+                self.assertIn('/web/image/%d?access_token=False' % attachment.id,
+                              str(message.sudo().body))
 
 
 @tagged('woow_docmgmt_core')

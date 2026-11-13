@@ -1,0 +1,9 @@
+#! target=woow_document_management/models/ir_attachment.py expect=F-TOKEN-API
+from odoo import models
+
+
+class IrAttachment(models.Model):
+    _inherit = 'ir.attachment'
+
+    def generate_access_token(self):
+        return super().limited_field_access_token(self, 'raw')

@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 237,
+    "core": 238,
     "files": 120,
     "portal": 3
   },
@@ -43,7 +43,7 @@
     "test_reg_wizard_owner_scope.py": 2,
     "test_rpc_exposure.py": 3,
     "test_security_acl.py": 8,
-    "test_settings_bounds.py": 11,
+    "test_settings_bounds.py": 12,
     "test_trash_lifecycle.py": 29,
     "test_uninstall.py": 3,
     "test_upload_policy.py": 26,
