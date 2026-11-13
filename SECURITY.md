@@ -81,10 +81,20 @@ sharing, which is not part of this module. Retired numbers are not reused.
   came in, so a value of another type or a default of another kind cannot leave a folder outside them.
   The many2one values of a folder (its company, parent and owner) and the company of a member row are
   judged by the id that the ORM stores: an integer that is not a flag, a single record, an (id, name)
-  pair, False and None are accepted; a list, a text, a dict, a float, True and several records are
-  refused, because the ORM would store none of them as the record that a guard might read from them.
+  pair, False and None are accepted, and an empty list or tuple means no record; a list with
+  something in it, a text, a dict, a float, True and several records are refused, because the ORM
+  would store none of them as the record that a guard might read from them.
   The value that was judged is the value that is written, and after the call the stored company and
   parent are compared with the ones that were authorised; a difference refuses the request.
+  The owner of a document is judged the same way, by the id that the ORM stores, whether it is
+  given when the document is made or later: an integer that is not a flag, a single user record, an
+  (id, name) pair, False and None are read as the ORM reads them, and a value that has no id is
+  refused for every caller but the superuser (so is an integer below 1). A caller who is not a Document Administrator may name
+  only himself as the owner, and the comparison is made on the stored id, so a number that equals his
+  id but is stored as no owner (a float, or True) is not taken for himself. Only a Document
+  Administrator may clear the owner with False.
+  The company of a member row that has the wrong shape ends in a database error when the row is
+  made, and nothing is stored; when the row is changed, the request is refused cleanly.
 - **HD-14** Inbound email on a document or a folder is a reply, never a way in. Core posts an
   incoming mail as the system user, which every guard that looks at the posting user lets through, so
   the sender is judged instead: the mail is accepted only when its From address belongs to a partner
@@ -94,9 +104,20 @@ sharing, which is not part of this module. Retired numbers are not reused.
   account, a partner whose user is archived or left the document group, and an internal user who
   cannot read the record. The answer does not say which of these it was, nor whether the record
   exists. A mail never creates a document or a folder. The gateway routes to these models stay
-  closed to everyone but the mail fetcher and a system administrator. Inbound mail may be active on
-  a site. Behaviour change: a portal contact who answers a notification by email no longer posts
+  closed to everyone but the mail fetcher and a system administrator. Two more rules hold the
+  sender to the mail as it was delivered. The first address of the raw From header must be the
+  sender that core resolved from the mail; a From header with defects, or an address without a
+  domain, is refused, so a legitimate sender whose header is malformed (for example an unquoted comma
+  in the display name) is refused as well. And `message_update` of both models, the method that
+  core calls before it posts a reply on an existing record and where the sender is judged, runs only
+  for the superuser, which is how core calls it; any other caller is refused with the same answer,
+  so the method cannot be used to ask whether somebody may read a record. The sender's address is
+  taken as delivered: the module does not check SPF, DKIM or DMARC (see the deployment notes).
+  Inbound mail may be active on a site. Behaviour change: a portal contact who answers a notification by email no longer posts
   into the chatter, which the contact could not do over the web either; the reply is refused.
+  For the same reason a reply from a personal or secondary address is refused, because the address
+  must belong to the partner of an internal user, and a contact without a user that shares the address
+  of an internal user can be chosen by core as the author of the mail, so that reply is refused too.
 - **HD-15** A description that a caller who is not an internal user writes with a file (a portal
   contact, through the upload) is limited in length and is sanitised a second time without style and
   class attributes, so that it cannot restyle the page of the staff who read it. Text, links and
@@ -114,10 +135,19 @@ sharing, which is not part of this module. Retired numbers are not reused.
 - **Indexing.** The files of documents are saved without core indexing: their `index_content`
   stays empty, whether or not `attachment_indexation` is installed. Its indexers unpack and parse
   the members of Office and OpenDocument archives of any file type and any declared size, while
-  the upload policy bounds only the directory of an archive and reads the type member of an
-  OpenDocument file (odt, ods, odp) only when it is stored or deflated and at most 1 KiB compressed;
-  an upload whose member is stored another way is refused as of the wrong type. A module that searches the content
+  the upload policy bounds only the directory of an archive and reads a member named `mimetype`
+  of any accepted ZIP (a plain zip, Office and OpenDocument files alike) only when it is stored or
+  deflated, at most 1 KiB compressed and at most 255 bytes declared; an upload whose member is
+  stored another way is refused as of the wrong type. A module that searches the content
   of documents has to decide what it reads from a file, and how much.
+- **Inbound mail.** The module trusts the From address as it is delivered, so the mail server of
+  the site must enforce SPF, DKIM and DMARC before inbound mail is switched on for documents and
+  folders; a spoofed From address of a user who can read a record passes the module's checks. Use
+  IMAP for a fetchmail server that can receive replies for these models. With POP, core deletes a
+  message from the server only after it was processed, so a refused reply is fetched again on every
+  run, and enough refused messages at the head of the mailbox keep later mail from being fetched.
+  Do not point a mail alias at these models: a refused new message makes core send a bounce and mark
+  the alias as invalid.
 
 ## Known limitations (pending owner decisions)
 
