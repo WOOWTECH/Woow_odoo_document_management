@@ -19,7 +19,7 @@ leaves nothing behind: no message, no file, no follower, no notification.
 """
 import base64
 import secrets
-from contextlib import closing
+from contextlib import closing, contextmanager
 from email.message import EmailMessage
 from unittest.mock import patch
 
@@ -30,7 +30,6 @@ from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 from odoo.tools import email_normalize
 
-from ..models.mail_thread_guard import _reply_sender_reads
 
 _MODELS = ('woow.document', 'woow.document.folder')
 _USER = 'woow_document_management.group_woow_document_user'
@@ -58,8 +57,29 @@ def _raw(sender, parent=None, to='docs@example.test', attach=False, extra=()):
     return message_id, mail.as_bytes()
 
 
+class _Refusal:
+    exception = None
+
+
 class _InboundFixture:
     """A folder and a document with their senders, and the means to send a mail and look at the state."""
+
+    @contextmanager
+    def _refused(self):
+        """The call inside is refused with an ``AccessError``, and what it wrote before is kept.
+
+        ``assertRaises`` of the test framework rolls back the savepoint of the call that failed. A mail
+        gateway does not: fetchmail catches the error of a mail, marks the mail as processed and
+        commits, so the writes that the refused mail made before it was refused stay. What a refusal
+        leaves behind is looked at without that rollback.
+        """
+        refusal = _Refusal()
+        try:
+            yield refusal
+        except AccessError as error:
+            refusal.exception = error
+        else:
+            self.fail('the call was not refused')
 
     @classmethod
     def _make_user(cls, login, groups, **extra):
@@ -173,7 +193,7 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
         super().setUpClass()
         cls._make_fixture()
 
-    def _refused(self):
+    def _refused_senders(self):
         """The senders that must not write into the chatter: (label, From header)."""
         return [
             ('an internal user with no right on the record', self.stranger.email),
@@ -207,20 +227,20 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
     def test_a_sender_who_may_not_reply_is_refused_and_nothing_is_written(self):
         for record in self.records:
             for route in ('reply', 'record'):
-                for label, sender in self._refused():
+                for label, sender in self._refused_senders():
                     with self.subTest(model=record._name, route=route, sender=label):
                         before = self._state()
-                        with self.assertRaises(AccessError):
+                        with self._refused():
                             self._send(record, sender, route)
                         self.assertEqual(self._state(), before)
 
     def test_a_refused_sender_with_a_file_creates_no_attachment(self):
         for record in self.records:
             for route in ('reply', 'record'):
-                for label, sender in self._refused():
+                for label, sender in self._refused_senders():
                     with self.subTest(model=record._name, route=route, sender=label):
                         before = self._state()
-                        with self.assertRaises(AccessError):
+                        with self._refused():
                             self._send(record, sender, route, attach=True)
                         self.assertEqual(self._state(), before)
         # the control: the file of a reader is the one file of the post, kept on the record
@@ -238,9 +258,9 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
         texts = set()
         for record in self.records:
             for route in ('reply', 'record'):
-                for label, sender in self._refused():
+                for label, sender in self._refused_senders():
                     with self.subTest(model=record._name, route=route, sender=label):
-                        with self.assertRaises(AccessError) as caught:
+                        with self._refused() as caught:
                             self._send(record, sender, route)
                         texts.add(str(caught.exception))
         # a mail that is for no record at all is refused by message_new, and a record that is not
@@ -249,11 +269,11 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
         for model in _MODELS:
             with self.subTest(model=model, record='none'):
                 _message_id, raw = _raw(self.reader.email)
-                with self.assertRaises(AccessError) as caught:
+                with self._refused() as caught:
                     self.gateway.message_process(model, raw)
                 texts.add(str(caught.exception))
             with self.subTest(model=model, record='missing'):
-                with self.assertRaises(AccessError) as caught:
+                with self._refused() as caught:
                     self.env[model].sudo().browse(10 ** 7).message_update(values)
                 texts.add(str(caught.exception))
         self.assertEqual(texts, {'Documents and folders do not accept this email.'})
@@ -268,11 +288,25 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                 _message_id, raw = _raw(self.reader.email, parent=self.questions[record._name].message_id)
                 self.assertEqual(gateway.message_process(False, raw), record.id)
                 self.assertEqual(self._state()['messages'], before['messages'] + 1)
-            for label, sender in self._refused():
+            for label, sender in self._refused_senders():
                 with self.subTest(model=record._name, sender=label):
                     before = self._state()
                     _message_id, raw = _raw(sender, parent=self.questions[record._name].message_id)
-                    with self.assertRaises(AccessError):
+                    with self._refused():
+                        gateway.message_process(False, raw)
+                    self.assertEqual(self._state(), before)
+
+    def test_an_archived_user_is_refused_when_the_context_lists_archived_records_too(self):
+        """The account must be active whatever the context of the call says about archived records."""
+        gateway = self.gateway.with_context(active_test=False)
+        for record in self.records:
+            for who in (self.archived,):
+                with self.subTest(model=record._name, sender=who.login):
+                    self.assertEqual(self._author(record, who.email), who.partner_id)
+                    self.assertIn(who, who.partner_id.with_context(active_test=False).user_ids)
+                    before = self._state()
+                    _message_id, raw = _raw(who.email, parent=self.questions[record._name].message_id)
+                    with self._refused():
                         gateway.message_process(False, raw)
                     self.assertEqual(self._state(), before)
 
@@ -283,9 +317,9 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                 with self.subTest(model=model, sender=sender):
                     before = self._records_count()
                     _message_id, raw = _raw(sender)
-                    with self.assertRaises(AccessError):
+                    with self._refused():
                         self.gateway.message_process(model, raw)
-                    with self.assertRaises(AccessError):
+                    with self._refused():
                         self.env[model].sudo().message_new({'subject': 'Direct'}, {})
                     self.assertEqual(self._records_count(), before)
 
@@ -320,12 +354,12 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
             for label, sender in refused:
                 with self.subTest(model=record._name, refused=label):
                     before = self._state()
-                    with self.assertRaises(AccessError):
+                    with self._refused():
                         self._send(record, sender)
                     self.assertEqual(self._state(), before)
             with self.subTest(model=record._name, refused='a Sender or Reply-To header'):
                 before = self._state()
-                with self.assertRaises(AccessError):
+                with self._refused():
                     self._send(record, 'nobody-inbound@example.test', extra=(
                         ('Sender', self.reader.email), ('Reply-To', self.reader.email)))
                 self.assertEqual(self._state(), before)
@@ -352,7 +386,7 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                     record.sudo().message_subscribe(partner_ids=[twin.id])
                     self.assertEqual(self._author(record, self.reader.email), twin)
                     before = self._state()
-                    with self.assertRaises(AccessError):
+                    with self._refused():
                         self._send(record, self.reader.email)
                     self.assertEqual(self._state(), before)
 
@@ -361,54 +395,52 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
         env = self.env
         group = env.ref(_USER)
         for record in self.records:
-            tag = '%s-%s' % (record._name.replace('.', '-'), record.id)
-            address = 'inbound-shared-%s@example.test' % tag
-            partner = env['res.partner'].sudo().create({'name': 'Inbound shared', 'email': address})
-            # the user that core would run the post as is the first by name: a portal user here
-            portal = new_test_user(
-                env, login='wdoc-in-shared-a-%s' % tag, groups='base.group_portal',
-                name='A shared portal', partner_id=partner.id, email=address,
-                context=_NO_SIGNUP_MAIL)
-            internal = new_test_user(
-                env, login='wdoc-in-shared-b-%s' % tag, groups=_USER, name='B shared reader',
-                partner_id=partner.id, email=address, context=_NO_SIGNUP_MAIL)
-            grant = env['woow.document.folder.access'].sudo().create({
-                'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': internal.id,
-                'level': 'read'})
-            self.assertEqual(partner.user_ids, portal | internal)
-            self.assertEqual(self._author(record, address), partner)
-            with self.subTest(model=record._name, users='a portal user and a reader'):
-                message_id, _result = self._send(record, address)
-                self.assertEqual(self._posted(record, message_id).author_id, partner)
-            for label, change in (
-                    ('a reader without a grant', lambda: grant.unlink()),
-                    ('an archived reader', lambda: internal.write({'active': False})),
-                    ('a reader who left the document group',
-                     lambda: internal.write({'groups_id': [Command.unlink(group.id)]}))):
-                with self.subTest(model=record._name, users='a portal user and %s' % label), \
+            for order in ('the reader first', 'the reader last'):
+                tag = '%s-%s-%s' % (record._name.replace('.', '-'), record.id, order.split()[-1])
+                address = 'inbound-shared-%s@example.test' % tag
+                partner = env['res.partner'].sudo().create({'name': 'Inbound shared',
+                                                            'email': address})
+
+                def make(kind, groups):
+                    return new_test_user(
+                        env, login='wdoc-in-shared-%s-%s' % (kind, tag), groups=groups,
+                        name='Shared %s' % kind, partner_id=partner.id, email=address,
+                        context=_NO_SIGNUP_MAIL)
+
+                # the users of a partner come in the order they were made: a portal user, a
+                # user without a grant, and the reader, in either order
+                portal = make('portal', 'base.group_portal')
+                if order == 'the reader first':
+                    reader, stranger = make('reader', _USER), make('stranger', _USER)
+                else:
+                    stranger, reader = make('stranger', _USER), make('reader', _USER)
+                grant = env['woow.document.folder.access'].sudo().create({
+                    'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': reader.id,
+                    'level': 'read'})
+                self.assertEqual(partner.user_ids, portal | reader | stranger)
+                self.assertEqual(self._author(record, address), partner)
+                with self.subTest(model=record._name, order=order, users='one of three reads'):
+                    message_id, _result = self._send(record, address)
+                    self.assertEqual(self._posted(record, message_id).author_id, partner)
+                for label, change in (
+                        ('the reader has no grant', lambda: grant.unlink()),
+                        ('the reader is archived', lambda: reader.write({'active': False})),
+                        ('the reader left the document group',
+                         lambda: reader.write({'groups_id': [Command.unlink(group.id)]}))):
+                    with self.subTest(model=record._name, order=order, users=label), \
+                            closing(env.cr.savepoint()):
+                        change()
+                        env.flush_all()
+                        self.assertTrue(partner.active)
+                        before = self._state()
+                        with self._refused():
+                            self._send(record, address)
+                        self.assertEqual(self._state(), before)
+                with self.subTest(model=record._name, order=order, users='the reader and a portal user'), \
                         closing(env.cr.savepoint()):
-                    change()
-                    env.flush_all()
-                    self.assertTrue(partner.active)
-                    before = self._state()
-                    with self.assertRaises(AccessError):
-                        self._send(record, address)
-                    self.assertEqual(self._state(), before)
-            # two internal users: the one who can read is enough, the one who cannot is not
-            new_test_user(
-                env, login='wdoc-in-shared-c-%s' % tag, groups=_USER, name='A shared stranger',
-                partner_id=partner.id, email=address, context=_NO_SIGNUP_MAIL)
-            self.assertEqual(len(partner.user_ids), 3)
-            with self.subTest(model=record._name, users='two internal users, one of them reads'):
-                message_id, _result = self._send(record, address)
-                self.assertEqual(self._posted(record, message_id).author_id, partner)
-            with self.subTest(model=record._name, users='two internal users, none reads'), \
-                    closing(env.cr.savepoint()):
-                grant.unlink()
-                before = self._state()
-                with self.assertRaises(AccessError):
-                    self._send(record, address)
-                self.assertEqual(self._state(), before)
+                    stranger.write({'active': False})
+                    message_id, _result = self._send(record, address)
+                    self.assertEqual(self._posted(record, message_id).author_id, partner)
 
     def test_a_partner_with_two_addresses_is_known_by_the_first(self):
         env = self.env
@@ -421,7 +453,7 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                 self.assertEqual(self._posted(record, message_id).author_id, self.reader.partner_id)
             with self.subTest(model=record._name, address='the second'):
                 before = self._state()
-                with self.assertRaises(AccessError):
+                with self._refused():
                     self._send(record, 'inbound-second@example.test')
                 self.assertEqual(self._state(), before)
 
@@ -440,11 +472,11 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                 _message_id, raw = _raw(self.reader.email, to=to)
                 self.assertEqual(self.gateway.message_process(False, raw), record.id)
                 self.assertEqual(self._state()['messages'], before['messages'] + 1)
-            for label, sender in self._refused():
+            for label, sender in self._refused_senders():
                 with self.subTest(model=record._name, alias=label):
                     before = self._state()
                     _message_id, raw = _raw(sender, to=to, attach=True)
-                    with self.assertRaises(AccessError):
+                    with self._refused():
                         self.gateway.message_process(False, raw)
                     self.assertEqual(self._state(), before)
             # an alias with no record to update creates one, which message_new refuses (core would
@@ -457,7 +489,7 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                     patch.object(type(env['mail.alias']), '_alias_bounce_incoming_email'):
                 before = self._records_count()
                 _message_id, raw = _raw(self.reader.email, to='%s@example.test' % creating.alias_name)
-                with self.assertRaises(AccessError):
+                with self._refused():
                     self.gateway.message_process(False, raw)
                 self.assertEqual(self._records_count(), before)
 
@@ -469,7 +501,7 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                     before = self._state()
                     _message_id, raw = _raw(
                         self.reader.email, parent=self.questions[record._name].message_id)
-                    with self.assertRaises(AccessError):
+                    with self._refused():
                         self.env['mail.thread'].with_user(who).message_process(False, raw)
                     self.assertEqual(self._state(), before)
 
@@ -522,11 +554,11 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
         for record in self.records:
             before = record.sudo().description
             for label, values in wrong:
-                with self.subTest(model=record._name, values=label), self.assertRaises(AccessError):
+                with self.subTest(model=record._name, values=label), self._refused():
                     record.sudo().message_update(values, edit)
             for values in ('not a dict', None, [author]):
                 with self.subTest(model=record._name, values=repr(values)), \
-                        self.assertRaises(AccessError):
+                        self._refused():
                     record.sudo().message_update(values, edit)
             self.assertEqual(record.sudo().description, before)
             with self.subTest(model=record._name, values='the reader'):
@@ -539,7 +571,7 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
         values = {'author_id': self.reader.partner_id.id, 'email_from': self.reader.email}
         before = (self.folder.sudo().description, other.sudo().description)
         for records in (self.folder | other, other | self.folder):
-            with self.assertRaises(AccessError):
+            with self._refused():
                 records.sudo().message_update(values, {'description': '<p>by mail</p>'})
         self.assertEqual((self.folder.sudo().description, other.sudo().description), before)
 
@@ -623,7 +655,7 @@ class TestTheSenderPassesTheSameRulesAsAFollower(_InboundFixture, TransactionCas
                         self.assertEqual(self._state()['messages'], before['messages'] + 1)
                         accepted.add((record, user))
                     else:
-                        with self.assertRaises(AccessError):
+                        with self._refused():
                             self.gateway.message_process(False, raw)
                         self.assertEqual(self._state(), before)
         # the fixtures reach both answers on every kind of grant
@@ -651,6 +683,7 @@ class TestTheSenderPassesTheSameRulesAsAFollower(_InboundFixture, TransactionCas
                 self.assertEqual((record, user) in accepted, accepted_by_rules)
 
     def test_the_answer_is_the_one_of_the_rules_for_the_helper_too(self):
+        from ..models.mail_thread_guard import _reply_sender_reads
         for record in self.parity_records:
             for user in self.users:
                 reads = bool(user.active and not user.share and record.with_user(user).with_context(
