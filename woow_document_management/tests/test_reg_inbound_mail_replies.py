@@ -493,6 +493,64 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                     self.gateway.message_process(False, raw)
                 self.assertEqual(self._records_count(), before)
 
+    def _send_header(self, record, header, route='reply'):
+        """Process a mail whose From header is written as given (the mail library would re-quote it)."""
+        parent = self.questions[record._name].message_id if route == 'reply' else None
+        message_id, raw = _raw('placeholder@example.test', parent=parent)
+        self.assertIn(b'From: placeholder@example.test\n', raw)
+        raw = raw.replace(b'From: placeholder@example.test\n', b'From: ' + header + b'\n')
+        if route == 'reply':
+            return message_id, self.gateway.message_process(False, raw)
+        return message_id, self.gateway.message_process(record._name, raw, thread_id=record.id)
+
+    def test_an_encoded_display_name_that_is_the_address_of_a_reader_is_not_that_reader(self):
+        """Core decodes the From header before it looks for the address: the real one must agree."""
+        reader = self.reader.email.lower()
+        portal = self.portal.email
+        other = b'nobody-inbound@example.test'
+        word = '=?utf-8?q?%s?=' % reader.replace('@', '=40')
+        mixed = '=?utf-8?q?%s?= and more' % reader.replace('@', '=40')
+        refused = [
+            ('an encoded name and a portal address', ('%s <%s>' % (word, portal)).encode()),
+            ('an encoded name and an unknown address', word.encode() + b' <' + other + b'>'),
+            ('a base64 encoded name', b'=?utf-8?b?' + base64.b64encode(reader.encode())
+             + b'?= <' + portal.encode() + b'>'),
+            ('an encoded word mixed with plain text', ('%s <%s>' % (mixed, portal)).encode()),
+            ('a group that lists the reader', ('Team: %s <%s>, %s;' % (word, portal, reader)).encode()),
+            ('an encoded address with no address', word.encode()),
+        ]
+        for record in self.records:
+            for route in ('reply', 'record'):
+                for label, header in refused:
+                    with self.subTest(model=record._name, route=route, header=label):
+                        before = self._state()
+                        with self._refused():
+                            self._send_header(record, header, route)
+                        self.assertEqual(self._state(), before)
+            with self.subTest(model=record._name, control='the reader with an encoded name'):
+                message_id, result = self._send_header(
+                    record, b'=?utf-8?q?R=C3=A9ader?= <' + reader.encode() + b'>')
+                self.assertEqual(result, record.id)
+                self.assertEqual(self._posted(record, message_id).author_id,
+                                 self.reader.partner_id)
+
+    def test_message_update_is_refused_to_a_caller_who_is_not_the_superuser(self):
+        """It answers whether a partner may read a record, so only core (as the superuser) may ask."""
+        valid = {'author_id': self.reader.partner_id.id, 'email_from': self.reader.email}
+        edit = {'description': '<p>by a caller</p>'}
+        for record in self.records:
+            before = record.sudo().description
+            for caller in (self.plain, self.reader, self.manager, self.stranger):
+                for label, values in (('a reader', valid), ('no values', {}),
+                                      ('a stranger', {'author_id': self.stranger.partner_id.id,
+                                                      'email_from': self.stranger.email})):
+                    with self.subTest(model=record._name, caller=caller.login, values=label), \
+                            self._refused() as refusal:
+                        record.with_user(caller).message_update(values, edit)
+                    self.assertEqual(str(refusal.exception),
+                                     'Documents and folders do not accept this email.')
+            self.assertEqual(record.sudo().description, before)
+
     def test_the_caller_of_the_gateway_is_still_checked_first(self):
         """A caller who is neither the superuser nor a system administrator is refused, whoever wrote."""
         for record in self.records:

@@ -111,6 +111,29 @@ def _reply_sender_reads(record, msg_dict):
         for user in users)
 
 
+def _header_sender_matches(message, msg_dict):
+    """Whether the first address of the raw From header is the address core put in ``email_from``.
+
+    Core decodes the header to one string before it looks for the address, so an encoded word
+    whose text is an address (``=?utf-8?q?a=40b.c?= <d@e.f>``) turns into a name that looks like
+    an address and the real one comes second. The parsed header keeps the two apart, and its first
+    address is the one the sending server vouched for. Nothing parses, or two readings, is a mismatch.
+    """
+    sent_from = msg_dict.get('email_from') if isinstance(msg_dict, dict) else None
+    if not isinstance(sent_from, str):
+        return False
+    try:
+        header = message['From']
+        addresses = header.addresses
+        # a header with a defect (a name that stands alone as the local part of an address, say)
+        # is read differently by core and by the sending server
+        raw = addresses[0].addr_spec if addresses and addresses[0].domain and not header.defects else ''
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        return False
+    wanted = email_normalize(sent_from, strict=False)
+    return bool(wanted) and email_normalize(raw, strict=False) == wanted
+
+
 def _sender_reads_all(records, msg_dict):
     """Whether the sender of an incoming email may read every record in ``records``.
 
@@ -153,7 +176,7 @@ class WoowDocumentThreadGuard(models.Model):
 
     def message_update(self, msg_dict, update_vals=None):
         """An email reaches a document only from an internal user who can read it (policy B)."""
-        if not _sender_reads_all(self, msg_dict):
+        if not self.env.su or not _sender_reads_all(self, msg_dict):
             raise AccessError(_('Documents and folders do not accept this email.'))
         return super().message_update(msg_dict, update_vals=update_vals)
 
@@ -259,7 +282,7 @@ class WoowDocumentFolderThreadGuard(models.Model):
 
     def message_update(self, msg_dict, update_vals=None):
         """An email reaches a folder only from an internal user who can read it (policy B)."""
-        if not _sender_reads_all(self, msg_dict):
+        if not self.env.su or not _sender_reads_all(self, msg_dict):
             raise AccessError(_('Documents and folders do not accept this email.'))
         return super().message_update(msg_dict, update_vals=update_vals)
 
@@ -404,13 +427,15 @@ class WoowMailThreadRoute(models.AbstractModel):
         ``message_process`` is callable by any user and runs the routed thread
         methods as superuser with caller-chosen routes, so a route to this
         module's models needs the superuser (fetchmail) or a system administrator
-        (the mail gateway script). Whose email is accepted is not decided here, where only
+        (the mail gateway script), and the address of the From header must be the one core
+        resolved (``_header_sender_matches``). Whose email is accepted is not decided here, where only
         the caller is known, but by ``message_update`` of the two models, which core calls for
         every route to an existing record and which sees the sender (``_reply_sender_reads``).
         """
-        if not self.env.su and not self.env.user._is_system() and any(
-                route and stored_char(route[0]) in _THREAD_MODELS for route in routes or ()):
-            raise AccessError(_('Documents and folders do not accept this email.'))
+        if any(route and stored_char(route[0]) in _THREAD_MODELS for route in routes or ()):
+            if (not self.env.su and not self.env.user._is_system()) \
+                    or not _header_sender_matches(message, message_dict):
+                raise AccessError(_('Documents and folders do not accept this email.'))
         return super()._message_route_process(message, message_dict, routes)
 
 
