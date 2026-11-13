@@ -28,9 +28,13 @@ sharing, which is not part of this module. Retired numbers are not reused.
 - **HD-02** Internal readers of a folder can see its members and effective access. *(text pending)*
 - **HD-03** Readers of a folder can see the numeric ids of its ancestors. *(text pending)*
 - **HD-04** Chatter attachments on documents and folders follow Odoo's native upload rules, with
-  one exception: they never carry or accept an access token, so no link opens them without a
-  sign-in. A file that is too large to be mailed is not sent as a link for these records; it stays
-  available to signed-in readers in the backend. *(text pending)*
+  one exception: they are never public and never carry or accept an access token, in any
+  environment, so no link opens them without a sign-in. A file that is too large to be mailed is
+  still taken out of the mail and replaced by a download link, but the link has no token. It opens
+  only for a signed-in internal user who can read the record. Everybody else gets a not-found
+  answer (HTTP 404) and no file: visitors without a session, and portal users as well. Portal
+  members are a mail audience (HD-10), so they receive the mail and the link, but neither the file
+  nor a working link. *(text pending)*
 - **HD-05** The "restricted subfolder" flag is visible so that subtrees cannot be trashed blindly.
   *(text pending)*
 - **HD-06** Retired.

@@ -22,6 +22,7 @@ from odoo import Command
 from odoo.addons.mail.tests.common import MockEmail
 from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
+from odoo.tests.common import new_test_user
 from odoo.tools.misc import limited_field_access_token
 
 from ..services.constants import WOOW_MODELS
@@ -67,6 +68,19 @@ class _ChatterFixture:
                                    'user_id': self.reader.id, 'level': 'read'})
         self.env.flush_all()
         return grant
+
+    def _portal_member(self):
+        """A portal contact with a read grant on the folder: a member that the mail reaches (HD-10)."""
+        partner = self.env['res.partner'].sudo().create({
+            'name': 'Token portal contact', 'email': 'token-portal@example.test'})
+        portal = new_test_user(
+            self.env, login='wdoc-token-portal', groups='base.group_portal',
+            partner_id=partner.id, email=partner.email, context={'no_reset_password': True})
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.folder.id, 'subject_type': 'partner', 'partner_id': partner.id,
+            'level': 'read'})
+        self.env.flush_all()
+        return portal
 
     def _post_file(self, record, name, content, mimetype='text/plain'):
         """The editor's "Send message" comment (mt_comment) with a file, posted as the chatter does.
@@ -156,6 +170,27 @@ class TestChatterAttachmentTokensOverHttp(_ChatterFixture, HttpCase):
                 opened = self.url_open(link, allow_redirects=False)
                 self.assertEqual((opened.status_code, opened.content), (200, b'chatter bytes'))
                 self._assert_closed(link, b'chatter bytes')
+
+    def test_a_portal_member_gets_neither_the_file_nor_a_working_link(self):
+        """The link in a mail has no token: only a signed-in internal user who may read opens it."""
+        portal = self._portal_member()
+        for record in self.records:
+            with self.subTest(model=record._name):
+                attachment = self._post_file(record, 'portal.txt', b'portal bytes')
+                self.assertTrue(record.with_user(portal).has_access('read'))
+                self.authenticate(portal.login, portal.login)
+                for path in ('/web/content/%d?download=1&access_token=',
+                             '/web/content/%d?download=1', '/web/content/%d',
+                             '/web/content/%d?download=1&access_token=any-other-value'):
+                    response = self.url_open(path % attachment.id, allow_redirects=False)
+                    self.assertEqual(response.status_code, 404, path)
+                    self.assertNotEqual(response.content, b'portal bytes', path)
+                    self.assertNotIn('public', response.headers.get('Cache-Control', ''), path)
+                # The reader, an internal user with the same kind of grant, opens the same link.
+                self.authenticate(self.reader.login, self.reader.login)
+                opened = self.url_open('/web/content/%d?download=1&access_token=' % attachment.id,
+                                       allow_redirects=False)
+                self.assertEqual((opened.status_code, opened.content), (200, b'portal bytes'))
 
     def test_a_stored_token_does_not_open_the_file_for_a_visitor(self):
         """A value that a superuser wrote opens nothing, with or without ``unique`` (caching)."""
@@ -335,9 +370,10 @@ class TestLargeFilesInMail(_ChatterFixture, TransactionCase, MockEmail):
         self._fixture()
         self.env['ir.config_parameter'].sudo().set_param('base.default_max_email_size', '0.001')
 
-    def _notify(self, thread, record, elevated=False):
-        """The editor posts a comment with a file; the reader follows ``thread``."""
-        thread.sudo().message_subscribe(partner_ids=[self.reader.partner_id.id])
+    def _notify(self, thread, record, elevated=False, recipient=None):
+        """The editor posts a comment with a file; ``recipient`` (the reader) follows ``thread``."""
+        recipient = recipient or self.reader
+        thread.sudo().message_subscribe(partner_ids=[recipient.partner_id.id])
         pending = self.env['ir.attachment'].with_user(self.editor).create({
             'name': 'large-file.txt', 'raw': b'large bytes ' * 100, 'type': 'binary',
             'mimetype': 'text/plain', 'res_model': 'mail.compose.message', 'res_id': 0})
@@ -350,7 +386,7 @@ class TestLargeFilesInMail(_ChatterFixture, TransactionCase, MockEmail):
         attachment = message.sudo().attachment_ids
         self.assertEqual((attachment, attachment.res_model, attachment.res_id),
                          (pending.sudo(), record._name, record.id))
-        sent = [mail for mail in self._mails if 'token-reader@example.test' in mail['email_to'][0]]
+        sent = [mail for mail in self._mails if recipient.email in mail['email_to'][0]]
         self.assertEqual(len(sent), 1)
         return attachment, sent[0]
 
@@ -372,6 +408,16 @@ class TestLargeFilesInMail(_ChatterFixture, TransactionCase, MockEmail):
                 self.assertIn('large-file.txt', mail['body'])
                 self.assertEqual(self._link_tokens(attachment, mail['body']), [''])
                 self.assertNotIn('access_token=False', mail['body'])
+
+    def test_the_mail_of_a_large_file_reaches_a_portal_member_as_a_link_without_the_file(self):
+        """A portal member is mailed like the others: no file, and a link that has no token."""
+        portal = self._portal_member()
+        for record in (self.document, self.folder):
+            with self.subTest(model=record._name):
+                attachment, mail = self._notify(record, record, recipient=portal)
+                self.assertFalse(mail['attachments'])
+                self.assertIn('large-file.txt', mail['body'])
+                self.assertEqual(self._link_tokens(attachment, mail['body']), [''])
 
     def test_the_mail_of_a_large_file_of_another_record_keeps_the_token_link(self):
         partner = self.env['res.partner'].sudo().create({'name': 'Token mail partner'})
