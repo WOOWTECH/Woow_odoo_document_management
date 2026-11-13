@@ -4,6 +4,6 @@ import logging
 _logger = logging.getLogger(__name__)
 
 
-def f(share, token):
-    _logger.info('share %s token %s', share.id, token)
-    print(share.id)
+def f(doc, token):
+    _logger.info('document %s token %s', doc.id, token)
+    print(doc.id)

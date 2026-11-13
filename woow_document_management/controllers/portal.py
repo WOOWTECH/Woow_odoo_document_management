@@ -57,9 +57,7 @@ class WoowDocumentPortal(CustomerPortal):
             return streaming.uniform_404('page')
         try:
             folders = request.env['woow.document.folder']._woow_portal_roots()
-            direct_docs = request.env['woow.document'].search([
-                ('shared_partner_ids', 'in', [request.env.user.partner_id.id]),
-                ('active', '=', True), ('folder_in_trash', '=', False)], limit=1000)
+            direct_docs = request.env['woow.document']._woow_portal_direct_documents(limit=1000)
             visible = _page(folders, page)
             if visible is None:
                 return streaming.uniform_404('page')

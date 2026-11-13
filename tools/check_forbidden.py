@@ -18,6 +18,8 @@ Python (AST), non-test code unless noted:
   F-HASH          hashlib.sha1 / md5
   F-NUMCAST       float( / bool( / complex( of request values
   F-TOKEN-API     limited_field_access_token, _get_limited_field_access_token, generate_access_token
+                  (one exception: ``super().generate_access_token()`` inside the override of that
+                  name in the attachment guard, where the module refuses a token for its own records)
   F-LOG           _logger calls carrying token/password/email/name-like values; print(
   F-HTTPEXC       controllers: raise request.not_found / NotFound / werkzeug.exceptions.*,
                   abort(, return request.not_found(  (T-STAT-23, ER-29)
@@ -33,7 +35,6 @@ Text:
   F-JS-SINK       innerHTML, outerHTML, insertAdjacentHTML, markup(, document.write, eval(,
                   new Function(, window.open( without noopener         security/*.xml, controllers,
   F-BLANK         target="_blank" without rel noopener (XML, JS)        models (T-STAT-24, ER-04)
-  F-SHARE-JS      static/src/share/**: storage, console., postMessage, location.assign(, location.href =
   F-EICAR         the EICAR test string
   F-STUB          WOOW-STUB markers in non-test files (--g1 only; T-STAT-16)
 tools/ and tools/tests/fixtures/ are not scanned (they spell the patterns out).
@@ -63,14 +64,6 @@ JS_SINKS = [
     (re.compile(r'(?<![\w.])eval\s*\('), 'eval('),
     (re.compile(r'new\s+Function\s*\('), 'new Function('),
 ]
-SHARE_JS = [
-    (re.compile(r'\blocalStorage\b'), 'localStorage'),
-    (re.compile(r'\bsessionStorage\b'), 'sessionStorage'),
-    (re.compile(r'\bconsole\.'), 'console.'),
-    (re.compile(r'\bpostMessage\b'), 'postMessage'),
-    (re.compile(r'location\.assign\s*\('), 'location.assign('),
-    (re.compile(r'location\.href\s*='), 'location.href ='),
-]
 BLANK_RE = re.compile(r'target\s*=\s*["\']_blank["\']')
 STUB_MARK = 'WOOW-' + 'STUB'
 CODE_EXTS = ('.py', '.xml', '.js', '.scss', '.csv', '.sh')
@@ -93,6 +86,23 @@ def _chain_has_sudo(node):
         else:
             cur = cur.value
     return False
+
+
+# The attachment guard overrides core's generate_access_token so that no attachment of a module
+# record gets a token, and hands every other attachment to super(). That delegation is the only
+# call of the token API the module may have: (file, name of the override that may delegate).
+TOKEN_OVERRIDE = ('woow_document_management/models/ir_attachment.py', 'generate_access_token')
+
+
+def _is_token_override_delegation(path, node):
+    """``super(...).generate_access_token(...)`` in the override of that name, in the guard file."""
+    func = node.func
+    if path != TOKEN_OVERRIDE[0] or not isinstance(func, ast.Attribute) \
+            or func.attr != TOKEN_OVERRIDE[1] or not isinstance(func.value, ast.Call) \
+            or A.call_name(func.value) != 'super':
+        return False
+    enclosing = A.enclosing_function(node)
+    return enclosing is not None and enclosing.name == TOKEN_OVERRIDE[1]
 
 
 SESSION_KEYS = ('uid', 'pre_uid', 'pre_login', 'login', 'session_token')
@@ -205,7 +215,7 @@ def check_python(src, out):
             if name in ('authenticate', 'finalize'):
                 out.append(A.Violation(path, line, 'F-SESSION', '%s( is not allowed' % name))
             if name in ('limited_field_access_token', '_get_limited_field_access_token',
-                        'generate_access_token'):
+                        'generate_access_token') and not _is_token_override_delegation(path, node):
                 out.append(A.Violation(path, line, 'F-TOKEN-API', '%s( is not allowed' % name))
             if name in ('sha1', 'md5') or (name == 'new' and A.dotted(func) == 'hashlib.new'
                                             and node.args and A.const_str(node.args[0]) in ('sha1', 'md5')):
@@ -370,11 +380,6 @@ def check_text(relpath, text, args, out):
                     out.append(A.Violation(relpath, n, 'F-JS-SINK', '%s is not allowed' % label))
             if re.search(r'window\.open\s*\(', code) and 'noopener' not in code:
                 out.append(A.Violation(relpath, n, 'F-JS-SINK', 'window.open( without noopener'))
-            if '/static/src/share/' in '/' + relpath:
-                for rx, label in SHARE_JS:
-                    if rx.search(code):
-                        out.append(A.Violation(relpath, n, 'F-SHARE-JS',
-                                               '%s is not allowed on the share landing page' % label))
 
 
 def check(root, args):

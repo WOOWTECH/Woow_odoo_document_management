@@ -16,51 +16,34 @@ from ..services.mime_map import OPTIONAL_EXTENSIONS
 
 PARAM_PREFIX = 'woow_document_management.'
 _PARAM_KEYS: tuple[str, ...] = (
-    'trash_retention_days', 'share_default_days', 'share_max_days', 'share_link_policy',
-    'share_require_password', 'share_session_minutes', 'share_unlock_max_fail',
-    'share_unlock_cooldown_min', 'denied_rate_per_min', 'share_link_base_url', 'allow_http_links',
+    'trash_retention_days', 'notice_base_url', 'allow_http_links',
     'portal_max_upload_mb', 'internal_max_upload_mb', 'max_files_per_upload', 'extra_extensions',
     'zip_max_files', 'zip_max_mb', 'zip_max_depth', 'zip_concurrency', 'quota_mb',
     'quota_warn_pct', 'quota_block_pct', 'log_retention_days', 'log_ip_mode', 'allow_root_create',
-    'tag_create_policy', 'mail_subject_include_name', 'trusted_proxies', 'client_ip_header',
-    'uninstall_confirm',
+    'tag_create_policy', 'trusted_proxies', 'client_ip_header', 'uninstall_confirm',
 )
 _READABLE_KEYS: frozenset[str] = frozenset(PARAM_PREFIX + k for k in _PARAM_KEYS) | {'database.secret'}
 _INT_RANGES = {
-    'trash_retention_days': (0, 3650), 'share_default_days': (1, 90),
-    'share_max_days': (1, 90), 'share_session_minutes': (5, 480),
-    'share_unlock_max_fail': (3, 10), 'share_unlock_cooldown_min': (5, 120),
-    'denied_rate_per_min': (3, 100), 'portal_max_upload_mb': (1, 95),
+    'trash_retention_days': (0, 3650), 'portal_max_upload_mb': (1, 95),
     'internal_max_upload_mb': (1, 95), 'max_files_per_upload': (1, 20),
     'zip_max_files': (1, 5000), 'zip_max_mb': (1, 2048),
     'zip_max_depth': (1, 50), 'zip_concurrency': (1, 4),
     'quota_mb': (0, 10_000_000), 'quota_warn_pct': (1, 99),
     'quota_block_pct': (2, 100), 'log_retention_days': (30, 3650),
 }
-_BOOL_KEYS = frozenset(('share_require_password', 'allow_http_links', 'allow_root_create',
-                       'mail_subject_include_name'))
+_BOOL_KEYS = frozenset(('allow_http_links', 'allow_root_create'))
 _CHOICES = {
-    'share_link_policy': frozenset(('folder_managers', 'managers_only')),
     'log_ip_mode': frozenset(('truncate', 'hash', 'none')),
     'tag_create_policy': frozenset(('managers', 'users')),
     'client_ip_header': frozenset(HEADERS),
 }
-_FAIL_CLOSED = {'share_link_policy': 'managers_only', 'share_require_password': True}
 
 
 @dataclasses.dataclass(frozen=True)
 class WoowDocSettings:
     """Typed, range-checked settings. Field name = parameter key without prefix."""
     trash_retention_days: int = 30
-    share_default_days: int = 14
-    share_max_days: int = 90
-    share_link_policy: str = 'folder_managers'
-    share_require_password: bool = False
-    share_session_minutes: int = 60
-    share_unlock_max_fail: int = 5
-    share_unlock_cooldown_min: int = 15
-    denied_rate_per_min: int = 10
-    share_link_base_url: str = ''
+    notice_base_url: str = ''
     allow_http_links: bool = False
     portal_max_upload_mb: int = 25
     internal_max_upload_mb: int = 95
@@ -77,17 +60,9 @@ class WoowDocSettings:
     log_ip_mode: str = 'truncate'
     allow_root_create: bool = False
     tag_create_policy: str = 'managers'
-    mail_subject_include_name: bool = False
     trusted_proxies: tuple = ()
     client_ip_header: str = ''
     uninstall_confirm: str = ''
-
-
-@dataclasses.dataclass(frozen=True)
-class ShareKeys:
-    k_share: bytes   # HMAC-SHA256(database.secret, b"woow_document_management/share-token/v1")
-    k_hint: bytes    # same, label b"woow_document_management/share-hint/v1"
-    k_ip: bytes      # same, label b"woow_document_management/audit-ip/v1"
 
 
 def _parse_value(key, raw):
@@ -111,7 +86,7 @@ def _parse_value(key, raw):
         if raw not in _CHOICES[key]:
             raise ValueError(key)
         return raw
-    if key == 'share_link_base_url':
+    if key == 'notice_base_url':
         value = str(raw or '').strip().rstrip('/')
         if value:
             url = urlsplit(value)
@@ -155,11 +130,7 @@ def parse_settings(raw, *, strict=False):
         except (ValueError, TypeError):
             if strict:
                 raise ValueError(key) from None
-            values[key] = _FAIL_CLOSED.get(key, getattr(defaults, key))
-    if values['share_default_days'] > values['share_max_days']:
-        if strict:
-            raise ValueError('share_default_days')
-        values['share_default_days'] = min(defaults.share_default_days, values['share_max_days'])
+            values[key] = getattr(defaults, key)
     if values['quota_block_pct'] <= values['quota_warn_pct']:
         if strict:
             raise ValueError('quota_block_pct')
@@ -186,13 +157,14 @@ class WoowDocumentSettings(models.AbstractModel):
         raw = self._read_params(PARAM_PREFIX + key for key in _PARAM_KEYS)
         return parse_settings({key: raw.get(PARAM_PREFIX + key) for key in _PARAM_KEYS})
 
-    def _share_keys(self) -> ShareKeys:
-        """Derive the HMAC keys in memory; empty or unreadable database.secret -> ValueError."""
+    def _audit_ip_key(self) -> bytes:
+        """HMAC key of the audit IP hashes, derived in memory from database.secret.
+
+        HMAC-SHA256(database.secret, b"woow_document_management/audit-ip/v1"); an empty or
+        unreadable database.secret -> ValueError.
+        """
         secret = self._read_params(('database.secret',)).get('database.secret')
         if not secret:
             raise ValueError('database.secret is unavailable')
-        key = secret.encode('utf-8')
-        def derive(label):
-            return hmac.new(key, ('woow_document_management/' + label + '/v1').encode(),
-                            hashlib.sha256).digest()
-        return ShareKeys(derive('share-token'), derive('share-hint'), derive('audit-ip'))
+        return hmac.new(secret.encode('utf-8'), b'woow_document_management/audit-ip/v1',
+                        hashlib.sha256).digest()

@@ -1,14 +1,9 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 
-from unittest.mock import patch
-from psycopg2 import IntegrityError
-
-from odoo import Command, fields
+from odoo import Command
 from odoo.exceptions import AccessError
 from odoo.tests import TransactionCase, tagged
-
-from ..models.document_share import SECRET_CTX_KEY, _SECRET_SENTINEL
 
 
 @tagged('woow_docmgmt_core')
@@ -117,6 +112,38 @@ class TestDocumentPermissions(TransactionCase):
         self.assertFalse(self.env['woow.document.folder'].sudo().with_context(
             default_legal_hold=True).create({'name': 'Filtered default'}).legal_hold)
 
+    def test_root_policy_covers_moves(self):
+        """Moving a folder to the top level is creating a root folder (M-24)."""
+        params = self.env['ir.config_parameter'].sudo()
+        folders = self.env['woow.document.folder'].sudo()
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.root.id, 'subject_type': 'user',
+            'user_id': self.user.id, 'level': 'manage'})
+        moved = folders.create({'name': 'Moved up', 'parent_id': self.root.id})
+        folders.create({'name': 'Moved up'})   # a root with the same name already exists
+        self.env.flush_all()
+        self.assertTrue(moved.with_user(self.user)._woow_has_rank(4))
+        # Refused with the same answer whether or not the name is taken at the top level.
+        for name in ('Moved up', 'Moved elsewhere'):
+            with self.subTest(name=name), self.assertRaises(AccessError):
+                moved.with_user(self.user).write({'parent_id': False, 'name': name})
+        self.assertEqual(moved.parent_id, self.root)
+        # A folder that is already at the top level is not moved by a write that keeps it there.
+        self.root.with_user(self.user).write({'parent_id': False})
+        # The site setting opens it, as it does for creating a root folder.
+        params.set_param('woow_document_management.allow_root_create', 'True')
+        moved.with_user(self.user).write({'parent_id': False, 'name': 'Moved elsewhere'})
+        self.assertFalse(moved.parent_id)
+        # Document administrators and the superuser never need the setting.
+        params.set_param('woow_document_management.allow_root_create', 'False')
+        admin = self.env.ref('base.user_admin')
+        by_admin = folders.create({'name': 'Moved by admin', 'parent_id': self.root.id})
+        by_admin.with_user(admin).write({'parent_id': False})
+        self.assertFalse(by_admin.parent_id)
+        by_su = folders.create({'name': 'Moved by su', 'parent_id': self.root.id})
+        by_su.write({'parent_id': False})
+        self.assertFalse(by_su.parent_id)
+
     def test_portal_partner_grant_is_exact_and_write_is_only_a_probe(self):
         partner = self.env['res.partner'].sudo().create({'name': 'Portal document contact'})
         other = self.env['res.partner'].sudo().create({'name': 'Other portal contact'})
@@ -189,50 +216,3 @@ class TestDocumentPermissions(TransactionCase):
         self.assertFalse(any(self.root.name in str(line) for line in lines))
         self.assertFalse(any(line.get('principal_id') == portal.partner_id.id and
                              line.get('subject_type') == 'partner' for line in lines))
-
-
-@tagged('woow_docmgmt_core')
-class TestShareSchemaGuards(TransactionCase):
-
-    def setUp(self):
-        super().setUp()
-        group = self.env.ref('woow_document_management.group_woow_document_user')
-        self.user = self.env['res.users'].sudo().create({
-            'name': 'Share fixture', 'login': 'wdoc-share-schema',
-            'groups_id': [Command.set([group.id])],
-        })
-        self.folder = self.env['woow.document.folder'].sudo().create({'name': 'Share folder'})
-        self.share_model = self.env['woow.document.share'].with_user(self.user)
-        self.expire_at = fields.Datetime.add(fields.Datetime.now(), days=5)
-
-    def _vals(self):
-        return {'name': 'Review link', 'company_id': self.env.company.id,
-                'share_type': 'folder', 'folder_id': self.folder.id,
-                'token_hash': 'a' * 64, 'expire_at': self.expire_at}
-
-    def test_rpc_cannot_supply_secret_or_forge_sentinel(self):
-        with patch.object(type(self.share_model), '_check_create_rights', return_value=None):
-            with self.assertRaises(AccessError):
-                self.share_model.create(self._vals())
-            with self.assertRaises(AccessError):
-                self.share_model.with_context(**{SECRET_CTX_KEY: 'forged'}).create(self._vals())
-
-    def test_trusted_issue_can_create_but_scope_cannot_be_rewritten(self):
-        model = self.share_model.with_context(**{SECRET_CTX_KEY: _SECRET_SENTINEL})
-        with patch.object(type(model), '_check_create_rights', return_value=None):
-            share = model.create(self._vals())
-            with self.assertRaises(IntegrityError), self.env.cr.savepoint():
-                model.create(self._vals())
-        self.assertFalse(share.has_password)
-        share.write({'name': 'Renamed'})
-        share.write({'expire_at': fields.Datetime.add(self.expire_at, days=-1)})
-        with self.assertRaises(AccessError):
-            share.write({'expire_at': self.expire_at})
-        with self.assertRaises(AccessError):
-            share.write({'folder_id': self.folder.id})
-        with self.assertRaises(AccessError):
-            share.write({'token_hash': 'b' * 64})
-        share.check_access('write')
-        share._woow_mark_revoked()
-        self.assertTrue(share.revoked_at)
-        self.assertEqual(share.state, 'revoked')

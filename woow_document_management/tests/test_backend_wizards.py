@@ -19,7 +19,7 @@ class TestBackendWizards(TransactionCase):
             'name': 'Outside contact', 'email': 'outside@example.test'})
         reader.partner_id.email = 'reader@example.test'
         self.env['ir.config_parameter'].sudo().set_param(
-            'woow_document_management.share_link_base_url', 'https://docs.example.test')
+            'woow_document_management.notice_base_url', 'https://docs.example.test')
         folder = self.env['woow.document.folder'].sudo().create({
             'name': 'Member notice', 'owner_id': admin.id})
         self.env['woow.document.folder.access'].sudo().create({
@@ -44,7 +44,7 @@ class TestBackendWizards(TransactionCase):
         self.assertEqual(len(mails), 1)
         self.assertEqual(mails.recipient_ids, reader.partner_id)
         self.assertIn('https://docs.example.test/web#id=', mails.body_html)
-        self.assertNotIn('/woow-docs/s', mails.body_html)
+        self.assertNotIn('access_token', mails.body_html)
         with self.assertRaises(AccessError):
             folder.with_user(reader).action_notify_members()
 
@@ -68,6 +68,36 @@ class TestBackendWizards(TransactionCase):
             'recipient_ids': [(6, 0, [portal_user.partner_id.id])]})
         with self.assertRaises(AccessError):
             revoked_notice.action_send()
+
+    def test_a_notice_needs_a_public_https_address(self):
+        admin = self.env.ref('base.user_admin')
+        reader = new_test_user(self.env, login='notice_address_reader',
+                               groups='woow_document_management.group_woow_document_user')
+        reader.partner_id.email = 'address-reader@example.test'
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Notice address', 'owner_id': admin.id})
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': folder.id, 'subject_type': 'user',
+            'user_id': reader.id, 'level': 'read'})
+        wizard = self.env['woow.document.notify.wizard'].with_user(admin).create({
+            'folder_id': folder.id, 'all_members': False,
+            'recipient_ids': [(6, 0, [reader.partner_id.id])]})
+        params = self.env['ir.config_parameter'].sudo()
+        mails = self.env['mail.mail'].sudo()
+        sent = [('model', '=', 'woow.document.folder'), ('res_id', '=', folder.id)]
+        # no address of its own, and the address of the site is not https
+        params.set_param('web.base.url', 'http://docs.example.test')
+        with self.assertRaises(UserError):
+            wizard.action_send()
+        # an address of its own that is not https is not used either
+        params.set_param('woow_document_management.notice_base_url', 'http://docs.example.test')
+        with self.assertRaises(UserError):
+            wizard.action_send()
+        self.assertFalse(mails.search(sent))
+        # the address that the setting names is the one every link starts with
+        params.set_param('woow_document_management.notice_base_url', 'https://notice.example.test/')
+        wizard.action_send()
+        self.assertIn('https://notice.example.test/web#id=', mails.search(sent).body_html)
 
     def test_move_document_and_reject_trash_target(self):
         admin = self.env.ref('base.user_admin')

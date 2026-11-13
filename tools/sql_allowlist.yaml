@@ -5,34 +5,18 @@
 # Any pg_*advisory* outside services/locks.py fails, and locks.py must not call builtin hash().
 version: 1
 entries:
-- id: Q1
-  file: woow_document_management/models/document_log.py
-  functions: [_log_event]
-  note: denied-event bucket upsert, verbatim ER-28 point 2 SQL
 - id: Q2
   file: woow_document_management/models/quota.py
   functions: [_usage_bytes]
-  note: deduplicated attachment bytes (arch 6.4 Q2)
+  note: deduplicated attachment bytes (arch 6.4 Q2), read as committed through a connection of its own that takes its snapshot after the quota lock
 - id: Q3
   file: woow_document_management/models/document_folder.py
   functions: [init]
   note: fixed-string DDL, folder name unique index
 - id: Q3
-  file: woow_document_management/models/document_log.py
-  functions: [init]
-  note: fixed-string DDL, denied bucket unique index (ER-28 point 1)
-- id: Q3
   file: woow_document_management/models/document_tag.py
   functions: [init]
   note: fixed-string DDL, active tag name and company unique index
-- id: Q3
-  file: woow_document_management/models/document_share.py
-  functions: [init]
-  note: fixed-string DDL, share token hash unique index
-- id: Q3
-  file: woow_document_management/wizards/share_wizard.py
-  functions: [init]
-  note: fixed-string DDL, drop the legacy plaintext password column of the share wizard
 - id: Q4
   file: woow_document_management/services/locks.py
   functions: [try_lock, lock, bounded_wait]
@@ -53,23 +37,23 @@ entries:
   file: woow_document_management/models/folder_access.py
   functions: [_lock_folders]
   note: force serializable row-version conflict under repeatable read before grant insert
-- id: Q9
-  file: woow_document_management/models/document_log.py
-  functions: [_count_share_unlock_failures]
-  note: creator-scoped aggregate of denied share unlock attempts without exposing restricted IP hashes
-- id: Q13
-  file: woow_document_management/models/document_log.py
-  functions: [_count_denied_across_shares]
-  note: per-IP denied-event aggregate across share ids, preventing a share existence oracle
-- id: Q10
-  file: woow_document_management/models/quota.py
-  functions: [_check]
-  note: quota setting row version barrier after advisory lock under repeatable read
-- id: Q11
-  file: woow_document_management/models/share_service.py
-  functions: [_woow_send_link]
-  note: sender row version barrier before hourly share mail count under repeatable read
-- id: Q12
-  file: woow_document_management/models/share_service.py
-  functions: [_download_slot_available]
-  note: share row version barrier before file and ZIP download count under repeatable read
+- id: Q17
+  file: woow_document_management/models/ir_attachment.py
+  functions: [_woow_field_attachment_ids, _woow_document_file_row]
+  note: attachments that back a binary field among the ids given to a chatter post, and the stored binary attachment a document records for its file (its attachment_id, never another attachment that claims the field), read without record rules before core links them as superuser or the file is streamed
+- id: Q18
+  file: woow_document_management/models/mail_thread_guard.py
+  functions: [_woow_follower_scope, _woow_user_companies]
+  note: stored grants, state and company behind the read rules of the notified record, and the companies of the notified accounts, so followers who can no longer read the record are not notified (no identity switch)
+- id: Q19
+  file: woow_document_management/models/document_folder.py
+  functions: [_woow_check_name_free]
+  note: an active folder already using the name at the same level and company, the same test as the unique name index, answered as M-02 before the insert or update
+- id: Q20
+  file: woow_document_management/models/document.py
+  functions: [_woow_portal_direct_documents]
+  note: documents shared directly with the caller's own contact, then searched under the caller's record rules (the share list is not searchable by portal users)
+- id: Q21
+  file: woow_document_management/models/trash_actions.py
+  functions: [_woow_lock_purge_root]
+  note: row locks on a purge root and on every folder of its subtree (trashed ones included, in id order) that write no row version, taken before any hold is read, so a legal hold, restore or move of any subtree folder committed after a purge batch's repeatable read snapshot fails that root with serialization_failure and a later one waits for the batch

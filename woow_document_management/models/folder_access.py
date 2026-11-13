@@ -2,9 +2,10 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Folder members (IF-MODEL, owned by core-models-acl)."""
 from odoo import _, api, fields, models, tools
-from odoo.exceptions import ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 
 from ..services.locks import advisory_key, lock
+from .document_folder import _company_value
 
 _LEVEL_RANK = {'read': 1, 'upload': 2, 'edit': 3, 'manage': 4}
 MAX_ACCESS_LINES = 500
@@ -22,6 +23,7 @@ class WoowDocumentFolderAccess(models.Model):
     _inherit = ['woow.document.guard.mixin']
     _description = 'Document folder member'
     _woow_allowed_defaults = frozenset({'default_folder_id'})
+    _woow_own_default_fields = frozenset({'company_id'})     # the company of its folder
     _sql_constraints = [
         ('subject_exactly_one', "CHECK ((subject_type = 'user' AND user_id IS NOT NULL "
          "AND group_id IS NULL AND partner_id IS NULL) OR (subject_type = 'group' "
@@ -44,6 +46,20 @@ class WoowDocumentFolderAccess(models.Model):
         [('read', 'View'), ('upload', 'Upload'), ('edit', 'Edit'), ('manage', 'Manage')],
         required=True)
 
+    def _woow_manageable_folders(self, values):
+        """The distinct folder ids of ``values``, once the caller is known to manage every one.
+
+        Run before any lock is taken or any folder row is updated, so that a request that is
+        refused costs no more than the check, however many folders it names: a value that is not a
+        plain id is refused (so ``'7'`` and ``'07'`` are not two folders), and so is a folder that
+        is missing or that the caller does not manage.
+        """
+        if any(type(value) is not int or value < 1 for value in values):
+            raise UserError(_('Choose an available folder.'))
+        ids = sorted(set(values))
+        self.env['woow.document.folder'].browse(ids)._woow_require_rank(4)
+        return ids
+
     def _lock_folders(self, folder_ids):
         for folder_id in sorted(set(folder_ids), key=lambda value: advisory_key(f'access:{value}')):
             lock(self.env.cr, f'access:{folder_id}')
@@ -55,13 +71,15 @@ class WoowDocumentFolderAccess(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if not self.env.su:
+            self.check_access('create')
         default_folder_id = (self.default_get(['folder_id']).get('folder_id')
                              if any('folder_id' not in vals for vals in vals_list) else None)
         folder_ids = [vals.get('folder_id', default_folder_id)
                       for vals in vals_list if vals.get('folder_id', default_folder_id)]
-        self._lock_folders(folder_ids)
         if not self.env.su:
-            self.env['woow.document.folder'].browse(folder_ids)._woow_require_rank(4)
+            folder_ids = self._woow_manageable_folders(folder_ids)
+        self._lock_folders(folder_ids)
         lines = super().create(vals_list)
         for line in lines:
             self.env['woow.document.log']._log_event(
@@ -70,30 +88,53 @@ class WoowDocumentFolderAccess(models.Model):
                 detail={'member_id': line.id})
         return lines
 
-    def write(self, vals):
-        if vals.get('folder_id'):
-            self._lock_folders([vals['folder_id']])
-            if not self.env.su:
-                self.env['woow.document.folder'].browse(vals['folder_id'])._woow_require_rank(4)
-        old_folders = self.mapped('folder_id') if vals else self.env['woow.document.folder']
-        result = super().write(vals)
-        if vals:
-            for folder in (old_folders | self.mapped('folder_id')):
-                self.env['woow.document.log']._log_event(
-                    'access_change', channel=self._woow_log_channel(),
-                    folder_id=folder.id, company_id=folder.company_id.id,
-                    detail={'member_ids': self.ids})
-        return result
+    def _members_by_folder(self):
+        """{folder: ids of the lines in self that belong to it}, in a stable order."""
+        members = {}
+        for line in self:
+            members.setdefault(line.folder_id, []).append(line.id)
+        return members
 
-    def unlink(self):
-        folders = self.mapped('folder_id')
-        line_ids = self.ids
-        result = super().unlink()
-        for folder in folders:
+    def _log_member_change(self, members):
+        """One access_change row per folder, naming only that folder's lines."""
+        for folder, line_ids in members.items():
             self.env['woow.document.log']._log_event(
                 'access_change', channel=self._woow_log_channel(),
                 folder_id=folder.id, company_id=folder.company_id.id,
-                detail={'member_ids': line_ids})
+                detail={'member_ids': sorted(set(line_ids))})
+
+    def write(self, vals):
+        if vals.get('folder_id'):
+            folder_ids = [vals['folder_id']]
+            if not self.env.su:
+                folder_ids = self._woow_manageable_folders(folder_ids)
+            self._lock_folders(folder_ids)
+        if 'company_id' in vals and not self.env.su:
+            # The company of a row is the one of its folder (the new one, when the row moves):
+            # a stored value of another company would take the row out of the company rule of
+            # the administrators of that folder.
+            company = _company_value(vals['company_id'])
+            target = self.env['woow.document.folder'].browse(vals.get('folder_id'))
+            if any(company != ((target or line.folder_id).company_id.id or False)
+                   for line in self):
+                raise AccessError(_('This folder field cannot be changed directly.'))
+            # the row is stored with the company that was judged: the number, the record and the pair
+            # are the id, and ``0`` or an empty list is no company, as the ORM keeps them
+            vals = dict(vals, company_id=company or False)
+        before = self._members_by_folder() if vals else {}
+        result = super().write(vals)
+        if vals:
+            # A moved line is named on the folder it left and on the one it joined.
+            members = {folder: list(line_ids) for folder, line_ids in before.items()}
+            for folder, line_ids in self._members_by_folder().items():
+                members.setdefault(folder, []).extend(line_ids)
+            self._log_member_change(members)
+        return result
+
+    def unlink(self):
+        members = self._members_by_folder()
+        result = super().unlink()
+        self._log_member_change(members)
         return result
 
     def init(self):

@@ -197,35 +197,6 @@
         <field name="perm_create" eval="False" />
         <field name="perm_unlink" eval="False" />
     </record>
-    <record id="rule_woow_document_share_company" model="ir.rule">
-        <field name="name">R-S0 rule_woow_document_share_company</field>
-        <field name="model_id" ref="model_woow_document_share" />
-        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
-        <field name="perm_read" eval="True" />
-        <field name="perm_write" eval="True" />
-        <field name="perm_create" eval="True" />
-        <field name="perm_unlink" eval="True" />
-    </record>
-    <record id="rule_woow_document_share_user_own" model="ir.rule">
-        <field name="name">R-S1 rule_woow_document_share_user_own</field>
-        <field name="model_id" ref="model_woow_document_share" />
-        <field name="domain_force">[('create_uid', '=', user.id)]</field>
-        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
-        <field name="perm_read" eval="True" />
-        <field name="perm_write" eval="True" />
-        <field name="perm_create" eval="True" />
-        <field name="perm_unlink" eval="True" />
-    </record>
-    <record id="rule_woow_document_share_manager" model="ir.rule">
-        <field name="name">R-S2 rule_woow_document_share_manager</field>
-        <field name="model_id" ref="model_woow_document_share" />
-        <field name="domain_force">[(1, '=', 1)]</field>
-        <field name="groups" eval="[(4, ref('group_woow_document_manager'))]" />
-        <field name="perm_read" eval="True" />
-        <field name="perm_write" eval="True" />
-        <field name="perm_create" eval="True" />
-        <field name="perm_unlink" eval="True" />
-    </record>
     <record id="rule_woow_document_log_company" model="ir.rule">
         <field name="name">R-L0 rule_woow_document_log_company</field>
         <field name="model_id" ref="model_woow_document_log" />
@@ -238,7 +209,7 @@
     <record id="rule_woow_document_log_user_read" model="ir.rule">
         <field name="name">R-L1 rule_woow_document_log_user_read</field>
         <field name="model_id" ref="model_woow_document_log" />
-        <field name="domain_force">['|', ('user_id', '=', user.id), ('share_id.create_uid', '=', user.id)]</field>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
         <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
         <field name="perm_read" eval="True" />
         <field name="perm_write" eval="False" />
@@ -254,6 +225,61 @@
         <field name="perm_write" eval="False" />
         <field name="perm_create" eval="False" />
         <field name="perm_unlink" eval="False" />
+    </record>
+    <!-- R-W2..R-W6: a wizard row belongs to the user who created it. Core has no owner rule
+         for transient models, and the actions of these wizards run with the rights of whoever
+         calls them on the stored row, so another document user must not read or change a row
+         that an administrator is about to confirm. Every ACL of these models is read, write
+         and create only; the rule restricts all four operations to the creator's own rows. -->
+    <record id="rule_woow_document_move_wizard_owner" model="ir.rule">
+        <field name="name">R-W2 rule_woow_document_move_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_move_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_restore_wizard_owner" model="ir.rule">
+        <field name="name">R-W3 rule_woow_document_restore_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_restore_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_purge_wizard_owner" model="ir.rule">
+        <field name="name">R-W4 rule_woow_document_purge_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_purge_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_add_attachment_wizard_owner" model="ir.rule">
+        <field name="name">R-W5 rule_woow_document_add_attachment_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_add_attachment_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_notify_wizard_owner" model="ir.rule">
+        <field name="name">R-W6 rule_woow_document_notify_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_notify_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
     </record>
     <!-- R-M0: share (portal / public) users never reach this module's chatter through the
          mail.message ORM or RPC (DEC-11); internal users keep core behaviour. Global rule:

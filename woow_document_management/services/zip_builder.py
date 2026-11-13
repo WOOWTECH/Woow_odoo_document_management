@@ -15,7 +15,7 @@ from typing import BinaryIO
 from odoo.tools import config
 
 from .constants import MIB, ZIP_DEADLINE_S
-from .naming import dedupe
+from .naming import Deduper
 
 
 @dataclasses.dataclass(frozen=True)
@@ -92,9 +92,9 @@ def build_zip(entries: Sequence[ZipEntry], limits: ZipLimits, fileobj: BinaryIO,
         raise ZipLimitExceeded('depth')
 
     deadline = time.monotonic() + limits.deadline_s
-    seen: dict[tuple[str, ...], list[str]] = {}
+    seen: dict[tuple[str, ...], Deduper] = {}
     if links:
-        seen[()] = ['_links.txt']
+        seen[()] = Deduper(['_links.txt'])
     actual_bytes = len(links_payload)
     with zipfile.ZipFile(fileobj, mode='w', allowZip64=True,
                          compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
@@ -102,9 +102,7 @@ def build_zip(entries: Sequence[ZipEntry], limits: ZipLimits, fileobj: BinaryIO,
             if time.monotonic() > deadline:
                 raise ZipLimitExceeded('deadline')
             parent, leaf = entry.path_segments[:-1], entry.path_segments[-1]
-            prior = seen.setdefault(parent, [])
-            unique_leaf = dedupe([*prior, leaf])[-1]
-            prior.append(unique_leaf)
+            unique_leaf = seen.setdefault(parent, Deduper()).add(leaf)
             arcname = '/'.join((*parent, unique_leaf))
             info = zipfile.ZipInfo(arcname)
             info.compress_type = (zipfile.ZIP_DEFLATED if entry.compressible

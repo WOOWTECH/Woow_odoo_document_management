@@ -7,7 +7,6 @@
 | Folder | 資料夾 |
 | File | 檔案 |
 | Portal | 入口網站 |
-| Share link | 分享連結 |
 | View | 檢視 |
 | Upload | 上傳 |
 | Edit | 編輯 |
@@ -15,7 +14,6 @@
 | Trash | 回收桶 |
 | Legal hold | 法律保留 |
 | Audit log | 稽核紀錄 |
-| Revoke | 撤銷 |
 | Restore | 還原 |
 | Owner | 擁有者 |
 

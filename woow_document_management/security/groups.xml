@@ -7,7 +7,7 @@
 <odoo>
     <record id="module_category_woow_document" model="ir.module.category">
         <field name="name">Documents (WoowTech)</field>
-        <field name="description">Access to folders, documents and share links.</field>
+        <field name="description">Access to folders and documents.</field>
         <field name="sequence">30</field>
     </record>
 

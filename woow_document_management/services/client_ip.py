@@ -31,6 +31,9 @@ def _address(value):
 
 
 def _trusted(address, networks):
+    if address.version == 6 and address.ipv4_mapped is not None:
+        # a dual-stack listener names an IPv4 peer like this, and it is that IPv4 address
+        address = address.ipv4_mapped
     return any(address in network for network in networks)
 
 

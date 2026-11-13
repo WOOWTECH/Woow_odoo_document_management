@@ -2,18 +2,48 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Storage quota (IF-QUOTA, owned by upload-quota). Q2 and Q5 live here.
 
-Day-0 stub, fail closed: every quota check rejects.
+The quota check of uploads (one measurement and one lock per run) and the warning cron.
 """
 import math
+
+from psycopg2 import OperationalError
+from psycopg2.pool import PoolError
 
 from odoo import _, fields, models
 from odoo.exceptions import AccessError
 
 from .upload_policy import WoowUploadRejected
-from .settings import PARAM_PREFIX
 from ..services.constants import MIB
-from ..services.locks import lock
+from ..services.locks import LockBusy, lock
 from ..services.locks import try_lock
+
+# Context key of the QuotaLedger that several calls of one run share.
+LEDGER_KEY = 'woow_quota_ledger'
+
+
+class QuotaLedger:
+    """What one run of uploads has measured and accepted, for the calls that make it up.
+
+    A run that stores files with several ``create`` or ``write`` calls in one transaction
+    (the attachment import wizard) measures the stored bytes once, after it took the quota
+    lock, and adds the bytes it accepted since: the files it has written are not
+    committed, so no measurement made through another connection counts them. The
+    measurement is kept only while the lock the run took is still held, because only that
+    lock keeps other uploads from changing the stored bytes meanwhile.
+
+    The lock is held until the transaction ends, unless the call that took it is rolled
+    back to a savepoint, which releases the locks taken inside it. A call that is refused
+    while the run has accepted nothing may be that call, and its caller may roll it back and
+    go on with the next file (the import wizard does, for every source). Such a call
+    therefore forgets the measurement, and the next call measures again after taking the
+    lock. After an accepted call the lock is still held, so the measurement stays; a caller
+    must not roll back a call that was accepted and then use the ledger again.
+    """
+    __slots__ = ('base', 'added')
+
+    def __init__(self):
+        self.base = None
+        self.added = 0
 
 
 class WoowDocumentQuota(models.AbstractModel):
@@ -21,14 +51,29 @@ class WoowDocumentQuota(models.AbstractModel):
     _description = 'Document storage quota'
 
     def _usage_bytes(self) -> int:
-        """Q2: deduplicated bytes of all stored attachments."""
+        """Q2: deduplicated bytes of all stored attachments that have been committed.
+
+        The count is read through a connection of its own, which takes its snapshot when
+        it runs. The caller's transaction took its snapshot at its first statement, long
+        before it got the quota lock, so it would miss the uploads that committed while
+        it waited; reading it there made every concurrent upload fail with a
+        serialization error and retry after a pause instead. What the caller itself has
+        written is not committed: see ``QuotaLedger``, which a caller that stores files with
+        several ``create`` or ``write`` calls in one transaction has to share. When no
+        connection is available the caller is told to try again (``LockBusy``).
+        """
         self.env['ir.attachment'].flush_model(['store_fname', 'file_size'])
-        self.env.cr.execute('''
-            SELECT COALESCE(SUM(file_size), 0)
-            FROM (SELECT DISTINCT ON (store_fname) file_size FROM ir_attachment
-                  WHERE store_fname IS NOT NULL) AS stored
-        ''')  # sql-ok: Q2
-        return int(self.env.cr.fetchone()[0] or 0)
+        try:
+            side = self.env.registry.cursor()
+        except (PoolError, OperationalError) as exc:
+            raise LockBusy('quota') from exc
+        with side as cr:
+            cr.execute('''
+                SELECT COALESCE(SUM(file_size), 0)
+                FROM (SELECT DISTINCT ON (store_fname) file_size FROM ir_attachment
+                      WHERE store_fname IS NOT NULL) AS stored
+            ''')  # sql-ok: Q2
+            return int(cr.fetchone()[0] or 0)
 
     def _bytes_if_new(self, checksum, size) -> int:
         """Q5: 0 when a stored attachment with this checksum exists, else ``size``."""
@@ -40,25 +85,61 @@ class WoowDocumentQuota(models.AbstractModel):
         return 0 if self.env.cr.fetchone() else size
 
     def _check(self, checksum, size) -> None:
-        """Refuse uploads above quota_block_pct under lock('quota'); LockBusy on timeout."""
+        """Refuse an upload above quota_block_pct (see ``_check_many``)."""
+        self._check_many([(checksum, size)])
+
+    def _check_many(self, items) -> None:
+        """Refuse uploads above quota_block_pct under lock('quota'); LockBusy on timeout.
+
+        ``items`` are the (checksum, size) of all the files one call stores; they are
+        measured together, in order, so that each counts the ones before it. The checks
+        run last, after everything else that can refuse a file, and the lock is held to
+        the end of the transaction, so the whole call takes it once and measures the
+        stored bytes once (``QuotaLedger``).
+
+        An account has one upload transaction at a time: its other requests wait for
+        its own lock and not for the site lock, so one account cannot queue its requests
+        in front of everyone else's.
+
+        A ``QuotaLedger`` keeps its measurement only while the lock the run took is still
+        held: a call that is refused before the run accepted any bytes drops it, because its
+        caller may roll the call back to a savepoint and so release the lock it took.
+
+        A new upload always counts its own size. Only the attachment import wizard,
+        whose source the caller has read, is credited for content already stored:
+        crediting by a site-wide checksum match would tell any uploader whether a
+        file they cannot read exists (accepted or refused, and the percentage).
+        The exact percentage is only shown to document administrators.
+        """
+        from .document import SOURCE_CTX_KEY, _SOURCE_SENTINEL
         settings = self.env['woow.document.settings']._get_settings()
-        if not settings.quota_mb:
+        if not settings.quota_mb or not items:
             return
         self.env['ir.attachment'].flush_model(['store_fname', 'file_size', 'checksum'])
+        lock(self.env.cr, 'quota:u:%d' % self.env.uid)
         lock(self.env.cr, 'quota')
-        # A transaction-level advisory lock only orders entrants; under Repeatable Read
-        # the next entrant can still read its pre-lock snapshot. Updating this existing
-        # quota setting row forces a serialization retry when a concurrent upload won.
-        self.env['ir.config_parameter'].flush_model(['key', 'value'])
-        self.env.cr.execute(  # sql-ok: Q10
-            'UPDATE ir_config_parameter SET value = value '
-            'WHERE key = %s RETURNING id', (PARAM_PREFIX + 'quota_mb',))
-        if not self.env.cr.fetchone():
-            raise WoowUploadRejected('quota')
-        projected = self._usage_bytes() + self._bytes_if_new(checksum, size)
+        ledger = self.env.context.get(LEDGER_KEY)
+        if not isinstance(ledger, QuotaLedger):
+            ledger = QuotaLedger()
+        if ledger.base is None:
+            ledger.base = self._usage_bytes()
+        credited = self.env.context.get(SOURCE_CTX_KEY) is _SOURCE_SENTINEL
         capacity = settings.quota_mb * MIB
-        if projected * 100 > capacity * settings.quota_block_pct:
-            raise WoowUploadRejected('quota', pct=math.ceil(projected * 100 / capacity))
+        projected = ledger.base + ledger.added
+        for checksum, size in items:
+            projected += self._bytes_if_new(checksum, size) if credited else size
+            if projected * 100 > capacity * settings.quota_block_pct:
+                if not ledger.added:
+                    # Nothing was accepted yet, so this call may be the one that took the
+                    # lock, and its caller may roll it back, which releases the lock: the
+                    # measurement would no longer be protected. After an accepted call the
+                    # lock is still held and the measurement stays.
+                    ledger.base = None
+                if self.env.su or self.env.user.has_group(
+                        'woow_document_management.group_woow_document_manager'):
+                    raise WoowUploadRejected('quota', pct=math.ceil(projected * 100 / capacity))
+                raise WoowUploadRejected('quota')
+        ledger.added = projected - ledger.base
 
     def _cron_check_warn(self) -> None:
         """Daily: activity for document administrators when usage reaches quota_warn_pct."""

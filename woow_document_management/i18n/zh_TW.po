@@ -24,6 +24,12 @@ msgstr "已加入 %(added)s 個；拒絕 %(rejected)s 個。%(reasons)s"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/cron_jobs.py:0
+msgid "%(count)s items have stayed in the trash for more than %(days)s days after their retention period and could not be deleted. Check the trash for items under legal hold or with an error."
+msgstr "有 %(count)s 個項目在保留期間結束後已在回收桶超過 %(days)s 天，仍無法刪除。請檢查回收桶中是否有受法律保留或發生錯誤的項目。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid ".%(ext)s files aren't accepted here."
 msgstr "此處不接受 .%(ext)s 檔案。"
@@ -46,25 +52,6 @@ msgstr ""
 "      "
 
 #. module: woow_document_management
-#: model:mail.template,body_html:woow_document_management.mail_template_woow_document_share_link
-msgid ""
-"<div>\n"
-"          <p>A document link is available:</p>\n"
-"          <p><a t-att-href=\"ctx.get('woow_share_url')\"><t t-out=\"ctx.get('woow_share_url')\"/></a></p>\n"
-"          <p t-if=\"ctx.get('woow_share_note')\"><t t-out=\"ctx.get('woow_share_note')\"/></p>\n"
-"          <p>This link has an expiry date. Contact the sender if it has expired.</p>\n"
-"        </div>\n"
-"      "
-msgstr ""
-"<div>\n"
-"          <p>您可以使用以下文件連結：</p>\n"
-"          <p><a t-att-href=\"ctx.get('woow_share_url')\"><t t-out=\"ctx.get('woow_share_url')\"/></a></p>\n"
-"          <p t-if=\"ctx.get('woow_share_note')\"><t t-out=\"ctx.get('woow_share_note')\"/></p>\n"
-"          <p>此連結有到期日。若已到期，請聯絡寄件人。</p>\n"
-"        </div>\n"
-"      "
-
-#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
 msgid "<span> / </span>"
 msgstr "<span> / </span>"
@@ -81,21 +68,10 @@ msgid "A document folder was shared with you"
 msgstr "有人與您分享了一個文件資料夾"
 
 #. module: woow_document_management
-#: model:mail.template,subject:woow_document_management.mail_template_woow_document_share_link
-msgid "A document link was shared with you"
-msgstr "有人與您分享了一個文件連結"
-
-#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "A document on legal hold cannot be deleted."
 msgstr "設有法律保留的文件無法刪除。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "A document share email could not be delivered"
-msgstr "文件分享郵件無法寄達"
 
 #. module: woow_document_management
 #. odoo-python
@@ -129,27 +105,16 @@ msgstr "連結不能同時包含檔案。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/folder_access.py:0
 msgid "A member cannot be granted more access than on the parent folder."
 msgstr "成員的權限不能高於其在上層資料夾的權限。"
 
 #. module: woow_document_management
 #. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "A password is required for share links."
-msgstr "分享連結必須設定密碼。"
-
-#. module: woow_document_management
-#. odoo-python
 #: code:addons/woow_document_management/wizards/notify_wizard.py:0
 msgid "A selected member is no longer authorized."
 msgstr "選取的成員已無存取權限。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/document_share.py:0
-msgid "A share expiry can only be shortened."
-msgstr "分享連結的到期日只能提前。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -164,8 +129,8 @@ msgstr "存取權限"
 
 #. module: woow_document_management
 #: model:ir.module.category,description:woow_document_management.module_category_woow_document
-msgid "Access to folders, documents and share links."
-msgstr "存取資料夾、文件與分享連結。"
+msgid "Access to folders and documents."
+msgstr "使用資料夾與文件的權限。"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -182,7 +147,6 @@ msgstr "需要處理"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__active
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__active
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__active
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__state__active
 msgid "Active"
 msgstr "使用中"
 
@@ -190,6 +154,11 @@ msgstr "使用中"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_ids
 msgid "Activities"
+msgstr "活動"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_mail_activity
+msgid "Activity"
 msgstr "活動"
 
 #. module: woow_document_management
@@ -245,6 +214,14 @@ msgstr "允許 HTTP 文件連結"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Allow document users to create root folders"
 msgstr "允許文件使用者建立最上層資料夾"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid ""
+"Another folder in this location already uses this name. Pick a different "
+"name."
+msgstr "這一層已經有同名的資料夾，請換一個名稱。"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_ir_attachment
@@ -307,11 +284,6 @@ msgid "Browse folders and files shared with you"
 msgstr "瀏覽與您分享的資料夾和檔案"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__bucket_minute
-msgid "Bucket Minute"
-msgstr "分鐘區間"
-
-#. module: woow_document_management
 #: model:res.groups,comment:woow_document_management.group_woow_document_attachment_overview
 msgid "Can open the overview of attachments stored on other records."
 msgstr "可以檢視其他紀錄上的附件總覽。"
@@ -322,7 +294,6 @@ msgstr "可以檢視其他紀錄上的附件總覽。"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_notify_wizard_form
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_purge_wizard_form
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_restore_wizard_form
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_wizard_form
 msgid "Cancel"
 msgstr "取消"
 
@@ -379,12 +350,20 @@ msgstr "請選擇具有有效入口網站帳號的聯絡人。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/folder_access.py:0
 msgid "Choose a document user."
 msgstr "請選擇文件使用者。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Choose an available company."
+msgstr "請選擇可用的公司。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/folder_access.py:0
 #: code:addons/woow_document_management/wizards/restore_wizard.py:0
 msgid "Choose an available folder."
 msgstr "請選擇可用的資料夾。"
@@ -416,7 +395,6 @@ msgstr "顏色"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__company_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__company_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__company_id
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__company_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__company_id
 msgid "Company"
 msgstr "公司"
@@ -448,12 +426,6 @@ msgid "Configure a public HTTPS address for document notices."
 msgstr "請設定文件通知使用的公開 HTTPS 網址。"
 
 #. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "Configure a public HTTPS address for share links."
-msgstr "請設定分享連結使用的公開 HTTPS 網址。"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__confirm
 msgid "Confirm"
 msgstr "確認"
@@ -465,34 +437,6 @@ msgid "Confirm permanent deletion of the selected items."
 msgstr "確認永久刪除所選項目。"
 
 #. module: woow_document_management
-#. odoo-javascript
-#: code:addons/woow_document_management/static/src/share_result/share_result.xml:0
-msgid "Copy"
-msgstr "複製"
-
-#. module: woow_document_management
-#. odoo-javascript
-#: code:addons/woow_document_management/static/src/share_result/share_result.xml:0
-msgid "Copy these links now. They will not be shown again."
-msgstr "請立即複製這些連結，之後不會再顯示。"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__count
-msgid "Count"
-msgstr "數量"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_wizard_form
-msgid "Create links"
-msgstr "建立連結"
-
-#. module: woow_document_management
-#: model:ir.model,name:woow_document_management.model_woow_document_share_wizard
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_wizard_form
-msgid "Create share links"
-msgstr "建立分享連結"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__create_uid
@@ -502,8 +446,6 @@ msgstr "建立分享連結"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__create_uid
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__create_uid
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__create_uid
 msgid "Created by"
 msgstr "建立者"
@@ -518,8 +460,6 @@ msgstr "建立者"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__create_date
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__create_date
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__create_date
 msgid "Created on"
 msgstr "建立時間"
@@ -533,11 +473,6 @@ msgstr "排程"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__datas
 msgid "Datas"
 msgstr "檔案資料"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Default link lifetime (days)"
-msgstr "連結預設有效天數"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_purge_wizard
@@ -556,11 +491,6 @@ msgstr "已刪除的檔案"
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__purge
 msgid "Deleted permanently"
 msgstr "已永久刪除"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__result__denied
-msgid "Denied"
-msgstr "已拒絕"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__description
@@ -583,8 +513,6 @@ msgstr "詳細資訊"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__display_name
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__display_name
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__display_name
 msgid "Display Name"
 msgstr "顯示名稱"
@@ -598,8 +526,6 @@ msgstr "顯示名稱"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__document_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__document_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__document_ids
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__document_ids
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__document_ids
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form
 msgid "Document"
 msgstr "文件"
@@ -633,11 +559,6 @@ msgstr "文件使用者"
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_tag_create_policy__managers
 msgid "Document administrators"
 msgstr "文件管理員"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_share_link_policy__managers_only
-msgid "Document administrators only"
-msgstr "僅文件管理員"
 
 #. module: woow_document_management
 #. odoo-python
@@ -699,12 +620,6 @@ msgid "Document settings"
 msgstr "文件設定"
 
 #. module: woow_document_management
-#: model:ir.model,name:woow_document_management.model_woow_document_share
-#: model:mail.template,name:woow_document_management.mail_template_woow_document_share_link
-msgid "Document share link"
-msgstr "文件分享連結"
-
-#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/quota.py:0
 msgid "Document storage capacity warning"
@@ -723,6 +638,14 @@ msgid ""
 "Document storage on this site is %(pct)s%% full, so new files can't be "
 "added. Ask your administrator to free up space or raise the limit."
 msgstr "本站文件儲存空間已使用 %(pct)s%%，因此無法新增檔案。請管理員釋放空間或提高配額。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/upload_policy.py:0
+msgid ""
+"Document storage on this site is full, so new files can't be added. Ask "
+"your administrator to free up space or raise the limit."
+msgstr "本站文件儲存空間已滿，因此無法新增檔案。請管理員釋放空間或提高配額。"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_quota
@@ -746,8 +669,6 @@ msgstr "文件上傳政策"
 
 #. module: woow_document_management
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_document
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__share_type__documents
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share_wizard__share_type__documents
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_document
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_root
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
@@ -763,6 +684,12 @@ msgid "Documents (WoowTech)"
 msgstr "文件（WoowTech）"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "Documents and folders do not accept this email."
+msgstr "文件和資料夾不接受這封電子郵件。"
+
+#. module: woow_document_management
 #: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_quota_ir_actions_server
 msgid "Documents: Check storage quota"
 msgstr "文件：檢查儲存空間配額"
@@ -773,11 +700,6 @@ msgid "Documents: Clear expired audit logs"
 msgstr "文件：清除過期稽核紀錄"
 
 #. module: woow_document_management
-#: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_share_maintenance_ir_actions_server
-msgid "Documents: Expire and clean share links"
-msgstr "文件：讓分享連結到期並清理"
-
-#. module: woow_document_management
 #: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_purge_trash_ir_actions_server
 msgid "Documents: Purge old trash"
 msgstr "文件：清理舊回收桶項目"
@@ -786,11 +708,6 @@ msgstr "文件：清理舊回收桶項目"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_file
 msgid "Download"
 msgstr "下載"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__download_count
-msgid "Download Count"
-msgstr "下載次數"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
@@ -806,11 +723,6 @@ msgstr "已下載"
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__zip
 msgid "Downloaded as ZIP"
 msgstr "以 ZIP 下載"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_download
-msgid "Downloaded through a share link"
-msgstr "透過分享連結下載"
 
 #. module: woow_document_management
 #. odoo-python
@@ -879,15 +791,9 @@ msgid "Effective Access Lines"
 msgstr "有效存取權限明細"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__effective_restored_at
-msgid "Effective Restored At"
-msgstr "有效還原時間"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/wizards/share_wizard.py:0
-msgid "Enter valid email addresses."
-msgstr "請輸入有效的電子郵件地址。"
+#: model:ir.model,name:woow_document_management.model_mail_thread
+msgid "Email Thread"
+msgstr "電子郵件討論串"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__event
@@ -899,22 +805,6 @@ msgstr "事件"
 #: code:addons/woow_document_management/wizards/notify_wizard.py:0
 msgid "Every selected member needs an email address."
 msgstr "每位選取的成員都必須有電子郵件地址。"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__expire_at
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__expire_at
-msgid "Expire At"
-msgstr "到期時間"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__state__expired
-msgid "Expired"
-msgstr "已到期"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Failed requests per minute"
-msgstr "每分鐘失敗請求數"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__document_type__binary
@@ -938,6 +828,16 @@ msgid "File replaced"
 msgstr "已取代檔案"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_ir_binary
+msgid "File streaming helper model for controllers"
+msgstr "控制器檔案串流輔助模型"
+
+#. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_ir_attachment_woow_module_rows_closed
+msgid "Files of documents and folders cannot be public or carry an access token."
+msgstr "文件與資料夾的檔案不能公開，也不能帶有存取權杖。"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Files per request"
 msgstr "每次請求的檔案數"
@@ -958,18 +858,9 @@ msgstr "與我分享的檔案"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__folder_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__folder_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__folder_ids
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__folder_id
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__folder_id
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__share_type__folder
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share_wizard__share_type__folder
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form
 msgid "Folder"
 msgstr "資料夾"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_share_link_policy__folder_managers
-msgid "Folder managers"
-msgstr "資料夾管理者"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
@@ -1024,14 +915,18 @@ msgid "Has Message"
 msgstr "有訊息"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__has_password
-msgid "Has Password"
-msgstr "已設定密碼"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__has_restricted_descendant
 msgid "Has Restricted Descendant"
 msgstr "有受限制的下層項目"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid ""
+"Header in which the trusted proxy names the client address. The proxy must "
+"set it on every request and drop any value the client sent; the address "
+"appears in the audit log."
+msgstr ""
+"受信任的代理伺服器用來標示用戶端位址的標頭。代理伺服器必須在每個請求都設定它，並丟棄用戶端自行送來的值；這個位址會記在稽核紀錄中。"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -1048,8 +943,6 @@ msgstr "支援的最高值為 95 MB。"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__id
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__id
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__id
 msgid "ID"
 msgstr "編號"
@@ -1092,17 +985,6 @@ msgid "In Trash"
 msgstr "在回收桶中"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__include_subfolders
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__include_subfolders
-msgid "Include Subfolders"
-msgstr "包含子資料夾"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Include names in email subjects"
-msgstr "在電子郵件主旨中包含名稱"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__inherit_access
 msgid "Inherit Access"
 msgstr "沿用上層權限"
@@ -1127,6 +1009,7 @@ msgstr "文件設定無效：%s"
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/controllers/streaming.py:0
+#: code:addons/woow_document_management/models/document.py:0
 msgid "Invalid number of files."
 msgstr "檔案數量無效。"
 
@@ -1145,6 +1028,12 @@ msgstr "IP 雜湊值"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_is_follower
 msgid "Is Follower"
 msgstr "是關注人"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/cron_jobs.py:0
+msgid "Items in the trash could not be deleted"
+msgstr "回收桶中有項目無法刪除"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_log_ip_mode__hash
@@ -1167,8 +1056,6 @@ msgstr "超過 %(limit)s MB 上限。"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__write_uid
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__write_uid
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__write_uid
 msgid "Last Updated by"
 msgstr "最後更新者"
@@ -1183,8 +1070,6 @@ msgstr "最後更新者"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__write_date
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__write_date
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__write_date
 msgid "Last Updated on"
 msgstr "最後更新於"
@@ -1211,11 +1096,6 @@ msgid "Link"
 msgstr "連結"
 
 #. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.uniform_404_share
-msgid "Link unavailable"
-msgstr "連結無法使用"
-
-#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_log_form
 msgid "Log"
 msgstr "紀錄"
@@ -1231,20 +1111,14 @@ msgid "Manage"
 msgstr "管理"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__max_downloads
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__max_downloads
-msgid "Max Downloads"
-msgstr "下載次數上限"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Maximum link lifetime (days)"
-msgstr "連結最長有效天數"
-
-#. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__access_change
 msgid "Members changed"
 msgstr "成員已變更"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_mail_message
+msgid "Message"
+msgstr "訊息"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_error
@@ -1299,10 +1173,17 @@ msgstr "我的活動截止時間"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__name
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__name
 msgid "Name"
 msgstr "名稱"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+msgid ""
+"Networks of the reverse proxy that connects to Odoo. Only a request coming "
+"directly from one of them may name the client address in the header below. "
+"Leave empty to use the connecting address."
+msgstr "連線到 Odoo 的反向代理所在的網段。只有直接來自這些網段的請求，才能用下方的標頭指定用戶端位址。留空則使用連線端位址。"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
@@ -1352,7 +1233,6 @@ msgstr "不顯示"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__note
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__note
 msgid "Note"
 msgstr "備註"
 
@@ -1399,11 +1279,6 @@ msgid "Ok"
 msgstr "確定"
 
 #. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_wizard_form
-msgid "One email address per line; leave blank for a manual link"
-msgstr "每行一個電子郵件地址；留空則只產生手動分享連結"
-
-#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/move_wizard.py:0
 msgid "One or more selected items are unavailable."
@@ -1446,16 +1321,6 @@ msgid "Only system administrators can change these settings."
 msgstr "只有系統管理員可以修改這些設定。"
 
 #. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.share_landing
-msgid "Open"
-msgstr "開啟"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.share_landing
-msgid "Open a document link"
-msgstr "開啟文件連結"
-
-#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_file
 msgid "Open link"
 msgstr "開啟連結"
@@ -1493,26 +1358,6 @@ msgstr "上層路徑"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__partner_id
 msgid "Partner"
 msgstr "聯絡人"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__password
-msgid "Password"
-msgstr "密碼"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__password_hash
-msgid "Password Hash"
-msgstr "密碼雜湊"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__password_hash
-msgid "Password Hash"
-msgstr "密碼雜湊值"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.share_landing
-msgid "Paste the complete link or its code"
-msgstr "貼上完整連結或連結代碼"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__
@@ -1569,8 +1414,8 @@ msgstr "屬性"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Public link base URL"
-msgstr "公開連結基底網址"
+msgid "Public address for notice emails"
+msgstr "通知信使用的公開網址"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -1581,31 +1426,6 @@ msgstr "配額封鎖百分比"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Quota warning percent"
 msgstr "配額警示百分比"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__recipient_email
-msgid "Recipient Email"
-msgstr "收件人電子郵件"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__recipient_emails
-msgid "Recipient Emails"
-msgstr "收件人電子郵件地址"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_form
-msgid "Replace link"
-msgstr "更換連結"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__replaced_share_id
-msgid "Replaced Share"
-msgstr "已取代的分享連結"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Require a share password"
-msgstr "分享連結必須設定密碼"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_user_id
@@ -1643,6 +1463,12 @@ msgstr "還原日期"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "Restricted document"
+msgstr "受限制的文件"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/document_folder.py:0
 msgid "Restricted folder"
 msgstr "受限制的資料夾"
@@ -1656,26 +1482,6 @@ msgstr "結果"
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__x-real-ip
 msgid "Reverse proxy address"
 msgstr "反向代理位址"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_form
-msgid "Revoke"
-msgstr "撤銷"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__state__revoked
-msgid "Revoked"
-msgstr "已撤銷"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__revoked_at
-msgid "Revoked At"
-msgstr "撤銷時間"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__revoked_by_id
-msgid "Revoked By"
-msgstr "撤銷者"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__rpc
@@ -1704,7 +1510,6 @@ msgstr "請先儲存新的上層資料夾，再停用繼承權限。"
 #. odoo-python
 #: code:addons/woow_document_management/models/cron_jobs.py:0
 #: code:addons/woow_document_management/models/quota.py:0
-#: code:addons/woow_document_management/models/share_service.py:0
 msgid "Scheduled actions only."
 msgstr "此操作只能由排程執行。"
 
@@ -1716,40 +1521,15 @@ msgstr "可以檢視所有資料夾，並管理標籤、回收桶、法律保留
 
 #. module: woow_document_management
 #. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "Select a share scope."
-msgstr "請選擇分享範圍。"
-
-#. module: woow_document_management
-#. odoo-python
 #: code:addons/woow_document_management/wizards/move_wizard.py:0
 msgid "Select at least one item to move."
 msgstr "請至少選擇一個要移動的項目。"
 
 #. module: woow_document_management
 #. odoo-python
-#: code:addons/woow_document_management/wizards/share_wizard.py:0
-msgid "Select at most 20 distinct recipients."
-msgstr "最多只能選擇 20 位不同的收件人。"
-
-#. module: woow_document_management
-#. odoo-python
 #: code:addons/woow_document_management/wizards/notify_wizard.py:0
 msgid "Select between 1 and 100 current members."
 msgstr "請選擇 1 至 100 位目前有權限的成員。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-#: code:addons/woow_document_management/wizards/share_wizard.py:0
-msgid "Select between 1 and 500 documents."
-msgstr "請選擇 1 至 500 份文件。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "Select documents explicitly."
-msgstr "請明確選取文件。"
 
 #. module: woow_document_management
 #: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_folder_access_subject_exactly_one
@@ -1763,12 +1543,6 @@ msgid "Select items to restore."
 msgstr "請選擇要還原的項目。"
 
 #. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/wizards/share_wizard.py:0
-msgid "Select one folder."
-msgstr "請選擇一個資料夾。"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__recipient_ids
 msgid "Selected members"
 msgstr "選取的成員"
@@ -1777,11 +1551,6 @@ msgstr "選取的成員"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_notify_wizard_form
 msgid "Send"
 msgstr "寄送"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__sent_at
-msgid "Sent At"
-msgstr "寄送時間"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__sequence
@@ -1795,22 +1564,9 @@ msgstr "服務忙碌中"
 
 #. module: woow_document_management
 #. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid ""
-"Set a new password through the share wizard before replacing this link."
-msgstr "更換此連結前，請透過分享精靈設定新密碼。"
-
-#. module: woow_document_management
-#. odoo-python
 #: code:addons/woow_document_management/wizards/notify_wizard.py:0
 msgid "Set a sender email address before notifying members."
 msgstr "通知成員前，請先設定寄件人電子郵件地址。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "Set a sender email address before sharing documents."
-msgstr "分享文件前，請先設定寄件人電子郵件地址。"
 
 #. module: woow_document_management
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_settings
@@ -1823,85 +1579,6 @@ msgid "Settings changed"
 msgstr "設定已變更"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__share_id
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__share
-msgid "Share"
-msgstr "分享"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__share_type
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share_wizard__share_type
-msgid "Share Type"
-msgstr "分享類型"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "Share documents"
-msgstr "分享文件"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "Share folder"
-msgstr "分享資料夾"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_form
-msgid "Share link"
-msgstr "分享連結"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_create
-msgid "Share link created"
-msgstr "已建立分享連結"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_expire
-msgid "Share link expired"
-msgstr "分享連結已到期"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_open
-msgid "Share link opened"
-msgstr "已開啟分享連結"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_revoke
-msgid "Share link revoked"
-msgstr "分享連結已撤銷"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_send
-msgid "Share link sent"
-msgstr "分享連結已寄出"
-
-#. module: woow_document_management
-#. odoo-javascript
-#: code:addons/woow_document_management/static/src/share_result/share_result.xml:0
-#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_share
-#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_share
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_list
-msgid "Share links"
-msgstr "分享連結"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_access
-msgid "Share page viewed"
-msgstr "已檢視分享頁面"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/document_share.py:0
-msgid "Share secrets can only be set by the share wizard."
-msgstr "分享密鑰只能由分享精靈設定。"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Share session (minutes)"
-msgstr "分享工作階段（分鐘）"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__shared_partner_ids
 msgid "Shared Partner"
 msgstr "分享對象聯絡人"
@@ -1910,16 +1587,6 @@ msgstr "分享對象聯絡人"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__shared_user_ids
 msgid "Shared User"
 msgstr "分享對象使用者"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.share_page
-msgid "Shared documents"
-msgstr "已分享的文件"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Sharing"
-msgstr "分享"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_log_ip_mode__truncate
@@ -1956,11 +1623,6 @@ msgid "Source Res Model"
 msgstr "來源紀錄模型"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__state
-msgid "State"
-msgstr "狀態"
-
-#. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__activity_state
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__activity_state
 msgid ""
@@ -1995,11 +1657,6 @@ msgid "Subtree Legal Hold"
 msgstr "下層法律保留"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__subtree_restored_at
-msgid "Subtree Restored At"
-msgstr "下層項目還原時間"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__tag_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__tag_ids
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_tag_form
@@ -2026,24 +1683,9 @@ msgstr "所選附件無法使用。"
 
 #. module: woow_document_management
 #. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "The documents are unavailable."
-msgstr "文件無法使用。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-#: code:addons/woow_document_management/wizards/share_wizard.py:0
-msgid "The download limit is invalid."
-msgstr "下載上限無效。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid ""
-"The failed share email was removed after 24 hours. Create a new link if the "
-"recipient still needs access."
-msgstr "寄送失敗的分享郵件已在 24 小時後清除。若收件人仍需存取，請建立新連結。"
+#: code:addons/woow_document_management/models/ir_binary.py:0
+msgid "The document is unavailable."
+msgstr "這份文件無法使用。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -2059,18 +1701,6 @@ msgstr "檔案內容與 .%(ext)s 副檔名不符。"
 
 #. module: woow_document_management
 #. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "The folder is unavailable."
-msgstr "資料夾無法使用。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "The hourly share email limit has been reached."
-msgstr "已達每小時分享郵件寄送上限。"
-
-#. module: woow_document_management
-#. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "The link address is invalid."
 msgstr "連結網址無效。"
@@ -2080,31 +1710,6 @@ msgstr "連結網址無效。"
 #: code:addons/woow_document_management/models/document.py:0
 msgid "The link address must use HTTPS."
 msgstr "連結網址必須使用 HTTPS。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "The share company is unavailable."
-msgstr "分享所屬公司無法使用。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/share_service.py:0
-#: code:addons/woow_document_management/wizards/share_wizard.py:0
-msgid "The share expiry is outside the allowed period."
-msgstr "分享連結的到期時間超出允許範圍。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/wizards/share_wizard.py:0
-msgid "The share password is set through the password field."
-msgstr "分享密碼只能透過密碼欄位設定。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/wizards/share_wizard.py:0
-msgid "The share password must be between %(low)d and %(high)d characters."
-msgstr "分享密碼長度必須介於 %(low)d 到 %(high)d 個字元。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -2120,6 +1725,12 @@ msgstr "來源沒有檔案內容。"
 #: code:addons/woow_document_management/wizards/restore_wizard.py:0
 msgid "The target folder is unavailable."
 msgstr "目標資料夾無法使用。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
+msgid "This attachment cannot be added to the discussion."
+msgstr "這個附件不能加入討論。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -2161,9 +1772,9 @@ msgstr "此資料夾是空的。"
 
 #. module: woow_document_management
 #. odoo-python
-#: code:addons/woow_document_management/models/document_share.py:0
-msgid "This share field cannot be changed."
-msgstr "不能修改此分享欄位。"
+#: code:addons/woow_document_management/models/trash_actions.py:0
+msgid "This item cannot be deleted permanently."
+msgstr "這個項目無法永久刪除。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -2172,21 +1783,6 @@ msgid ""
 "This site still has documents. Download what you need, then enter the "
 "confirmation code in Documents settings before uninstalling."
 msgstr "本站仍有文件。請先下載需要的內容，然後在「文件」設定中輸入確認碼，再解除安裝。"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__token_hash
-msgid "Token Hash"
-msgstr "代碼雜湊值"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__token_hint
-msgid "Token Hint"
-msgstr "代碼提示"
-
-#. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__rate_limited
-msgid "Too many failed attempts"
-msgstr "失敗嘗試次數過多"
 
 #. module: woow_document_management
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_trash
@@ -2217,11 +1813,6 @@ msgid "Trusted proxy CIDRs"
 msgstr "信任的代理伺服器 CIDR"
 
 #. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.too_many_requests_page
-msgid "Try again later"
-msgstr "請稍後再試"
-
-#. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__activity_exception_decoration
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__activity_exception_decoration
 msgid "Type of the exception activity on record."
@@ -2237,26 +1828,6 @@ msgstr "解除安裝確認碼"
 #: code:addons/woow_document_management/models/document.py:0
 msgid "Unknown document type."
 msgstr "未知的文件類型。"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.share_password
-msgid "Unlock"
-msgstr "解鎖"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.share_password
-msgid "Unlock a document link"
-msgstr "解鎖文件連結"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Unlock attempts"
-msgstr "解鎖嘗試次數"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Unlock cooldown (minutes)"
-msgstr "解鎖冷卻時間（分鐘）"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__upload
@@ -2323,11 +1894,6 @@ msgstr "網站溝通紀錄"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
-msgid "Who may create links"
-msgstr "誰可以建立連結"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Who may create tags"
 msgstr "誰可以建立標籤"
 
@@ -2345,11 +1911,6 @@ msgstr "允許建立最上層資料夾"
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_client_ip_header
 msgid "Woow Doc Client Ip Header"
 msgstr "用戶端 IP 標頭"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_denied_rate_per_min
-msgid "Woow Doc Denied Rate Per Min"
-msgstr "每分鐘拒絕次數上限"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_extra_extensions
@@ -2372,14 +1933,14 @@ msgid "Woow Doc Log Retention Days"
 msgstr "稽核紀錄保留天數"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_mail_subject_include_name
-msgid "Woow Doc Mail Subject Include Name"
-msgstr "郵件主旨包含名稱"
-
-#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_max_files_per_upload
 msgid "Woow Doc Max Files Per Upload"
 msgstr "每次上傳檔案數上限"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_notice_base_url
+msgid "Woow Doc Notice Base Url"
+msgstr "通知信基底網址"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_portal_max_upload_mb
@@ -2400,46 +1961,6 @@ msgstr "文件儲存配額（MB）"
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_quota_warn_pct
 msgid "Woow Doc Quota Warn Pct"
 msgstr "配額警示百分比"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_default_days
-msgid "Woow Doc Share Default Days"
-msgstr "分享預設有效天數"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_link_base_url
-msgid "Woow Doc Share Link Base Url"
-msgstr "分享連結基底網址"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_link_policy
-msgid "Woow Doc Share Link Policy"
-msgstr "分享連結政策"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_max_days
-msgid "Woow Doc Share Max Days"
-msgstr "分享最長有效天數"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_require_password
-msgid "Woow Doc Share Require Password"
-msgstr "分享必須設定密碼"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_session_minutes
-msgid "Woow Doc Share Session Minutes"
-msgstr "分享工作階段分鐘數"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_unlock_cooldown_min
-msgid "Woow Doc Share Unlock Cooldown Min"
-msgstr "分享解鎖冷卻分鐘數"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_share_unlock_max_fail
-msgid "Woow Doc Share Unlock Max Fail"
-msgstr "分享解鎖失敗次數上限"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_tag_create_policy
@@ -2503,22 +2024,10 @@ msgid "Works in the folders where they are members."
 msgstr "可在自己有成員資格的資料夾中使用。"
 
 #. module: woow_document_management
-#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__share_unlock_failed
-msgid "Wrong share password"
-msgstr "分享密碼錯誤"
-
-#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "You cannot assign a different owner."
 msgstr "不能指定其他擁有者。"
-
-#. module: woow_document_management
-#. odoo-python
-#: code:addons/woow_document_management/models/document_share.py:0
-#: code:addons/woow_document_management/models/share_service.py:0
-msgid "You cannot create share links."
-msgstr "不能建立分享連結。"
 
 #. module: woow_document_management
 #. odoo-python

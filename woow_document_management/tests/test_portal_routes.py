@@ -10,6 +10,8 @@ import zipfile
 from odoo import Command
 from odoo.tests import HttpCase, tagged
 
+from .common import png_declaring
+
 
 @tagged('woow_docmgmt_portal_http')
 class TestPortalHttp(HttpCase):
@@ -69,7 +71,8 @@ class TestPortalHttp(HttpCase):
         self.assertEqual(refused.status_code, 404)
         self.assertEqual(refused.content, missing.content)
 
-    def test_portal_upload_uses_partner_grant_and_csrf(self):
+    def _sign_in_uploader(self):
+        """Sign in a portal user who may upload to a folder; returns the folder and a CSRF token."""
         password = secrets.token_urlsafe(16)
         partner = self.env['res.partner'].sudo().create({'name': 'Uploader'})
         user = self.env['res.users'].sudo().create({
@@ -87,8 +90,25 @@ class TestPortalHttp(HttpCase):
         self.assertEqual(page.status_code, 200)
         csrf = re.search(rb'name="csrf_token"[^>]*value="([^"]+)"', page.content)
         self.assertIsNotNone(csrf)
+        return folder, csrf.group(1).decode()
+
+    def test_portal_upload_refuses_an_image_header_declaring_too_many_pixels(self):
+        folder, csrf = self._sign_in_uploader()
         response = self.url_open('/my/docs/folder/%d/upload' % folder.id,
-                                 data={'csrf_token': csrf.group(1).decode()},
+                                 data={'csrf_token': csrf},
+                                 files={'files': ('huge.png', png_declaring(200000, 200000),
+                                                  'image/png')})
+        self.assertEqual(response.status_code, 400, response.text)
+        body = response.json()
+        self.assertFalse(body['ok'])
+        self.assertEqual([error['code'] for error in body['errors']], ['pixels'])
+        self.assertEqual(self.env['woow.document'].sudo().search_count([
+            ('folder_id', '=', folder.id)]), 0)
+
+    def test_portal_upload_uses_partner_grant_and_csrf(self):
+        folder, csrf = self._sign_in_uploader()
+        response = self.url_open('/my/docs/folder/%d/upload' % folder.id,
+                                 data={'csrf_token': csrf},
                                  files={'files': ('new.txt', b'portal-upload', 'text/plain')})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertTrue(response.json()['ok'])

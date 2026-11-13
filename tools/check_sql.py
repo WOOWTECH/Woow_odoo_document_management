@@ -1,6 +1,6 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""SQL: raw SQL allowlist Q1-Q6 (architecture 6.4, security_and_sweep 8, ER-24, ER-47.4).
+"""SQL: raw SQL allowlist (codes of tools/sql_allowlist.yaml; architecture 6.4, security_and_sweep 8, ER-24, ER-47.4).
 
 - ``<x>.execute(`` and ``SQL(`` in non-test code only inside a tools/sql_allowlist.yaml entry
   (file + function) with ``# sql-ok: <id>`` on the line of the call.

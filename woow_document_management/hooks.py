@@ -24,6 +24,5 @@ def uninstall_hook(env):
     documents.unlink()
     for folder in sorted(folders, key=lambda item: len(item.parent_path or ''), reverse=True):
         folder.unlink()
-    env['woow.document.share'].with_context(active_test=False).search([]).unlink()
     env['ir.config_parameter'].search([
         ('key', 'in', [PARAM_PREFIX + key for key in _PARAM_KEYS])]).unlink()

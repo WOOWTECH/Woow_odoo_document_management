@@ -19,9 +19,17 @@ class TestLocks(TransactionCase):
         with self.assertRaises(ValueError):
             advisory_key('quota;drop')
 
+    def test_lock_names_are_a_closed_set(self):
+        for name in ('zip:u:1', 'zip:slot:1', 'zip:slot:4', 'quota', 'quota:warn', 'quota:u:3',
+                     'access:7'):
+            advisory_key(name)
+        for name in ('share:1', 'zip:s:1:abcd', 'zip:slot:5', 'access', 'quota:x', 'other:1'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                advisory_key(name)
+
     def test_lock_order_and_reentrant(self):
         lock(self.cr, 'zip:u:1')
-        self.assertTrue(try_lock(self.cr, 'share:1'))
+        self.assertTrue(try_lock(self.cr, 'zip:slot:1'))
         lock(self.cr, 'quota')
         self.assertTrue(try_lock(self.cr, 'quota'))
         lock(self.cr, 'access:7')
@@ -45,9 +53,9 @@ class TestLocks(TransactionCase):
 
     def test_timeout_keeps_transaction_usable(self):
         with self.env.registry.cursor() as other:
-            self.assertTrue(try_lock(other, 'share:289'))
+            self.assertTrue(try_lock(other, 'access:289'))
             with self.assertRaises(LockBusy):
-                lock(self.cr, 'share:289', timeout_ms=20)
+                lock(self.cr, 'access:289', timeout_ms=20)
             with bounded_wait(self.cr, 20):
                 self.cr.execute('SELECT 1')
                 self.assertEqual(self.cr.fetchone()[0], 1)

@@ -9,7 +9,7 @@
   CFG-HUMAN     always_human.paths superset of the odoo stack defaults and the repo additions;
                 severities include critical and high; topics include the repo topics
   CFG-AUTOFIX   autofix disabled, max_prs_per_run 0
-  CFG-VERIFY    verify.regression_tests contains the 36 required files, unique, all present
+  CFG-VERIFY    verify.regression_tests contains the 33 required files, unique, all present
   CFG-LEGACY    no path of the two cancelled modules (ER-02)
 .github/workflows/*.yml
   CFG-WORKFLOW  no pull_request_target; top-level permissions contents: read; every action pinned
@@ -46,10 +46,9 @@ W = 'woow_document_management/'
 REPO_ALWAYS_HUMAN = [
     '*/hooks.py', '.gitattributes', '*/.gitattributes', '.gitmodules', '.github/', 'tools/',
     W + 'models/ir_attachment.py', W + 'models/guard_mixin.py', W + 'models/mail_thread_guard.py',
-    W + 'models/document_share.py', W + 'models/share_service.py', W + 'models/document_log.py',
-    W + 'models/settings.py', W + 'models/quota.py', W + 'controllers/share.py',
-    W + 'controllers/streaming.py', W + 'services/tokens.py', W + 'services/client_ip.py',
-    W + 'services/folding.py', W + 'services/locks.py', W + 'static/src/share/',
+    W + 'models/document_log.py', W + 'models/settings.py', W + 'models/quota.py',
+    W + 'controllers/streaming.py', W + 'services/client_ip.py',
+    W + 'services/folding.py', W + 'services/locks.py',
     W + 'tests/EXPECTED_MIN.json',
 ]
 REGRESSION_TESTS = [W + 'tests/%s.py' % name for name in (
@@ -57,8 +56,8 @@ REGRESSION_TESTS = [W + 'tests/%s.py' % name for name in (
     'test_locks', 'test_core_models', 'test_security_acl', 'test_multicompany',
     'test_attachment_guard', 'test_mail_thread_guard', 'test_uninstall',
     'test_display_name_folding', 'test_folding_service', 'test_url_policy', 'test_zip_builder',
-    'test_internal_routes', 'test_native_routes', 'test_share_token', 'test_share_routes',
-    'test_mail_share', 'test_trash_lifecycle', 'test_audit_log', 'test_cron', 'test_portal_routes',
+    'test_internal_routes', 'test_native_routes',
+    'test_trash_lifecycle', 'test_audit_log', 'test_cron', 'test_portal_routes',
     'test_portal_upload', 'test_attachment_overview', 'test_add_attachment', 'test_backend_views',
     'test_backend_wizards', 'test_i18n_complete', 'test_record_rules', 'test_core_assumptions',
     'test_rpc_exposure', 'test_escaping')] + ['tools/tests/test_static_checks.py']

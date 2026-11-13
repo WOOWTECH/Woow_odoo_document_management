@@ -1,0 +1,13 @@
+from odoo import models
+
+
+class IrAttachment(models.Model):
+    _inherit = 'ir.attachment'
+
+    def generate_access_token(self):
+        owned = self.filtered(lambda attachment: attachment.res_model == 'woow.document')
+        if not owned:
+            return super().generate_access_token()
+        others = self - owned
+        tokens = dict(zip(others.ids, super(IrAttachment, others).generate_access_token()))
+        return [tokens.get(attachment.id, False) for attachment in self]

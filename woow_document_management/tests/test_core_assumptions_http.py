@@ -10,21 +10,18 @@ canonical core assumptions test module.
 import base64
 import hmac
 import json
-import re
 import time
-from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from werkzeug.test import EnvironBuilder
 
-from odoo import Command, fields, http
+from odoo import Command, http
 from odoo.addons.portal.models.mail_thread import MailThread as PortalMailThread
 from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
 
 from ..services.client_ip import parse_trusted_proxies, request_client_ip
-from ..services.constants import SESSION_GRANTS_KEY
 
 
 @tagged('woow_docmgmt_core_assumptions')
@@ -188,52 +185,6 @@ class TestCoreAssumptionsHttp(HttpCase):
         cookie = response.headers.get('Set-Cookie', '')
         self.assertIn('session_id=', cookie)
         return previous_sid, response, cookie
-
-    def test_ca15_should_rotate_changes_sid(self):
-        """CA-15: share grant sets the flag and the same response persists a new SID."""
-        admin = self.env.ref('base.user_admin')
-        folder = self.env['woow.document.folder'].sudo().create({
-            'name': 'CA rotation folder', 'owner_id': admin.id,
-        })
-        self.env['woow.document'].sudo().create({
-            'name': 'ca-rotation.txt', 'folder_id': folder.id,
-            'datas': base64.b64encode(b'rotation'),
-        })
-        share, code = self.env['woow.document.share'].with_user(admin)._issue({
-            'share_type': 'folder', 'folder_id': folder.id,
-            'expire_at': fields.Datetime.now() + timedelta(days=1),
-        })
-        self.authenticate('admin', 'admin')
-        previous_sid = self.session.sid
-        landing = self.url_open('/woow-docs/s')
-        self.assertEqual(landing.status_code, 200)
-        csrf = re.search(rb'name="csrf_token"[^>]*value="([^"]+)"', landing.content)
-        self.assertIsNotNone(csrf)
-
-        seen = []
-        save_session = http.Request._save_session
-
-        def observe_save(request):
-            if request.httprequest.path == '/woow-docs/s/open':
-                seen.append((request.session.sid, request.session.should_rotate))
-            return save_session(request)
-
-        with patch.object(http.Request, '_save_session', observe_save):
-            response = self.url_open('/woow-docs/s/open', data={
-                'token': code, 'csrf_token': csrf.group(1).decode(),
-            }, allow_redirects=False)
-        self.assertEqual(response.status_code, 303, response.text)
-        self.assertEqual(seen, [(previous_sid, True)])
-        cookie = response.headers.get('Set-Cookie', '')
-        match = re.search(r'(?:^|[, ])session_id=([^;]+)', cookie)
-        self.assertIsNotNone(match, cookie)
-        new_sid = match.group(1)
-        self.assertNotEqual(new_sid, previous_sid)
-        stored = http.root.session_store.get(new_sid)
-        self.assertEqual(stored.sid, new_sid)
-        self.assertEqual(stored[SESSION_GRANTS_KEY][str(share.id)]['h'],
-                         share.token_hash[:16])
-        self.assertFalse(http.root.session_store.get(previous_sid).get(SESSION_GRANTS_KEY))
 
     def test_ca16_session_cookie_flags(self):
         """T-CA-16: Odoo's session cookie is HttpOnly without Secure."""

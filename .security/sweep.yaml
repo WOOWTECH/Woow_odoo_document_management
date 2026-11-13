@@ -33,18 +33,13 @@ always_human:
   - woow_document_management/models/ir_attachment.py
   - woow_document_management/models/guard_mixin.py
   - woow_document_management/models/mail_thread_guard.py
-  - woow_document_management/models/document_share.py
-  - woow_document_management/models/share_service.py
   - woow_document_management/models/document_log.py
   - woow_document_management/models/settings.py
   - woow_document_management/models/quota.py
-  - woow_document_management/controllers/share.py
   - woow_document_management/controllers/streaming.py
-  - woow_document_management/services/tokens.py
   - woow_document_management/services/client_ip.py
   - woow_document_management/services/folding.py
   - woow_document_management/services/locks.py
-  - woow_document_management/static/src/share/
   - woow_document_management/tests/EXPECTED_MIN.json
   severities: [critical, high]
   topics: [token, password, sudo, access_token, session, mail.template, ir.attachment]
@@ -71,9 +66,6 @@ verify:
   - woow_document_management/tests/test_zip_builder.py
   - woow_document_management/tests/test_internal_routes.py
   - woow_document_management/tests/test_native_routes.py
-  - woow_document_management/tests/test_share_token.py
-  - woow_document_management/tests/test_share_routes.py
-  - woow_document_management/tests/test_mail_share.py
   - woow_document_management/tests/test_trash_lifecycle.py
   - woow_document_management/tests/test_audit_log.py
   - woow_document_management/tests/test_cron.py
@@ -89,5 +81,24 @@ verify:
   - woow_document_management/tests/test_rpc_exposure.py
   - woow_document_management/tests/test_escaping.py
   - tools/tests/test_static_checks.py
+  - woow_document_management/tests/test_reg_wizard_owner_scope.py
+  - woow_document_management/tests/test_reg_create_batch_cap.py
+  - woow_document_management/tests/test_reg_create_ignores_personal_defaults.py
+  - woow_document_management/tests/test_reg_notification_label.py
+  - woow_document_management/tests/test_reg_access_company_locked.py
+  - woow_document_management/tests/test_reg_document_file_not_indexed.py
+  - woow_document_management/tests/test_reg_server_columns_ignore_defaults.py
+  - woow_document_management/tests/test_reg_notify_attachments_need_write.py
+  - woow_document_management/tests/test_reg_access_create_authorizes_before_locking.py
+  - woow_document_management/tests/test_reg_portal_description_cap.py
+  - woow_document_management/tests/test_reg_chatter_attachment_tokens.py
+  - woow_document_management/tests/test_reg_module_attachments_never_public.py
+  - woow_document_management/tests/test_reg_owner_within_ceiling.py
+  - woow_document_management/tests/test_reg_typed_boolean_flags.py
+  - woow_document_management/tests/test_reg_attachment_model_as_stored.py
+  - woow_document_management/tests/test_reg_folder_stored_state.py
+  - woow_document_management/tests/test_reg_inbound_mail_replies.py
+  - woow_document_management/tests/test_reg_many2one_typed_values.py
+  - woow_document_management/tests/test_reg_document_owner_typed_values.py
   # test_perf.py is tagged -standard and deliberately not listed. Every new tests/test_reg_<slug>.py from a fix is
   # appended here (this touches .security/, so it always goes to a human - expected).

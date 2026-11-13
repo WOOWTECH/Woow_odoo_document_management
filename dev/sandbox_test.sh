@@ -101,8 +101,6 @@ expected_sql_errors = {
         'canceling statement due to lock timeout',
     'test_timeout_keeps_transaction_usable':
         'canceling statement due to lock timeout',
-    'test_trusted_issue_can_create_but_scope_cannot_be_rewritten':
-        'duplicate key value violates unique constraint "woow_document_share_token_hash_uniq"',
 }
 current_test = None
 pending_sql_error = False
@@ -136,7 +134,6 @@ by_file = collections.Counter(name + '.py' for name in started)
 if not started or len(started) != total:
     errors.append(f'Starting lines={len(started)}, summary tests={total}')
 batch_files = {
-    'share': {'test_share_routes.py', 'test_share_token.py', 'test_mail_share.py'},
     'portal': {'test_portal_routes.py', 'test_portal_upload.py'},
     'files': {'test_upload_policy.py', 'test_quota.py', 'test_zip_builder.py',
               'test_trash_lifecycle.py', 'test_audit_log.py', 'test_attachment_guard.py',
@@ -150,7 +147,7 @@ if expected.get('version') != 1 or not isinstance(expected.get('batches'), dict)
         or not isinstance(expected.get('files'), dict):
     errors.append('EXPECTED_MIN schema invalid')
 else:
-    for batch in ('core', 'share', 'portal', 'files'):
+    for batch in ('core', 'portal', 'files'):
         floor = expected['batches'].get(batch)
         if type(floor) is not int or floor <= 0:
             errors.append(f'{batch} floor must be positive')
@@ -165,7 +162,7 @@ else:
     if not expected['files']:
         errors.append('per-file floors empty')
     required = expected.get('required_ca_methods')
-    if not isinstance(required, dict) or set(required) != {f'{i:02d}' for i in range(1, 36) if i not in (6, 23, 24, 28)}:
+    if not isinstance(required, dict) or set(required) != {f'{i:02d}' for i in range(1, 37) if i not in (6, 15, 23, 24, 28)}:
         errors.append('CA method map must cover the 31 Odoo CA cases')
     else:
         for ca, method in required.items():

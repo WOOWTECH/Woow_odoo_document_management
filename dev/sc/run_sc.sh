@@ -4,11 +4,9 @@
 set -eu
 cd "$(dirname "$0")"
 case ${1:-} in
-    share-max-downloads-race)
-        exec python3 sc_share_max_downloads_race.py ;;
-    denied-count-real-http)
-        exec python3 sc_denied_count_real_http.py ;;
+    quota-contention)
+        exec python3 sc_quota_contention.py ;;
     *)
-        printf '%s\n' 'usage: run_sc.sh share-max-downloads-race|denied-count-real-http' >&2
+        printf '%s\n' 'usage: run_sc.sh quota-contention' >&2
         exit 2 ;;
 esac

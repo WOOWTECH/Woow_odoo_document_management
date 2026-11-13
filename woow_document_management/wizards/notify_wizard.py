@@ -1,6 +1,6 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""Mail current folder members a login-only link, never a share token."""
+"""Mail current folder members a login-only link."""
 from ipaddress import ip_address
 from urllib.parse import urlsplit
 
@@ -40,7 +40,7 @@ class WoowDocumentNotifyWizard(models.TransientModel):
 
     def _base_url(self):
         settings = self.env['woow.document.settings']._get_settings()
-        base = (settings.share_link_base_url or self.folder_id.get_base_url()).rstrip('/')
+        base = (settings.notice_base_url or self.folder_id.get_base_url()).rstrip('/')
         parsed = urlsplit(base)
         try:
             literal_ip = ip_address(parsed.hostname or '')
