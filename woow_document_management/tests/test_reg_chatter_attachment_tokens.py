@@ -24,6 +24,7 @@ from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import new_test_user
 from odoo.tools.misc import limited_field_access_token
 
+from ..models.ir_attachment import OPEN_ROW_CONSTRAINT
 from ..services.constants import WOOW_MODELS
 
 _USER = 'woow_document_management.group_woow_document_user'
@@ -99,6 +100,17 @@ class _ChatterFixture:
         self.assertEqual((attachment.res_model, attachment.res_id), (record._name, record.id))
         return attachment
 
+    def _allow_open_rows(self):
+        """Let this test store a row of a module model that is public or holds a token.
+
+        The database refuses such a row (``OPEN_ROW_CONSTRAINT``), so a test that puts one there
+        around the ORM, to see what the routes and the access check do with a value that something
+        else left behind, takes the constraint off first. The statement is part of the transaction
+        of the test, which is rolled back at its end: the constraint is back for the next test.
+        """
+        self.env.cr.execute('ALTER TABLE ir_attachment DROP CONSTRAINT IF EXISTS ir_attachment_%s'
+                            % OPEN_ROW_CONSTRAINT)
+
     def _stored_token(self, attachment):
         """What the database holds in the token column, read around the ORM."""
         self.env.flush_all()
@@ -110,10 +122,11 @@ class _ChatterFixture:
 
         The ORM never stores a token on a row of a record of the module, in any environment, so a
         value that something else left there (a statement of a database administrator, a copy of an
-        older database) is put there the way it could get there. The routes and the access check
-        must refuse it all the same.
+        older database) is put there the way it could get there, with the constraint of the database
+        off for this test. The routes and the access check must refuse it all the same.
         """
         self.env.flush_all()
+        self._allow_open_rows()
         self.env.cr.execute('UPDATE ir_attachment SET access_token = %s WHERE id = ANY(%s)',
                             (token, attachments.ids))
         attachments.invalidate_recordset(['access_token'])

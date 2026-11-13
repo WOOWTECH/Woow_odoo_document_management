@@ -833,6 +833,11 @@ msgid "File streaming helper model for controllers"
 msgstr "控制器檔案串流輔助模型"
 
 #. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_ir_attachment_woow_module_rows_closed
+msgid "Files of documents and folders cannot be public or carry an access token."
+msgstr "文件與資料夾的檔案不能公開，也不能帶有存取權杖。"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Files per request"
 msgstr "每次請求的檔案數"

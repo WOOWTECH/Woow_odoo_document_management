@@ -12,7 +12,7 @@ read the record is not notified, and folder chatter only ever names the folder i
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError
 
-from ..services.constants import WOOW_MODELS
+from .ir_attachment import is_module_model, stored_char
 
 _THREAD_MODELS = ('woow.document', 'woow.document.folder')
 _USER = 'woow_document_management.group_woow_document_user'
@@ -319,13 +319,16 @@ class WoowMailThreadRoute(models.AbstractModel):
         empty recordset of another model, so the overrides of the module's own models never run).
         Core then creates the files, or links the pending ones, as superuser and looks neither at
         the record nor at its rules. Posts are not touched: a follower who can only read a record
-        may still post a comment with a file.
+        may still post a comment with a file. The model is judged as the column of the file keeps
+        it (``is_module_model``), so a value of another type that stores as the name of a model of
+        this module is one of them.
         """
         if (attachments or attachment_ids) and not self.env.su \
                 and message_values.get('message_type') == 'user_notification' \
-                and message_values.get('model') in WOOW_MODELS and message_values.get('res_id'):
+                and is_module_model(message_values.get('model')) and message_values.get('res_id'):
             res_id = message_values['res_id']
-            record = self.env[message_values['model']].browse(res_id if type(res_id) is int else [])
+            record = self.env[stored_char(message_values['model'])].browse(
+                res_id if type(res_id) is int else [])
             if not record.exists() or not record.has_access('write'):
                 raise AccessError(_('This attachment cannot be added to the discussion.'))
         return super()._process_attachments_for_post(attachments, attachment_ids, message_values)
@@ -340,7 +343,7 @@ class WoowMailThreadRoute(models.AbstractModel):
         (the mail gateway script).
         """
         if not self.env.su and not self.env.user._is_system() and any(
-                route and route[0] in _THREAD_MODELS for route in routes or ()):
+                route and stored_char(route[0]) in _THREAD_MODELS for route in routes or ()):
             raise AccessError(_('Documents and folders do not accept this email.'))
         return super()._message_route_process(message, message_dict, routes)
 

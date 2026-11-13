@@ -6,14 +6,21 @@ The attachments of this module's records (``res_model`` in ``WOOW_MODELS``) are 
 never hold an access token: after any ``create`` or ``write``, in every environment, the superuser's
 included, both columns of such a row are empty. A caller who is not the superuser is refused with
 ``AccessError``. The superuser is not: core makes and moves the files of a post as superuser and
-those calls must not fail, so what would open the row is taken out of the values instead.
+those calls must not fail, so what would open the row is taken out of the values instead. The last
+line is the database: a CHECK constraint refuses a row of a module model that is public or has a
+token, whatever stored it (``_sql_constraints`` below).
 
-A token or a field name that a caller passes is judged by what the column will keep for it
-(``char_is_set``), never by the truthiness of the value: the ORM keeps ``str(value)`` for every
-value that is not ``None`` or ``False``, so a ``0`` or a ``[]`` becomes the text ``'0'`` or
-``'[]'``. For the superuser nothing is judged: whenever a call names the flag or the token,
-whatever it holds, both are set to ``False`` on the rows of a module model.
+A value that a caller passes for a Char column is judged by what the column will keep for it
+(``stored_char``), never by the value itself: the ORM keeps ``str(value)`` for every value that is
+not ``None`` or ``False`` and decodes ``bytes``, so ``0`` becomes the text ``'0'``, ``[]`` the text
+``'[]'`` and the ``xmlrpc.client.Binary`` that an XML-RPC call delivers for a base64 value the text
+that it holds (``Binary(b'woow.document') == 'woow.document'`` is False, ``str()`` of it is that
+text). That holds for ``res_model``, the key that every guard starts from, as for ``res_field`` and
+``access_token``. For the superuser nothing but the model is judged: whenever a call names the flag
+or the token, whatever it holds, both are set to ``False`` on the rows of a module model.
 """
+import re
+
 from odoo import _, api, models
 from odoo.exceptions import AccessError
 
@@ -30,23 +37,58 @@ NO_INDEX_CTX_KEY = 'woow_no_index'
 # caller; only the server sets what makes it reachable (it is never public or tokenised).
 FIELD_FILE_OWN_DEFAULTS = frozenset({
     'public', 'access_token', 'url', 'description', 'original_id', 'company_id'})
+# The database refuses a row of a module model that is open (see ``_sql_constraints``).
+OPEN_ROW_CONSTRAINT = 'woow_module_rows_closed'
+
+
+def stored_char(value):
+    """What a Char column keeps for ``value``, made the way ``_String.convert_to_cache`` makes it.
+
+    ``None`` and ``False`` keep nothing (``False`` here), ``bytes`` are decoded, and anything else
+    is kept as ``str(value)``: ``0`` is ``'0'``, ``[]`` is ``'[]'``, a record is ``'res.partner(1,)'``
+    and an ``xmlrpc.client.Binary`` is the text it holds. Every guard that judges a value for a
+    Char column judges this form, so that it judges what is stored and not what was sent.
+    """
+    if value is None or value is False:
+        return False
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value)
 
 
 def char_is_set(value):
-    """Whether a Char column keeps something for ``value``, the way the ORM stores it.
+    """Whether a Char column keeps something for ``value``: the empty text and nothing are not set.
 
-    The ORM keeps ``str(value)`` for every value that is not ``None`` or ``False``: ``0`` is kept
-    as ``'0'``, ``0.0`` as ``'0.0'``, ``[]`` as ``'[]'``, ``{}`` as ``'{}'`` and ``()`` as
-    ``'()'``, and only the empty string stays empty. A token or a field name that a caller passes
+    ``0`` is kept as ``'0'`` and ``[]`` as ``'[]'``, so a token or a field name that a caller passes
     is judged by this and not by its truthiness. (``public`` is a Boolean, which the ORM keeps as
-    ``bool(value)``, so for the flag truthiness is the right test. ``bytes`` are decoded by the
-    ORM; ``b''`` counts as set here, which can only refuse or reset more.)
+    ``bool(value)``, so for the flag truthiness is the right test.)
     """
-    return value is not None and value is not False and str(value) != ''
+    return bool(stored_char(value))
+
+
+def is_module_model(value):
+    """Whether ``value`` is stored in ``res_model`` as the name of a model of this module."""
+    return stored_char(value) in WOOW_MODELS
+
+
+if not all(re.fullmatch(r'[a-z][a-z0-9_.]*', name) for name in WOOW_MODELS):
+    raise ValueError('The names of the module models are listed in a constraint as they are.')
 
 
 class IrAttachment(models.Model):
     _inherit = 'ir.attachment'
+
+    # The last line of the guard below: a row of a module model is never public and never holds a
+    # token. It is checked by the database on every insert and update, so a path that the guard
+    # does not know (a value of another type, another transport, a bug) fails with an integrity
+    # error instead of leaving a file that a visitor can fetch. The list of models is the one of
+    # ``WOOW_MODELS``, so that it cannot drift from the guard.
+    _sql_constraints = [(
+        OPEN_ROW_CONSTRAINT,
+        "CHECK (res_model IS NULL OR res_model NOT IN (%s) OR "
+        "(NOT COALESCE(public, FALSE) AND COALESCE(access_token, '') = ''))"
+        % ', '.join("'%s'" % name for name in WOOW_MODELS),
+        'Files of documents and folders cannot be public or carry an access token.')]
 
     @api.model
     def _index(self, bin_data, file_type, checksum=None):
@@ -65,10 +107,11 @@ class IrAttachment(models.Model):
     def _add_missing_default_values(self, values):
         """The file of a document or folder field takes the own default of the fields it sets.
 
-        A row is the file of a field when the column keeps a field name for it (``char_is_set``).
+        A row is the file of a field when the column keeps a field name for it (``char_is_set``),
+        and is a row of a module model when the column keeps the name of one (``is_module_model``).
         """
         completed = super()._add_missing_default_values(values)
-        if values.get('res_model') in WOOW_MODELS and char_is_set(values.get('res_field')):
+        if is_module_model(values.get('res_model')) and char_is_set(values.get('res_field')):
             completed = own_default_values(self, values, completed, FIELD_FILE_OWN_DEFAULTS)
         return completed
 
@@ -79,9 +122,10 @@ class IrAttachment(models.Model):
         Core checks only explicit res_model/res_id before ORM defaults are applied. Resolve the
         same defaults now, so contextual values cannot bypass either the document guard or core's
         write check on the target record. A caller who is not the superuser is refused when the
-        row will belong to a module model and be public, tokenised or back a field (a token or a
-        field name counts when the column will keep something for it, ``char_is_set``; ``False``
-        and ``None`` pass). The superuser is not refused, core makes the files of a post as
+        row will belong to a module model (the model is judged as the column keeps it,
+        ``is_module_model``) and be public, tokenised or back a field (a token or a field name
+        counts when the column will keep something for it, ``char_is_set``; ``False`` and ``None``
+        pass). The superuser is not refused, core makes the files of a post as
         superuser (those that the body of a post refers to are created with a token that core has
         just made): when the values or a default name the flag or the token, whatever they hold,
         the row is created with both set to ``False``.
@@ -92,7 +136,7 @@ class IrAttachment(models.Model):
         for incoming in vals_list:
             effective = {key: incoming.get(key, defaults.get(key)) for key in keys}
             vals = dict(incoming)
-            if effective['res_model'] in WOOW_MODELS:
+            if is_module_model(effective['res_model']):
                 if self.env.su:
                     if any(key in incoming or key in defaults for key in OPEN_KEYS):
                         vals.update(dict.fromkeys(OPEN_KEYS, False))
@@ -106,8 +150,10 @@ class IrAttachment(models.Model):
         return super().create(checked)
 
     def write(self, vals):
+        # whether the write gives the rows a module model, judged as the column keeps the name
+        to_module = 'res_model' in vals and is_module_model(vals['res_model'])
         if not self.env.su and any(key in vals for key in GUARDED_WRITE_KEYS):
-            if vals.get('res_model') in WOOW_MODELS and char_is_set(vals.get('res_field')):
+            if to_module and char_is_set(vals.get('res_field')):
                 raise AccessError(_('Document field attachments cannot be reassigned.'))
             self.env.cr.execute(  # sql-ok: Q6
                 'SELECT id FROM ir_attachment WHERE id = ANY(%s) '
@@ -119,7 +165,7 @@ class IrAttachment(models.Model):
             if metadata.intersection(vals) and any(
                     attachment.res_model in WOOW_MODELS for attachment in self):
                 raise AccessError(_('Document attachment access cannot be changed directly.'))
-            if vals.get('res_model') in WOOW_MODELS:
+            if to_module:
                 # Decide on the values the rows will have after this write: an
                 # attachment that already backs a binary field, or is public or
                 # tokenised, must not be moved onto a document or folder in a
@@ -136,10 +182,9 @@ class IrAttachment(models.Model):
                             else has_token):
                         raise AccessError(_('Document field attachments cannot be reassigned.'))
         if self and {'res_model', 'res_id', 'res_field'}.intersection(vals) and (
-                'res_model' not in vals or vals['res_model'] in WOOW_MODELS):
+                'res_model' not in vals or to_module):
             self._woow_check_field_target(vals)
-        if self.env.su and self and (vals.get('res_model') in WOOW_MODELS
-                                     or any(key in vals for key in OPEN_KEYS)):
+        if self.env.su and self and (to_module or any(key in vals for key in OPEN_KEYS)):
             return self._woow_write_closed(vals)
         return super().write(vals)
 
@@ -157,7 +202,7 @@ class IrAttachment(models.Model):
         SELECT of the rows, one for every prefetch batch of the ORM, none when they are in the
         cache already), and a write that names none of the three does not come here.
         """
-        if vals.get('res_model') in WOOW_MODELS:
+        if is_module_model(vals.get('res_model')):
             return super(IrAttachment, self).write(dict(vals, **dict.fromkeys(OPEN_KEYS, False)))
         owned = self.browse() if 'res_model' in vals else self.filtered(
             lambda attachment: attachment.res_model in WOOW_MODELS)
@@ -224,10 +269,11 @@ class IrAttachment(models.Model):
             'SELECT res_model, res_id, res_field FROM ir_attachment WHERE id = ANY(%s)',
             (ids,))
         for res_model, res_id, res_field in self.env.cr.fetchall():
-            field_after = vals['res_field'] if 'res_field' in vals else res_field
             before = (res_model or False, res_id or 0, res_field or False)
-            after = (vals.get('res_model', res_model) or False, vals.get('res_id', res_id) or 0,
-                     str(field_after) if char_is_set(field_after) else False)
+            # the model and the field name after the write, as the columns keep them
+            after = (stored_char(vals['res_model']) if 'res_model' in vals else before[0],
+                     vals.get('res_id', res_id) or 0,
+                     (stored_char(vals['res_field']) or False) if 'res_field' in vals else before[2])
             if after[0] in WOOW_MODELS and after[2] and after != before:
                 raise AccessError(_('Document field attachments cannot be reassigned.'))
 

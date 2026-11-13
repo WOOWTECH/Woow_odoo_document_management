@@ -19,6 +19,7 @@ the values.
 """
 import base64
 import secrets
+import xmlrpc.client
 from email.message import EmailMessage
 from unittest.mock import patch
 
@@ -36,6 +37,18 @@ from .test_reg_server_columns_ignore_defaults import WAYS, _forget, _store
 # Values that are not truthy and that a Char column nevertheless keeps as text ('0', '0.0', '[]',
 # '{}', '()'): the ORM stores ``str(value)`` for everything that is not None or False.
 TYPED_FALSY = (0, 0.0, [], {}, ())
+# Values of other types that a Char column keeps as the text they hold: bytes (decoded), the Binary that
+# an XML-RPC call delivers for base64 (``str()`` of it is the text), blanks. A record is added by the
+# test (``str(record)`` is its representation). Together with ``TYPED_FALSY`` these are the typed
+# values of a token or a field name.
+TYPED_TEXT = (b'typed', xmlrpc.client.Binary(b'typed'), ' ', '\n')
+# Values that a Boolean column keeps as True although they are not ``True``.
+TYPED_TRUTHY = (1, 2.5, 'yes', 'false', [0], {'a': 1})
+
+
+def kept(value):
+    """What a Char column keeps for ``value`` (the same rule as the ORM's, written out here)."""
+    return value.decode() if isinstance(value, bytes) else str(value)
 
 
 class _OpenFiles(_ChatterFixture):
@@ -729,10 +742,14 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
             name, 'mail.compose.message', 0))
 
     # -- the superuser --------------------------------------------------------------------------
+    def _typed(self):
+        """The typed values of a token or a field name: what is falsy, other types of text, a record."""
+        return TYPED_FALSY + TYPED_TEXT + (self.partner,)
+
     def test_the_superuser_stores_no_typed_value_as_a_token_for_a_module_model(self):
         su = self.attachments.sudo()
         for model, res_id in self.targets.items():
-            for value in TYPED_FALSY:
+            for value in self._typed():
                 with self.subTest(model=model, value=value, way='create'):
                     row = su.create(self._values('created.txt', model, res_id, access_token=value))
                     self.assertEqual(self._columns(row), (False, None, None))
@@ -745,7 +762,7 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
         """A write that names the flag or the token, whatever it holds, closes the rows it hits."""
         su = self.attachments.sudo()
         for model, res_id in self.targets.items():
-            for value in TYPED_FALSY:
+            for value in self._typed():
                 with self.subTest(model=model, value=value, way='the flag with the token'):
                     row = su.create(self._values('both.txt', model, res_id))
                     row.write({'public': True, 'access_token': value})
@@ -759,9 +776,10 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
                     other = su.create(self._values('other.txt', 'res.partner', self.partner.id))
                     (owned | other).write({'access_token': value})
                     self.assertEqual(self._columns(owned), (False, None, None))
-                    self.assertEqual(self._columns(other), (False, str(value), None))
+                    self.assertEqual(self._columns(other), (False, kept(value), None))
             with self.subTest(model=model, way='a token left by a statement'):
                 row = su.create(self._values('stored.txt', model, res_id))
+                self._allow_open_rows()
                 self.env.cr.execute('UPDATE ir_attachment SET access_token = %s WHERE id = %s',
                                     ('left-by-a-statement', row.id))
                 row.invalidate_recordset()
@@ -771,7 +789,7 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
     def test_the_superuser_cannot_move_a_row_onto_a_module_record_as_a_field_of_a_typed_name(self):
         su = self.attachments.sudo()
         for model, res_id in self.targets.items():
-            for value in TYPED_FALSY:
+            for value in self._typed():
                 with self.subTest(model=model, value=value):
                     row = su.create(self._values('field.txt', 'mail.compose.message', 0))
                     with self.assertRaises(AccessError):
@@ -787,11 +805,17 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
         """
         _store(self.env, 'ir.attachment', {'description': 'from a default'})
         su = self.attachments.sudo()
-        for value in TYPED_FALSY:
+        for value in self._typed():
             with self.subTest(value=value):
                 row = su.create(self._values(
                     'field.txt', 'woow.document', self.document.id, res_field=value))
-                self.assertEqual((row.res_field, row.description), (str(value), False))
+                self.assertEqual((row.res_field, row.description), (kept(value), False))
+        # the model of such a row is read as the column keeps it as well: bytes are the model's name
+        for model in ('woow.document', 'woow.document.folder'):
+            with self.subTest(model=model, way='the model as bytes'):
+                row = su.create(self._values(
+                    'field.txt', model.encode(), self.targets[model], res_field='datas'))
+                self.assertEqual((row.res_model, row.res_field, row.description), (model, 'datas', False))
         row = su.create(self._values('plain.txt', 'woow.document', self.document.id))
         self.assertEqual((row.res_field, row.description), (False, 'from a default'))
 
@@ -799,15 +823,42 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
     def test_an_editor_is_refused_a_typed_value_as_a_token_or_a_field_name(self):
         editor = self.attachments.with_user(self.editor)
         for model, res_id in self.targets.items():
-            for value in TYPED_FALSY:
+            for value in self._typed():
                 for key in ('access_token', 'res_field'):
                     with self.subTest(model=model, value=value, key=key, way='create'), \
                             self.assertRaises(AccessError):
                         editor.create(self._values('refused.txt', model, res_id, **{key: value}))
 
+    def test_an_editor_is_refused_a_flag_that_is_not_true_but_is_kept_as_true(self):
+        """A Boolean column keeps ``bool(value)``: ``1``, ``'yes'`` and ``[0]`` are True, as ``True`` is."""
+        editor = self.attachments.with_user(self.editor)
+        for model, res_id in self.targets.items():
+            for value in (True,) + TYPED_TRUTHY:
+                with self.subTest(model=model, value=value, way='create'), \
+                        self.assertRaises(AccessError):
+                    editor.create(self._values('refused.txt', model, res_id, public=value))
+                with self.subTest(model=model, value=value, way='move'):
+                    pending = self._pending(self.editor)
+                    with self.assertRaises(AccessError):
+                        pending.write({'res_model': model, 'res_id': res_id, 'public': value})
+                    self.assertEqual(self._columns(pending), (False, None, None))
+                    self.assertEqual(pending.sudo().res_model, 'mail.compose.message')
+
+    def test_the_superuser_closes_a_row_for_a_flag_of_any_type(self):
+        su = self.attachments.sudo()
+        for model, res_id in self.targets.items():
+            for value in (True, False, None) + TYPED_TRUTHY + TYPED_FALSY:
+                with self.subTest(model=model, value=value, way='create'):
+                    row = su.create(self._values('flag.txt', model, res_id, public=value))
+                    self.assertEqual(self._columns(row), (False, None, None))
+                with self.subTest(model=model, value=value, way='write'):
+                    row = su.create(self._values('flag.txt', model, res_id))
+                    row.write({'public': value})
+                    self.assertEqual(self._columns(row), (False, None, None))
+
     def test_an_editor_cannot_move_a_pending_file_with_a_typed_token_or_field_name(self):
         for model, res_id in self.targets.items():
-            for value in TYPED_FALSY:
+            for value in self._typed():
                 for key in ('access_token', 'res_field'):
                     with self.subTest(model=model, value=value, key=key):
                         pending = self._pending(self.editor)
@@ -840,23 +891,28 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
     # -- the control ----------------------------------------------------------------------------
     def test_the_same_values_on_a_row_of_another_model_are_left_as_written(self):
         su = self.attachments.sudo()
-        for value in TYPED_FALSY:
+        for value in self._typed():
             with self.subTest(value=value, way='create'):
                 row = su.create(self._values('control.txt', 'res.partner', self.partner.id,
-                                             access_token=value, res_field=value, public=value))
-                self.assertEqual(self._columns(row), (False, str(value), str(value)))
+                                             access_token=value, res_field=value))
+                self.assertEqual(self._columns(row), (False, kept(value), kept(value)))
             with self.subTest(value=value, way='write'):
                 row = su.create(self._values('control.txt', 'res.partner', self.partner.id))
                 row.write({'access_token': value, 'res_field': value})
-                self.assertEqual(self._columns(row), (False, str(value), str(value)))
+                self.assertEqual(self._columns(row), (False, kept(value), kept(value)))
             with self.subTest(value=value, way='an editor, create and write'):
                 # A pending file of a caller who is not the superuser: nothing of the module.
                 row = self.attachments.with_user(self.editor).create(
                     self._values('own.txt', 'res.partner', 0, access_token=value))
-                self.assertEqual(self._columns(row), (False, str(value), None))
+                self.assertEqual(self._columns(row), (False, kept(value), None))
                 pending = self._pending(self.editor)
                 pending.write({'access_token': value})
-                self.assertEqual(self._columns(pending), (False, str(value), None))
+                self.assertEqual(self._columns(pending), (False, kept(value), None))
+        for value in (True,) + TYPED_TRUTHY:
+            with self.subTest(value=value, way='a flag of a row of another model'):
+                row = su.create(self._values('flag.txt', 'res.partner', self.partner.id,
+                                             public=value))
+                self.assertEqual(self._columns(row)[0], True)
 
 
 @tagged('woow_docmgmt_http')
@@ -876,7 +932,7 @@ class TestATypedTokenSentOverRpcIsRefused(_OpenFiles, HttpCase):
 
     def test_the_call_of_an_editor_that_carries_a_typed_token_is_refused(self):
         # What JSON carries: a tuple is a list on the wire.
-        for value in (0, 0.0, [], {}):
+        for value in (0, 0.0, [], {}, ' ', 'false'):
             for key in ('access_token', 'res_field'):
                 with self.subTest(value=value, key=key):
                     with self.assertRaises(JsonRpcException) as caught:
