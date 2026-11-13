@@ -638,6 +638,40 @@ class TestUploadPolicy(TransactionCase):
                     self.assertEqual(result.mimetype, 'application/zip' if ext == 'zip' else
                                      'application/vnd.openxmlformats-officedocument.presentationml.presentation')
 
+    @staticmethod
+    def _declare_mimetype_size(content, size):
+        """Write ``size`` as the uncompressed size of the ``mimetype`` entry of the central directory."""
+        content = bytearray(content)
+        position = 0
+        while True:
+            position = content.index(b'PK\x01\x02', position)
+            name_length = struct.unpack_from('<H', content, position + 28)[0]
+            if bytes(content[position + 46:position + 46 + name_length]) == b'mimetype':
+                struct.pack_into('<I', content, position + 24, size)
+                return bytes(content)
+            position += 4
+
+    def test_a_mimetype_member_that_declares_a_large_size_is_refused_without_being_opened(self):
+        """The uncompressed size is read from the directory of the archive: 255 passes, 256 does not."""
+        for compression in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+            odf = self._odf('odt', compression)
+            plain = self._zip_with_mimetype_member('zip', compression, 40)
+            for name, content in (('report.odt', odf), ('file.zip', plain)):
+                for size, accepted in ((255, True), (256, False), (10 ** 6, False)):
+                    forged = self._declare_mimetype_size(content, size)
+                    with self.subTest(file=name, compression=compression, size=size), patch.object(
+                            zipfile.ZipFile, 'open',
+                            return_value=io.BytesIO(self.ODF['odt'].encode())) as open_member, \
+                            patch.object(zipfile.ZipFile, 'read', side_effect=AssertionError('read')):
+                        try:
+                            result = self.policy._validate(name, forged)
+                        except WoowUploadRejected as caught:
+                            self.assertEqual(caught.code, 'mime')
+                            result = None
+                        self.assertEqual(result is not None, accepted)
+                        if not accepted:
+                            self.assertFalse(open_member.called)
+
     def test_excessive_zip_entries_rejected_before_parser(self):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, 'w') as archive:

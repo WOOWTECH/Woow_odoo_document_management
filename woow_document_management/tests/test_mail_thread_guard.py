@@ -4,6 +4,7 @@
 import base64
 import json
 import secrets
+from unittest.mock import patch
 
 from odoo import Command
 from odoo.addons.mail.tests.common import MockEmail
@@ -715,3 +716,111 @@ class TestRevokedFollowersAreNotNotified(TransactionCase, MockEmail):
                                      for address in mailed))
                 self.assertTrue(any('wdoc-follow-portal-b@example.test' in address
                                     for address in mailed))
+
+
+@tagged('woow_docmgmt_core')
+class TestGatewayCallerAndThreadLookup(TransactionCase):
+    """Who may route mail to the two models, and what the thread lookup of a portal user returns."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        (cls.portal, cls.member, cls.folder, cls.document,
+         cls.document_message, cls.folder_message) = _chatter_fixture(cls.env, 'caller')
+        cls.records = [cls.document, cls.folder]
+        cls.member.sudo().email = 'wdoc-caller-member@example.test'
+        document_user = cls.env.ref('woow_document_management.group_woow_document_user')
+        # Both callers are document users who can read the records, so that only the caller rule
+        # of the gateway is left to tell them apart.
+        cls.rights_only = cls.env['res.users'].sudo().create({
+            'name': 'Gateway rights only', 'login': 'wdoc-gateway-rights',
+            'email': 'gateway-rights@example.test',
+            'groups_id': [Command.set([cls.env.ref('base.group_erp_manager').id, document_user.id])]})
+        cls.settings_admin = cls.env['res.users'].sudo().create({
+            'name': 'Gateway settings admin', 'login': 'wdoc-gateway-settings',
+            'email': 'gateway-settings@example.test',
+            'groups_id': [Command.set([cls.env.ref('base.group_system').id, document_user.id])]})
+        for user in (cls.rights_only, cls.settings_admin):
+            cls.env['woow.document.folder.access'].sudo().create({
+                'folder_id': cls.folder.id, 'subject_type': 'user',
+                'user_id': user.id, 'level': 'read'})
+        cls.env.flush_all()
+
+    def _replies(self, record, subject):
+        return self.env['mail.message'].sudo().search_count([
+            ('model', '=', record._name), ('res_id', '=', record.id), ('subject', '=', subject)])
+
+    def test_only_a_settings_administrator_may_route_mail_to_the_module_models(self):
+        """A user with Access Rights but not Settings is refused; a Settings administrator is not."""
+        self.assertTrue(self.rights_only._is_admin())
+        self.assertFalse(self.rights_only._is_system())
+        self.assertTrue(self.settings_admin._is_system())
+        for record in self.records:
+            refused = 'Refused %s %s' % (record._name, secrets.token_hex(4))
+            accepted = 'Accepted %s %s' % (record._name, secrets.token_hex(4))
+            gateway = self.env['mail.thread']
+            with self.subTest(model=record._name, caller='access rights only'), \
+                    self.assertRaises(AccessError) as caught:
+                gateway.with_user(self.rights_only).message_process(
+                    record._name, _raw_email(self.member.email, refused), thread_id=record.id)
+            self.assertEqual(caught.exception.args[0],
+                             'Documents and folders do not accept this email.')
+            self.assertEqual(self._replies(record, refused), 0)
+            with self.subTest(model=record._name, caller='settings administrator'):
+                self.assertEqual(gateway.with_user(self.settings_admin).message_process(
+                    record._name, _raw_email(self.member.email, accepted), thread_id=record.id),
+                    record.id)
+                self.assertEqual(self._replies(record, accepted), 1)
+
+    def test_the_thread_lookup_returns_nothing_to_a_portal_user_who_can_read_the_record(self):
+        for record in self.records:
+            with self.subTest(model=record._name):
+                portal_record = record.with_user(self.portal)
+                self.assertTrue(portal_record.has_access('read'))
+                found = portal_record._get_thread_with_access(record.id)
+                self.assertEqual(found, self.env[record._name])
+                self.assertFalse(found)
+                self.assertEqual(
+                    self.env[record._name].with_user(self.portal)._get_thread_with_access(
+                        record.id, mode='read'), self.env[record._name])
+
+    def test_the_thread_lookup_returns_the_record_to_an_internal_reader(self):
+        for record in self.records:
+            with self.subTest(model=record._name):
+                found = self.env[record._name].with_user(self.member)._get_thread_with_access(
+                    record.id)
+                self.assertEqual(found, record)
+
+    def test_a_sender_address_that_is_not_text_is_refused_with_the_standard_error(self):
+        author = self.member.partner_id.id
+        member_email = self.member.email
+
+        class PrintsAsTheAddress:
+            """Not a text, but core reads it as the address of the sender when it is not asked first."""
+
+            def __str__(self):
+                return member_email
+
+        for record in self.records:
+            for label, address in (('an object that prints as the address', PrintsAsTheAddress()),
+                                   ('an int', 12345), ('a list', [self.member.email]),
+                                   ('a dict', {'a': 1}), ('bytes', b'member@example.test')):
+                with self.subTest(model=record._name, address=label), \
+                        self.assertRaises(AccessError) as caught:
+                    record.sudo().message_update({'author_id': author, 'email_from': address})
+                self.assertEqual(caught.exception.args[0],
+                                 'Documents and folders do not accept this email.')
+            with self.subTest(model=record._name, address='text'):
+                record.sudo().message_update({'author_id': author, 'email_from': self.member.email})
+
+    def test_the_internal_user_filter_alone_refuses_a_portal_sender(self):
+        """With the record rule check patched to accept, only the filter on internal users refuses."""
+        from ..models.mail_thread_guard import _reply_sender_reads
+        for record in self.records:
+            model = type(self.env[record._name])
+            with self.subTest(model=record._name), \
+                    patch.object(model, '_woow_recipient_reads', return_value=True):
+                self.assertTrue(_reply_sender_reads(record, {
+                    'author_id': self.member.partner_id.id, 'email_from': self.member.email}))
+                self.assertFalse(_reply_sender_reads(record, {
+                    'author_id': self.portal.partner_id.id, 'email_from': self.portal.email}))

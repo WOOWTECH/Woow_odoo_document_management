@@ -1,7 +1,7 @@
 {
   "batches": {
-    "core": 380,
-    "files": 125,
+    "core": 385,
+    "files": 126,
     "portal": 3
   },
   "files": {
@@ -22,7 +22,7 @@
     "test_i18n_complete.py": 1,
     "test_internal_routes.py": 8,
     "test_locks.py": 7,
-    "test_mail_thread_guard.py": 20,
+    "test_mail_thread_guard.py": 25,
     "test_multicompany.py": 4,
     "test_naming.py": 7,
     "test_native_routes.py": 5,
@@ -53,7 +53,7 @@
     "test_settings_bounds.py": 12,
     "test_trash_lifecycle.py": 29,
     "test_uninstall.py": 4,
-    "test_upload_policy.py": 31,
+    "test_upload_policy.py": 32,
     "test_url_policy.py": 4,
     "test_zip_builder.py": 5
   },

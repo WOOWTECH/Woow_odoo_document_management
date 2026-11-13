@@ -2,11 +2,9 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """A folder is judged by what the ORM stores: one reading of each value, and the state is checked again.
 
-Four rounds of hardening each closed the shapes that a review had named, and each time the next review
-found another shape of the same class: the value that a guard judged was not the value that was stored
-(another type, a default that came from another source, another transport). The class is closed by
-three things that do not depend on the shape of the input, and the tests below pin each of them on its
-own:
+The value that a guard judges has to be the value that is stored: a different type, a default that
+comes from another source or another transport must not make the two differ. The tests below pin the
+three things that keep them equal, each on its own:
 
 * the owner, the parent and the company are read once, as the ORM keeps them (``_m2o_value``), written
   into the values and stored as they were judged, and the defaults that a create decides on are read
