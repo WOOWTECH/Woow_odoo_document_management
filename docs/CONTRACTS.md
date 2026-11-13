@@ -65,7 +65,7 @@
 | `_cron_*`、`_cron_check_warn` | 必要條件 | 第一個陳述句就丟 AccessError |
 | uninstall_hook | env 本來就是 su（CA-28） | — |
 | mail_thread_guard | 看 `env.user._is_internal()`（OdooBot 是內部使用者） | 同左 |
-| 信件回覆（`message_update`、`message_new`，§8.6） | 不看 env：fetchmail 與 catchall 以 su 處理，core 又以 OdooBot 發文，所以看寄件者（From 位址的作者 partner）；su 一樣被拒絕，除非寄件者是能讀該記錄的有效內部使用者 | 同左 |
+| 信件回覆（`message_update`、`message_new`，§8.6） | `message_update`：env 先判斷，只接受 su（fetchmail 與 catchall 以 su 處理），其他呼叫者不論寄件者是誰都得到同一個 AccessError；通過之後再看寄件者（From 位址的作者 partner 必須是能讀該記錄的有效內部使用者），不是則同樣被拒絕。`message_new`：不論 env 一律拒絕 | 同左（非 su 一律被拒絕） |
 
 `with_user()` 產生的 env 一律是 `su=False`（CA-33）。所以 ER-06 的驗證 env 會套用 rule。
 
