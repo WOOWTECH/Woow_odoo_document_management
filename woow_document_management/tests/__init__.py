@@ -19,9 +19,6 @@ from . import test_url_policy
 from . import test_zip_builder
 from . import test_internal_routes
 from . import test_native_routes
-from . import test_share_token
-from . import test_share_routes
-from . import test_mail_share
 from . import test_trash_lifecycle
 from . import test_audit_log
 from . import test_cron

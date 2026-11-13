@@ -1,6 +1,6 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
-"""A wizard row is its creator's alone (R-W1..R-W6).
+"""A wizard row is its creator's alone (R-W2..R-W6).
 
 Core has no owner rule for transient models. The actions of these wizards act on the
 stored row with the rights of the user who runs them, so another document user must not
@@ -35,8 +35,6 @@ class TestWizardRowsBelongToTheirCreator(TransactionCase):
         # Rows an administrator could be about to confirm, and the smallest row that an
         # ordinary document user may create for each wizard.
         self.admin_rows = {
-            'woow.document.share.wizard': {
-                'share_type': 'folder', 'folder_id': self.folder.id},
             'woow.document.move.wizard': {
                 'document_ids': [(6, 0, [self.document.id])], 'target_folder_id': self.target.id},
             'woow.document.restore.wizard': {
@@ -47,7 +45,6 @@ class TestWizardRowsBelongToTheirCreator(TransactionCase):
             'woow.document.notify.wizard': {'folder_id': self.folder.id, 'all_members': True},
         }
         self.own_rows = {
-            'woow.document.share.wizard': {},
             'woow.document.move.wizard': {'target_folder_id': self.target.id},
             'woow.document.restore.wizard': {},
             'woow.document.purge.wizard': {},

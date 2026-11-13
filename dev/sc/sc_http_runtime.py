@@ -99,167 +99,11 @@ def ready():
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         try:
-            Client().csrf('/woow-docs/s')
+            Client().csrf('/web/login')
             return {'ready': True}
         except (OSError, RuntimeError, http.client.HTTPException):
             time.sleep(0.5)
     return {'ready': False}
-
-
-def denied(count):
-    client = Client()
-    token = client.csrf('/woow-docs/s')
-    form = {'token': 'x' * 43, 'csrf_token': token}
-    return {'statuses': [client.send('POST', '/woow-docs/s/open', form)[0]
-                         for _ in range(int(count))]}
-
-
-def unlock_race(spec):
-    spec = json.loads(spec)
-    clients = []
-    for share_id, code in spec['links']:
-        client = Client()
-        token = client.csrf('/woow-docs/s')
-        status, _ = client.send('POST', '/woow-docs/s/open', {'token': code, 'csrf_token': token})
-        if status != 303:
-            raise RuntimeError('link did not open')
-        clients.append((client, share_id, client.csrf('/woow-docs/s/%d' % share_id)))
-    barrier = threading.Barrier(len(clients))
-    statuses = [[] for _ in clients]
-    errors = []
-
-    def attempts(index):
-        client, share_id, token = clients[index]
-        try:
-            for _ in range(spec['rounds']):
-                barrier.wait(timeout=120)   # every round starts both requests together
-                statuses[index].append(client.send(
-                    'POST', '/woow-docs/s/%d/unlock' % share_id,
-                    {'password': spec['password'] + 'x', 'csrf_token': token})[0])
-        except Exception as exc:  # reported to the runner, which fails closed
-            errors.append(type(exc).__name__)
-            barrier.abort()
-
-    threads = [threading.Thread(target=attempts, args=(index,)) for index in range(len(clients))]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=300)
-    if any(thread.is_alive() for thread in threads):
-        errors.append('timeout')
-    # Then the correct password, after the source has used its limit.
-    client, share_id, token = clients[0]
-    final = client.send('POST', '/woow-docs/s/%d/unlock' % share_id,
-                        {'password': spec['password'], 'csrf_token': token})[0]
-    return {'statuses': statuses, 'errors': errors, 'final': final}
-
-
-def sources(spec):
-    """Refused link opens from many sources at once, and a correct unlock among them."""
-    spec = json.loads(spec)
-    refused = []
-    for index in range(spec['sources']):
-        client = Client({'X-Real-IP': '198.51.100.%d' % (index + 1)})
-        refused.append((client, client.csrf('/woow-docs/s')))
-    unlocker = Client({'X-Real-IP': '203.0.113.50'})
-    status, _ = unlocker.send('POST', '/woow-docs/s/open', {
-        'token': spec['code'], 'csrf_token': unlocker.csrf('/woow-docs/s')})
-    if status != 303:
-        raise RuntimeError('link did not open')
-    unlock_token = unlocker.csrf('/woow-docs/s/%d' % spec['share'])
-    barrier = threading.Barrier(len(refused) + 1)
-    result = {'statuses': [[] for _ in refused], 'errors': [], 'unlock': None}
-
-    def refuse(index):
-        client, token = refused[index]
-        try:
-            for _ in range(spec['rounds']):
-                barrier.wait(timeout=120)   # every round starts all requests together
-                result['statuses'][index].append(client.send(
-                    'POST', '/woow-docs/s/open', {'token': 'x' * 43, 'csrf_token': token})[0])
-        except Exception as exc:  # reported to the runner, which fails closed
-            result['errors'].append(type(exc).__name__)
-            barrier.abort()
-
-    def unlock():
-        try:
-            # In the first round, while every new source reserves capacity.
-            barrier.wait(timeout=120)
-            result['unlock'] = unlocker.send(
-                'POST', '/woow-docs/s/%d/unlock' % spec['share'],
-                {'password': spec['password'], 'csrf_token': unlock_token})[0]
-            for _ in range(spec['rounds'] - 1):
-                barrier.wait(timeout=120)
-        except Exception as exc:  # reported to the runner, which fails closed
-            result['errors'].append(type(exc).__name__)
-            barrier.abort()
-
-    threads = [threading.Thread(target=refuse, args=(index,)) for index in range(len(refused))]
-    threads.append(threading.Thread(target=unlock))
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=300)
-    if any(thread.is_alive() for thread in threads):
-        result['errors'].append('timeout')
-    return result
-
-
-def refuse_many(spec):
-    """Refused link requests (an unknown share id) from many sources at once."""
-    spec = json.loads(spec)
-    clients = [Client({'X-Real-IP': '198.51.100.%d' % (index + 1)})
-               for index in range(spec['sources'])]
-    barrier = threading.Barrier(len(clients))
-    result = {'statuses': [[] for _ in clients], 'errors': []}
-
-    def refuse(index):
-        try:
-            for _ in range(spec['rounds']):
-                barrier.wait(timeout=120)   # every round starts all requests together
-                result['statuses'][index].append(clients[index].send(
-                    'GET', '/woow-docs/s/%d' % spec['unknown'])[0])
-        except Exception as exc:  # reported to the runner, which fails closed
-            result['errors'].append(type(exc).__name__)
-            barrier.abort()
-
-    threads = [threading.Thread(target=refuse, args=(index,)) for index in range(len(clients))]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=300)
-    if any(thread.is_alive() for thread in threads):
-        result['errors'].append('timeout')
-    return result
-
-
-def same_source(spec):
-    """Refused link opens from one source (one address) by several clients at once."""
-    spec = json.loads(spec)
-    clients = [Client({'X-Real-IP': spec['ip']}) for _ in range(spec['clients'])]
-    prepared = [(client, client.csrf('/woow-docs/s')) for client in clients]
-    barrier = threading.Barrier(len(prepared))
-    result = {'statuses': [[] for _ in prepared], 'errors': []}
-
-    def refuse(index):
-        client, token = prepared[index]
-        try:
-            for _ in range(spec['rounds']):
-                barrier.wait(timeout=120)   # every round starts all requests together
-                result['statuses'][index].append(client.send(
-                    'POST', '/woow-docs/s/open', {'token': 'x' * 43, 'csrf_token': token})[0])
-        except Exception as exc:  # reported to the runner, which fails closed
-            result['errors'].append(type(exc).__name__)
-            barrier.abort()
-
-    threads = [threading.Thread(target=refuse, args=(index,)) for index in range(len(prepared))]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=300)
-    if any(thread.is_alive() for thread in threads):
-        result['errors'].append('timeout')
-    return result
 
 
 def quota_contention(spec):
@@ -314,9 +158,7 @@ def quota_contention(spec):
     return result
 
 
-COMMANDS = {'ready': ready, 'denied': denied, 'unlock-race': unlock_race, 'sources': sources,
-            'refuse-many': refuse_many, 'quota-contention': quota_contention,
-            'same-source': same_source}
+COMMANDS = {'ready': ready, 'quota-contention': quota_contention}
 sys.stdout.write(json.dumps(COMMANDS[sys.argv[1]](*sys.argv[3:])) + '\n')
 '''
 
@@ -404,27 +246,6 @@ class HttpScenario:
             return json.loads(output.strip().splitlines()[-1])
         except (ValueError, IndexError) as exc:
             raise ScenarioError('client_output') from exc
-
-    def align_minute(self, margin):
-        """Start a burst only when ``margin`` seconds remain in the DB clock's minute.
-
-        Denied buckets and counters use the minute of PostgreSQL's transaction clock,
-        so the database pod's clock is read, not the local one.
-        """
-        second = float(self.sql('SELECT EXTRACT(SECOND FROM clock_timestamp())'))
-        if second > 60 - margin:
-            time.sleep(61 - second)
-
-    def minutes_used(self):
-        return int(self.sql(
-            "SELECT COUNT(DISTINCT bucket_minute) FROM ("
-            "SELECT bucket_minute FROM woow_document_log WHERE result = 'denied' "
-            "UNION ALL SELECT bucket_minute FROM woow_document_denied_counter) AS used"))
-
-    def reset_denied(self):
-        self.sql("DELETE FROM woow_document_log WHERE result = 'denied'; "
-                 "DELETE FROM woow_document_denied_counter; "
-                 "DELETE FROM woow_document_denied_budget")
 
     def server_log_count(self, pattern):
         """Lines of the server log that match the extended regular expression ``pattern``."""

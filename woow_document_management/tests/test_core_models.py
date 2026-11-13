@@ -387,22 +387,6 @@ class TestDocumentCreation(TransactionCase):
             doc.unlink()
         self.assertTrue(doc.exists())
 
-    def test_restored_date_inherits_latest_ancestor_restore(self):
-        root = self.env['woow.document.folder'].sudo().create({'name': 'Restore root'})
-        child = self.env['woow.document.folder'].sudo().create({
-            'name': 'Restore child', 'parent_id': root.id})
-        doc = self.document.create({
-            'name': 'restored.txt', 'folder_id': child.id,
-            'datas': base64.b64encode(b'content'),
-        })
-        earlier, later = '2026-01-01 00:00:00', '2026-01-02 00:00:00'
-        root.write({'restored_date': earlier})
-        self.assertEqual(str(doc.effective_restored_at), earlier)
-        doc.write({'restored_date': later})
-        self.assertEqual(str(doc.effective_restored_at), later)
-        root.write({'restored_date': False})
-        self.assertEqual(str(doc.effective_restored_at), later)
-
     def test_source_display_uses_reader_permissions(self):
         partner = self.env['res.partner'].sudo().create({'name': 'Readable source'})
         doc = self.document.create({

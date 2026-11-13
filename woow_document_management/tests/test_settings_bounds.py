@@ -2,6 +2,8 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Typed settings and write permission tests (T-SET-01 through T-SET-08)."""
 import base64
+import hashlib
+import hmac
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -22,20 +24,22 @@ class TestSettingsBounds(TransactionCase):
 
     def test_tampered_param_clamped(self):
         self.params.set_param(PARAM_PREFIX + 'internal_max_upload_mb', '999')
-        self.params.set_param(PARAM_PREFIX + 'share_max_days', '999')
-        self.params.set_param(PARAM_PREFIX + 'share_link_policy', 'anyone')
-        self.params.set_param(PARAM_PREFIX + 'share_require_password', 'maybe')
+        self.params.set_param(PARAM_PREFIX + 'zip_max_files', '99999')
+        self.params.set_param(PARAM_PREFIX + 'tag_create_policy', 'anyone')
+        self.params.set_param(PARAM_PREFIX + 'log_ip_mode', 'full')
+        self.params.set_param(PARAM_PREFIX + 'allow_http_links', 'maybe')
         value = self.reader._get_settings()
         self.assertEqual(value.internal_max_upload_mb, 95)
-        self.assertEqual(value.share_max_days, 90)
-        self.assertEqual(value.share_link_policy, 'managers_only')
-        self.assertTrue(value.share_require_password)
+        self.assertEqual(value.zip_max_files, 2000)
+        self.assertEqual(value.tag_create_policy, 'managers')
+        self.assertEqual(value.log_ip_mode, 'truncate')
+        self.assertFalse(value.allow_http_links)
 
     def test_missing_param_safe_default(self):
         self.assertEqual(self.reader._get_settings(), WoowDocSettings())
 
     def test_all_params_registered_for_uninstall(self):
-        self.assertEqual(len(_PARAM_KEYS), 30)
+        self.assertEqual(len(_PARAM_KEYS), 22)
         self.assertEqual(set(_PARAM_KEYS), set(WoowDocSettings.__dataclass_fields__))
 
     def test_set_values_bounds_and_audit(self):
@@ -46,12 +50,22 @@ class TestSettingsBounds(TransactionCase):
         form.set_values()
         self.assertEqual(self.reader._get_settings().internal_max_upload_mb, 94)
 
-    def test_share_key_derivation(self):
-        keys = self.reader._share_keys()
-        self.assertEqual(len(keys.k_share), 32)
-        self.assertNotEqual(keys.k_share, keys.k_hint)
-        self.assertNotEqual(keys.k_share, keys.k_ip)
-        self.assertEqual(keys, self.reader._share_keys())
+    def test_audit_ip_key_derivation(self):
+        key = self.reader._audit_ip_key()
+        self.assertIsInstance(key, bytes)
+        self.assertEqual(len(key), 32)
+        self.assertEqual(key, self.reader._audit_ip_key())
+        # the label is part of the key: the hashes that were stored stay comparable
+        secret = self.params.get_param('database.secret')
+        self.assertEqual(key, hmac.new(secret.encode(), b'woow_document_management/audit-ip/v1',
+                                       hashlib.sha256).digest())
+        self.params.set_param('database.secret', secret + '-changed')
+        changed = self.reader._audit_ip_key()
+        self.assertEqual(len(changed), 32)
+        self.assertNotEqual(changed, key)
+        self.params.set_param('database.secret', '')
+        with self.assertRaises(ValueError):
+            self.reader._audit_ip_key()
 
     def test_read_params_allowlist(self):
         with self.assertRaises(ValueError):
@@ -60,15 +74,26 @@ class TestSettingsBounds(TransactionCase):
 
     def test_cross_field_bounds(self):
         with self.assertRaises(ValueError):
-            parse_settings({'share_max_days': '3', 'share_default_days': '14'}, strict=True)
-        with self.assertRaises(ValueError):
             parse_settings({'quota_warn_pct': '90', 'quota_block_pct': '80'}, strict=True)
-        self.assertEqual(parse_settings({'share_max_days': '3'}).share_default_days, 3)
+        lenient = parse_settings({'quota_warn_pct': '90', 'quota_block_pct': '80'})
+        self.assertEqual((lenient.quota_warn_pct, lenient.quota_block_pct), (80, 95))
 
     def test_invalid_base_url_port_is_rejected(self):
         with self.assertRaises(ValueError):
-            parse_settings({'share_link_base_url': 'https://example.invalid:abc'}, strict=True)
-        self.assertEqual(parse_settings({'share_link_base_url': 'https://example.invalid:abc'}).share_link_base_url, '')
+            parse_settings({'notice_base_url': 'https://example.invalid:abc'}, strict=True)
+        self.assertEqual(parse_settings({'notice_base_url': 'https://example.invalid:abc'}).notice_base_url, '')
+
+    def test_the_notice_address_is_a_plain_https_address(self):
+        self.assertEqual(
+            parse_settings({'notice_base_url': ' https://docs.example.test:8443/ '},
+                           strict=True).notice_base_url, 'https://docs.example.test:8443')
+        for value in ('http://docs.example.test', 'https://user:secret@docs.example.test',
+                      'https://docs.example.test/docs', 'https://docs.example.test/?a=1',
+                      'https://docs.example.test/#part', 'docs.example.test', 'https://'):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    parse_settings({'notice_base_url': value}, strict=True)
+                self.assertEqual(parse_settings({'notice_base_url': value}).notice_base_url, '')
 
     def test_fresh_install_defaults_match_table(self):
         settings = self.reader._get_settings()
@@ -113,7 +138,7 @@ class TestSettingsBounds(TransactionCase):
                 self.assertTrue(document.with_context(active_test=False).exists())
         # a save of other settings keeps it, and another value is stored as it is
         self.params.set_param(key, '0')
-        save(woow_doc_share_default_days=7)
+        save(woow_doc_log_retention_days=90)
         self.assertEqual(self.params.get_param(key), '0')
         save(woow_doc_trash_retention_days=45)
         self.assertEqual(self.params.get_param(key), '45')

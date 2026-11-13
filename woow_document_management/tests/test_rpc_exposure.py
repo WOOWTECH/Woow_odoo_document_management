@@ -8,14 +8,14 @@ from odoo import Command
 from odoo.tests import HttpCase, TransactionCase, tagged
 
 _PROXY = '203.0.113.77/32'
-_FIELDS = ['woow_doc_trusted_proxies', 'woow_doc_denied_rate_per_min',
+_FIELDS = ['woow_doc_trusted_proxies', 'woow_doc_log_retention_days',
            'woow_doc_client_ip_header', 'woow_doc_zip_max_files']
 
 
 def _settings_fixture(env):
     params = env['ir.config_parameter'].sudo()
     params.set_param('woow_document_management.trusted_proxies', _PROXY)
-    params.set_param('woow_document_management.denied_rate_per_min', '17')
+    params.set_param('woow_document_management.log_retention_days', '90')
     params.set_param('woow_document_management.client_ip_header', 'X-Real-IP')
 
 
@@ -44,10 +44,10 @@ class TestSettingsDefaultsOrm(TransactionCase):
         admin = self.env.ref('base.user_admin')
         settings = self.env['res.config.settings']
         module_fields = [name for name in settings._fields if name.startswith('woow_doc_')]
-        self.assertGreaterEqual(len(module_fields), 30)
+        self.assertGreaterEqual(len(module_fields), 22)
         values = settings.with_user(admin).default_get(_FIELDS)
         self.assertEqual(values['woow_doc_trusted_proxies'], _PROXY)
-        self.assertEqual(values['woow_doc_denied_rate_per_min'], 17)
+        self.assertEqual(values['woow_doc_log_retention_days'], 90)
         for name, user in self.users.items():
             with self.subTest(user=name):
                 as_user = settings.with_user(user)

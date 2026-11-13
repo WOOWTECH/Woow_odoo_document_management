@@ -1,73 +1,21 @@
 # Development helpers
 
 The Odoo integration tests run in an isolated sandbox through the project
-launcher. `coverage.sh` produces the release coverage result.
-
-`SLOT=<slot> WOOW_SBX=<absolute launcher> WOOW_SBX_BASE_DB=<existing sandbox DB>
-sh dev/sc/run_sc.sh share-max-downloads-race` runs T-SHARE-32 through two real
-HTTP clients in a copied sandbox database. The runner checks that the selected
-test actually ran and drops its database. That test is an `HttpCase`: its requests
-share the test cursor and are served one after another, so the runner does not
-race two real Repeatable Read transactions; that mechanism is covered by the
-two-real-cursor tests `test_download_barrier_rejects_a_stale_snapshot` and
-`test_password_attempt_barrier_rejects_a_stale_snapshot`, and by the real HTTP
-runners below. `sandbox_test.sh` runs the whole addon suite (the G1 gate: the
-floors of `woow_document_management/tests/EXPECTED_MIN.json`, no skipped test, and
-the success line of the browser tour); only the runners listed here are registered in
+launcher. `coverage.sh` produces the release coverage result. `sandbox_test.sh`
+runs the whole addon suite (the G1 gate: the floors of
+`woow_document_management/tests/EXPECTED_MIN.json`, no skipped test, and the
+success line of the browser tour); only the runner listed here is registered in
 `run_sc.sh`. A scenario result must not be reported as passing unless its runner
 was executed.
 
-The real HTTP runners below install the addon into a copied database, start a
+The real HTTP runner installs the addon into a copied database, starts a
 temporary Odoo server bound to container loopback (every request then runs in
-its own Repeatable Read transaction, unlike HttpCase), check the persisted
-counters with psql, stop the server and drop the database. Denied counters are
-kept per minute of the database clock, so each burst starts only when enough
-of the current minute remains, and a burst that still crossed a minute is
-repeated once on clean counters.
+its own Repeatable Read transaction, unlike HttpCase), checks the result, stops
+the server and drops the database.
 
-- `sh dev/sc/run_sc.sh denied-count-real-http` runs T-SHARE-44: 11 refused
-  link opens from one source answer 10 x 404 and 1 x 429; the source bucket
-  counts 10, one `rate_limited` event is recorded, and the source counter is 10.
-- `sh dev/sc/run_sc.sh source-limit-two-links` runs T-SHARE-45: two clients
-  from one source send wrong passwords to two protected links in rounds that
-  start together. With a limit of 3 across links, exactly 3 guesses are
-  compared; the others answer 429, and the source counter and failure buckets
-  both count 3. The correct password sent afterwards from that source is
-  answered 429 as well.
-- `sh dev/sc/run_sc.sh denied-sources-together` runs T-SHARE-46: twelve
-  clients, each its own source through `X-Real-IP` behind the trusted loopback
-  proxy, send refused link opens in rounds that start together, and a correct
-  password is sent to a protected link in the first round. No request may be
-  retried for a concurrency error (the server log is checked), every refused
-  open answers 404, the unlock answers 303, and the capacity counts exactly
-  one slot per new counter row and per new bucket.
-
-- `sh dev/sc/run_sc.sh denied-many-sources` runs T-SHARE-47: sixty clients, each its own
-  source, send refused link requests in rounds that start together to a threaded server
-  (`--workers=0`, no `ODOO_MAX_HTTP_THREADS`, `db_maxconn` 64). Every request holds one
-  connection and every refusal borrows a second one to be counted, so an unlimited burst
-  would take connections that other requests need and the pool would run dry. Every answer must be 404 or 429 and none a server error, the server log must show
-  no error trace and no retry, and the counters must equal the refusals that were answered
-  404 (the reservations that find no turn or no connection are answered 429).
-
-- `sh dev/sc/run_sc.sh denied-one-source-together` runs T-SHARE-48: twelve clients that the
-  trusted loopback proxy names as one source (the same `X-Real-IP`) send refused link opens in
-  rounds that start together. Counting a refusal never waits for, fails on or runs again because
-  of another request of the source: the server log shows no retry and no error trace, every
-  answer is 404 or 429, exactly `denied_rate_per_min` refusals are counted (answered 404) and
-  the rest are answered 429 and recorded as `rate_limited`; the counter row, the audit buckets
-  and the capacity (one slot per row written) add up to what was answered.
-- `sh dev/sc/run_sc.sh unlock-over-limit-together` runs T-SHARE-49: one source (the loopback
-  address every client reaches the server from) uses its minute limit on a protected link
-  (`denied_rate_per_min` 3, wrong passwords one after the other), then twelve clients with a
-  session of their own on that link send passwords in rounds that start together. Every attempt
-  is answered 429 without a comparison, and none fails on or is run again because of another:
-  the server log shows no retry and no error trace. The refusals are added to the one bucket of
-  rate-limited requests and match the answers; the source counter and the counted failures stay
-  at the limit, and the capacity holds one slot, the bucket.
-- `sh dev/sc/run_sc.sh quota-contention` runs T-UPL-32: with a quota set and a long attachment
-  table, one portal account sends single-file uploads without pause while another one uploads
-  once a second. Every upload answers 200, the slower account's within a second at the 95th
-  percentile, and no request is rolled back and run again for a concurrency error.
-
-All seven use the same `SLOT`, `WOOW_SBX` and `WOOW_SBX_BASE_DB` variables as above.
+- `SLOT=<slot> WOOW_SBX=<absolute launcher> WOOW_SBX_BASE_DB=<existing sandbox DB>
+  sh dev/sc/run_sc.sh quota-contention` runs T-UPL-32: with a quota set and a
+  long attachment table, one portal account sends single-file uploads without
+  pause while another one uploads once a second. Every upload answers 200, the
+  slower account's within a second at the 95th percentile, and no request is
+  rolled back and run again for a concurrency error.

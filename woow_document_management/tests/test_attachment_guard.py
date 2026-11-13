@@ -2,15 +2,13 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 import base64
 import io
-import re
 import secrets
 import zipfile
-from datetime import timedelta
 
-from odoo import Command, fields
+from odoo import Command
 from odoo.exceptions import AccessError, MissingError
 from odoo.tests import HttpCase, TransactionCase, tagged
-from odoo.tests.common import TEST_CURSOR_COOKIE_NAME, JsonRpcException, Opener
+from odoo.tests.common import JsonRpcException
 
 
 @tagged('woow_docmgmt_core')
@@ -289,9 +287,14 @@ class TestDocumentFileRoutes(HttpCase):
         self.document = self.env['woow.document'].sudo().create({
             'name': 'original.txt', 'folder_id': self.folder.id,
             'datas': base64.b64encode(b'ORIGINAL-BYTES')})
-        self.share, self.code = self.env['woow.document.share'].with_user(admin)._issue({
-            'share_type': 'folder', 'folder_id': self.folder.id,
-            'expire_at': fields.Datetime.now() + timedelta(days=1)})
+        partner = self.env['res.partner'].sudo().create({'name': 'Route portal contact'})
+        self.portal = self.env['res.users'].sudo().create({
+            'name': 'Route portal', 'login': 'wdoc-route-portal', 'password': self.password,
+            'partner_id': partner.id,
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])]})
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.folder.id, 'subject_type': 'partner',
+            'partner_id': partner.id, 'level': 'read'})
         self.env.flush_all()
         self.original = self.document.sudo().attachment_id
 
@@ -322,20 +325,12 @@ class TestDocumentFileRoutes(HttpCase):
             served.append((path, response.status_code, response.content))
         served.append(('/woow_document/zip', *self._zip_member(
             self.url_open('/woow_document/zip?document_ids=%d' % doc))))
-        # A fresh anonymous client: opening a link rotates the session, and a
-        # cookie set by authenticate() would shadow the rotated one.
-        self.opener = Opener(self.cr)
-        self.opener.cookies[TEST_CURSOR_COOKIE_NAME] = self.http_request_key
-        landing = self.url_open('/woow-docs/s')
-        csrf = re.search(rb'name="csrf_token"[^>]*value="([^"]+)"', landing.content).group(1)
-        opened = self.url_open('/woow-docs/s/open', data={
-            'token': self.code, 'csrf_token': csrf.decode()}, allow_redirects=False)
-        self.assertEqual(opened.status_code, 303, opened.text[:200])
-        response = self.url_open('/woow-docs/s/%d/file/%d' % (self.share.id, doc),
-                                 allow_redirects=False)
-        served.append(('/woow-docs/s/file', response.status_code, response.content))
-        served.append(('/woow-docs/s/zip', *self._zip_member(
-            self.url_open('/woow-docs/s/%d/zip' % self.share.id))))
+        # The portal pages of a contact who has a grant on the folder.
+        self.authenticate(self.portal.login, self.password)
+        response = self.url_open('/my/docs/file/%d/download' % doc, allow_redirects=False)
+        served.append(('/my/docs/file/download', response.status_code, response.content))
+        served.append(('/my/docs/folder/zip', *self._zip_member(
+            self.url_open('/my/docs/folder/%d/zip' % self.folder.id))))
         return served
 
     def _assert_original_everywhere(self):

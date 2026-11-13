@@ -84,7 +84,7 @@ class TestCoreAssumptions(TransactionCase):
         # framework default, including related fields crossing a hidden M2O.
         for model_name, field_names in {
             'woow.document.folder': (
-                'complete_name', 'in_trash', 'subtree_restored_at',
+                'complete_name', 'in_trash',
                 'has_restricted_descendant', 'subtree_legal_hold',
                 'eff_read_user_ids', 'eff_upload_user_ids',
                 'eff_edit_user_ids', 'eff_manage_user_ids',
@@ -92,7 +92,7 @@ class TestCoreAssumptions(TransactionCase):
                 'eff_edit_group_ids', 'eff_manage_group_ids',
                 'eff_read_partner_ids', 'eff_upload_partner_ids',
             ),
-            'woow.document': ('attachment_id', 'effective_restored_at'),
+            'woow.document': ('attachment_id',),
         }.items():
             for field_name in field_names:
                 with self.subTest(model=model_name, field=field_name):

@@ -1,66 +1,18 @@
 # Copyright 2026 WoowTech
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 
+import base64
 import secrets
-import threading
-import time
-from datetime import timedelta
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
-from psycopg2 import OperationalError, errors
-from psycopg2.pool import PoolError
-
-from odoo import Command, SUPERUSER_ID, api, fields
+from odoo import Command
 from odoo.exceptions import AccessError
-from odoo.tests import TransactionCase, tagged
-from odoo.tools import mute_logger
+from odoo.tests import HttpCase, TransactionCase, tagged
 
-from ..controllers import share as share_controller
-from ..controllers import streaming
-from ..models import document_log as document_log_module
-from ..services.client_ip import hmac_ip, source_key
-from ..services.constants import SHARE_RECORD_RETENTION_DAYS
-
-
-def _minute(cr):
-    """UTC minute of the cursor's transaction, as the denied buckets use it."""
-    return cr.now().replace(second=0, microsecond=0)
-
-
-def _budget(env):
-    """This transaction's minute capacity row: the count of reserved slots, or 0."""
-    env.cr.execute("""SELECT count FROM woow_document_denied_budget
-                      WHERE bucket_minute = date_trunc('minute', now() AT TIME ZONE 'UTC')""")
-    row = env.cr.fetchone()
-    return row[0] if row else 0
-
-
-def _set_budget(cr, minute, count):
-    """Set the slots used in one minute (the minute's row version changes)."""
-    cr.execute("""INSERT INTO woow_document_denied_budget (bucket_minute, count)
-                  VALUES (%s, %s)
-                  ON CONFLICT (bucket_minute) DO UPDATE SET count = EXCLUDED.count""",
-               (minute, count))
-
-
-def _budget_version(cr, minute):
-    """Count and row version (ctid) of one minute's capacity row."""
-    cr.execute('SELECT count, ctid::text FROM woow_document_denied_budget '
-               'WHERE bucket_minute = %s', (minute,))
-    return cr.fetchone()
+from ..services.client_ip import hmac_ip
 
 
 @tagged('woow_docmgmt_core')
 class TestAuditLog(TransactionCase):
-
-    def setUp(self):
-        super().setUp()
-        # Capacity slots are reserved through registry.cursor(). In registry test mode
-        # that cursor shares this test's transaction, so the reservations are visible
-        # here and rolled back with the test.
-        self.registry.enter_test_mode(self.cr)
-        self.addCleanup(self.registry.leave_test_mode)
 
     def test_direct_folder_hold_change_is_audited(self):
         folder = self.env['woow.document.folder'].sudo().create({'name': 'Held folder fixture'})
@@ -103,61 +55,6 @@ class TestAuditLog(TransactionCase):
         with self.assertRaises(AccessError):
             event.with_user(admin).unlink()
 
-    def test_denied_bucket_merges_one_thousand_calls_even_without_ip(self):
-        log = self.env['woow.document.log']
-        for count in range(1, 1001):
-            result = log._log_event('share_open', result='denied', channel='share',
-                                    detail={'share': 1})
-            self.assertEqual(result, count)
-        rows = log.search([('event', '=', 'share_open'), ('result', '=', 'denied')])
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows.count, 1000)
-        self.assertEqual(self.env['woow.document.denied.budget'].sudo().search([]).count, 1)
-
-    def test_rotating_ips_cannot_create_unbounded_denied_rows(self):
-        log = self.env['woow.document.log']
-        k_ip = self.env['woow.document.settings']._share_keys().k_ip
-        ips = ['198.51.100.%d' % (n + 1) for n in range(12)]
-        counters = self.env['woow.document.denied.counter'].sudo()
-        mine = [('ip_hash', 'in', [hmac_ip(k_ip, ip) for ip in ips])]
-        with patch.object(document_log_module, 'MAX_DENIED_ROWS_PER_MIN', 5):
-            written = [log._log_event('share_access', result='denied', channel='share',
-                                      ip=ip) for ip in ips]
-            # A new source takes one slot for its counter row and one for its bucket.
-            # The third source got the last slot for its counter row: its refusal is
-            # counted there although no slot was left for its audit bucket.
-            self.assertEqual(written, [1, 1] + [0] * 10)
-            self.assertIsNone(log._count_denied_across_shares('share_access', '198.51.100.99'))
-            self.assertEqual(log._count_denied_across_shares('share_access', '198.51.100.1'), 1)
-            self.assertEqual(log._count_denied_across_shares('share_access', '198.51.100.3'), 1)
-        rows = log.search([('event', '=', 'share_access'), ('result', '=', 'denied')])
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(sorted(counters.search(mine).mapped('count')), [1, 1, 1])
-        self.assertEqual(len(rows) + len(counters.search(mine)), 5)
-        # The capacity row counts the slots used: never more than the maximum.
-        budget = self.env['woow.document.denied.budget'].sudo().search([])
-        self.assertEqual(len(budget), 1)
-        self.assertEqual(budget.count, 5)
-
-    def test_one_ipv6_network_counts_as_one_source(self):
-        """Addresses of one /64 share one counter row and one bucket of the minute."""
-        log = self.env['woow.document.log']
-        k_ip = self.env['woow.document.settings']._share_keys().k_ip
-        network = ['2001:db8:0:7::%x' % (n + 1) for n in range(12)]
-        written = [log._log_event('share_access', result='denied', channel='share', ip=ip)
-                   for ip in network]
-        self.assertEqual(written, list(range(1, 13)))
-        digest = hmac_ip(k_ip, '2001:db8:0:7::/64')
-        self.assertEqual(log._peek_denied_across_shares('share_access', network[0]), 12)
-        self.assertEqual(log._peek_denied_across_shares('share_access', '2001:db8:0:7:ff::1'), 12)
-        self.assertEqual(log._peek_denied_across_shares('share_access', '2001:db8:0:8::1'), 0)
-        self.assertEqual(self.env['woow.document.denied.counter'].sudo().search([
-            ('ip_hash', '=', digest)]).mapped('count'), [12])
-        self.assertEqual(log.sudo().search([
-            ('event', '=', 'share_access'), ('result', '=', 'denied')]).mapped('ip_hash'), [digest])
-        # One counter row and one bucket for the whole network.
-        self.assertEqual(_budget(self.env), 2)
-
     def test_an_event_may_name_a_record_without_a_company(self):
         """A folder shared across companies has no company; its events are kept without one."""
         log = self.env['woow.document.log']
@@ -168,1060 +65,112 @@ class TestAuditLog(TransactionCase):
         rows = log.sudo().search([('event', '=', 'upload')], order='id')
         self.assertEqual(rows.mapped('company_id'),
                          self.env['res.company'].browse() | self.env.company | self.env.company)
-        self.assertEqual(log._log_event('share_open', result='denied', channel='share',
-                                        company_id=False), 1)
-        denied = log.sudo().search([('event', '=', 'share_open'), ('result', '=', 'denied')])
-        self.assertFalse(denied.company_id)
         for value in ('1', 1.0, True, [1]):
             with self.subTest(company_id=value), self.assertRaises(ValueError):
                 log._log_event('upload', channel='backend', company_id=value)
-
-    def _counted(self, ip):
-        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, source_key(ip))
-        self.env.flush_all()
-        self.env.cr.execute('SELECT event, count FROM woow_document_denied_counter '
-                            'WHERE ip_hash = %s ORDER BY event', (digest,))
-        counters = self.env.cr.fetchall()
-        self.env.cr.execute("SELECT event, count FROM woow_document_log WHERE ip_hash = %s "
-                            "AND result = 'denied' ORDER BY event", (digest,))
-        return counters, self.env.cr.fetchall()
-
-    def test_refusals_count_exactly_up_to_the_limit_then_are_limited(self):
-        log = self.env['woow.document.log']
-        ip = '198.51.100.150'
-        outcomes = [log._refuse('share_access', ip, limit=3) for _ in range(5)]
-        self.assertEqual(outcomes, ['counted'] * 3 + ['limited'] * 2)
-        self.assertEqual(self._counted(ip), (
-            [('share_access', 3)], [('rate_limited', 2), ('share_access', 3)]))
-        # The counter row and the two buckets are the slots used.
-        self.assertEqual(_budget(self.env), 3)
-        self.assertEqual(self._counted('198.51.100.151'), ([], []))
-        for name in ('rate_limited', 'share_unlock_failed', 'upload'):
-            with self.subTest(event=name), self.assertRaises(ValueError):
-                log._refuse(name, ip, limit=3)
-
-    def test_a_slot_stays_only_with_the_row_that_needed_it(self):
-        log = self.env['woow.document.log']
-        with patch.object(document_log_module, 'MAX_DENIED_ROWS_PER_MIN', 3):
-            self.assertEqual(log._refuse('share_access', '198.51.100.160', limit=5), 'counted')
-            self.assertEqual(_budget(self.env), 2)
-            # One slot is left: the counter row of the new source takes it, its bucket finds
-            # none and is not written, and the refusal is still answered by its count.
-            self.assertEqual(log._refuse('share_access', '198.51.100.161', limit=5), 'counted')
-            self.assertEqual(self._counted('198.51.100.161'), ([('share_access', 1)], []))
-            self.assertEqual(_budget(self.env), 3)
-            # None is left: a new source writes nothing and leaves no slot behind.
-            self.assertEqual(log._refuse('share_access', '198.51.100.162', limit=5), 'busy')
-            self.assertEqual(self._counted('198.51.100.162'), ([], []))
-            self.assertEqual(_budget(self.env), 3)
-            # A source that has its rows needs no slot, even when none is left.
-            self.assertEqual(log._refuse('share_access', '198.51.100.160', limit=5), 'counted')
-            self.assertEqual(self._counted('198.51.100.160'), (
-                [('share_access', 2)], [('share_access', 2)]))
-            self.assertEqual(log._refuse('share_access', '198.51.100.161', limit=5), 'counted')
-            self.assertEqual(self._counted('198.51.100.161'), ([('share_access', 2)], []))
-            self.assertEqual(_budget(self.env), 3)
-
-    def test_refusals_without_a_connection_write_nothing_and_say_so(self):
-        log = self.env['woow.document.log']
-        ip = '198.51.100.170'
-        for error in (PoolError('the pool is full'), OperationalError('too many connections')):
-            with self.subTest(error=type(error).__name__), \
-                    patch.object(self.env.registry, 'cursor', side_effect=error):
-                self.assertEqual(log._refuse('share_access', ip, limit=3), 'busy')
-        self.assertEqual(self._counted(ip), ([], []))
-        self.assertEqual(_budget(self.env), 0)
-        self.assertEqual(log._refuse('share_access', ip, limit=3), 'counted')
 
     def test_audit_detail_rejects_strings(self):
         with self.assertRaises(ValueError):
             self.env['woow.document.log']._log_event(
                 'upload', channel='backend', detail={'name': 'private.txt'})
 
-    def test_counter_sum_uses_record_rule_aware_aggregate(self):
-        log = self.env['woow.document.log']
-        domain = [('event', '=', 'share_unlock_failed'), ('result', '=', 'denied')]
-        self.assertEqual(log._sum_count(domain), 0)
-        for expected in range(1, 4):
-            self.assertEqual(log._log_event('share_unlock_failed', result='denied',
-                                             channel='share'), expected)
-        log._log_event('upload', channel='backend')
-        self.assertEqual(log._sum_count(domain), 3)
-
-    def test_share_denied_limit_counts_all_share_ids_for_one_ip(self):
-        log = self.env['woow.document.log']
-        ip = '203.0.113.42'
-        folder = self.env['woow.document.folder'].sudo().create({'name': 'Denied counter root'})
-        share = self.env['woow.document.share'].sudo().create({
-            'share_type': 'folder', 'folder_id': folder.id,
-            'company_id': self.env.company.id, 'token_hash': 'a' * 64,
-            'expire_at': '2030-01-01 00:00:00',
-        })
-        log._log_event('share_access', result='denied', channel='share', ip=ip)
-        log._log_event('share_access', result='denied', channel='share',
-                       share_id=share.id, ip=ip)
-        # Refused link requests are kept per source and minute, whichever id they
-        # name: one slot for the source's counter row and one for its bucket.
-        self.assertEqual(_budget(self.env), 2)
-        self.assertEqual(log._count_denied_across_shares('share_access', ip), 2)
-        self.assertEqual(log._count_denied_across_shares('share_access', '203.0.113.43'), 0)
-        # The source counter row always equals the sum of the source's audit buckets.
-        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, ip)
-        counter = self.env['woow.document.denied.counter'].sudo().search([
-            ('event', '=', 'share_access'), ('ip_hash', '=', digest)])
-        self.assertEqual(counter.count, 2)
-        buckets = log.sudo().search([('event', '=', 'share_access'), ('ip_hash', '=', digest)])
-        self.assertEqual([(row.share_id, row.count) for row in buckets],
-                         [(self.env['woow.document.share'], 2)])
-        self.assertEqual(log._count_denied_across_shares('share_unlock_failed', ip), 0)
-        # A counted wrong password keeps its link: the per-link limits count it.
-        log._log_event('share_unlock_failed', result='denied', channel='share',
-                       share_id=share.id, ip=ip)
-        self.assertEqual(log.sudo().search([
-            ('event', '=', 'share_unlock_failed'), ('ip_hash', '=', digest)]).share_id, share)
-        # The new source above took one slot for its counter row; wrong passwords none.
-        self.assertEqual(_budget(self.env), 3)
-
     def test_user_agent_control_characters_are_dropped_before_writing(self):
-        """PostgreSQL text cannot hold NUL: the header is cleaned on both write paths."""
+        """PostgreSQL text cannot hold NUL: the header is cleaned before the row is written."""
         log = self.env['woow.document.log']
         agent = 'Mozilla\x00/5.0\r\n\t(\x1b[31mX11)\x7f' + 'y' * 300
         self.assertEqual(log._log_event('upload', channel='backend', user_agent=agent), 1)
-        self.assertEqual(log._log_event('share_access', result='denied', channel='share',
-                                        ip='198.51.100.80', user_agent=agent), 1)
         cleaned = ('Mozilla/5.0([31mX11)' + 'y' * 300)[:256]
         self.env.flush_all()
         self.env.cr.execute("""SELECT event, result, user_agent FROM woow_document_log
                                WHERE user_agent LIKE %s ORDER BY event""", ('Mozilla%',))
-        self.assertEqual(self.env.cr.fetchall(), [('share_access', 'denied', cleaned),
-                                                  ('upload', 'ok', cleaned)])
+        self.assertEqual(self.env.cr.fetchall(), [('upload', 'ok', cleaned)])
         self.assertEqual(len(cleaned), 256)
 
-    def test_full_minute_is_refused_without_a_write_or_second_connection(self):
-        """A used-up minute is refused from the snapshot: no row version, no other cursor.
-
-        Slots are never returned within a minute, so a minute that is full in the
-        request snapshot is full. Reserving a slot then neither borrows a second
-        connection nor writes or locks the minute row that every new source's
-        refusal would otherwise queue on.
-        """
+    def test_events_and_channels_outside_the_vocabulary_are_refused(self):
         log = self.env['woow.document.log']
-        k_ip = self.env['woow.document.settings']._share_keys().k_ip
-        ips = ('198.51.100.90', '198.51.100.91', '198.51.100.92')
-        mine = [('ip_hash', 'in', [hmac_ip(k_ip, ip) for ip in ips])]
-        minute = _minute(self.cr)
-        maximum = document_log_module.MAX_DENIED_ROWS_PER_MIN
-        for used in (maximum, maximum + 1):
-            _set_budget(self.cr, minute, used)
-            version = _budget_version(self.cr, minute)
-            with patch.object(self.registry, 'cursor', side_effect=AssertionError(
-                    'a second connection was used for a full minute')) as second:
-                self.assertIsNone(log._count_denied_across_shares('share_access', ips[0]))
-                self.assertEqual(log._log_event('share_access', result='denied', channel='share',
-                                                ip=ips[1]), 0)
-                self.assertEqual(log._log_event('rate_limited', result='denied',
-                                                channel='share', ip=ips[2]), 0)
-                self.assertFalse(self.env['woow.document.denied.budget']._take_slot())
-            second.assert_not_called()
-            self.assertEqual(_budget_version(self.cr, minute), version)
-            self.assertFalse(self.env['woow.document.denied.counter'].sudo().search(mine))
-            self.assertFalse(log.sudo().search(mine))
-
-    def test_no_connection_for_a_slot_counts_as_no_capacity(self):
-        """A full connection pool or a refused connection is "no slot", never an error.
-
-        Reserving a slot needs a second connection. Without one a new source's first
-        refusal of the minute gets the answer of a full minute: its counter row is
-        released and nothing is written, so the caller answers 429; the capacity row
-        and every other row stay as they were. A source that already has its counter
-        row and bucket needs no slot and is counted as usual.
-        """
-        log = self.env['woow.document.log']
-        counters = self.env['woow.document.denied.counter'].sudo()
-        k_ip = self.env['woow.document.settings']._share_keys().k_ip
-        minute = _minute(self.cr)
-        _set_budget(self.cr, minute, 7)
-        counted = '198.51.100.100'
-        self.assertEqual(log._log_event('share_access', result='denied', channel='share',
-                                        ip=counted), 1)
-        used = _budget_version(self.cr, minute)
-        self.assertEqual(used[0], 9)   # the counted source's counter row and bucket
-        failures = (PoolError('The Connection Pool Is Full'),
-                    OperationalError('FATAL:  sorry, too many clients already'))
-        for number, failure in enumerate(failures):
-            with self.subTest(error=type(failure).__name__):
-                ips = ['198.51.100.%d' % (110 + 10 * number + index) for index in range(3)]
-                mine = [('ip_hash', 'in', [hmac_ip(k_ip, ip) for ip in ips])]
-                with patch.object(self.registry, 'cursor', side_effect=failure) as second:
-                    self.assertFalse(self.env['woow.document.denied.budget']._take_slot())
-                    self.assertIsNone(log._count_denied_across_shares('share_access', ips[0]))
-                    self.assertEqual(log._log_event('share_access', result='denied',
-                                                    channel='share', ip=ips[1]), 0)
-                    self.assertEqual(log._log_event('rate_limited', result='denied',
-                                                    channel='share', ip=ips[2]), 0)
-                    # Nothing above held a slot; the counted source asks for none.
-                    self.assertEqual(second.call_count, 4)
-                    self.assertEqual(log._log_event('share_access', result='denied',
-                                                    channel='share', ip=counted), 2 + number)
-                    self.assertEqual(second.call_count, 4)
-                self.assertEqual(_budget_version(self.cr, minute), used)
-                self.assertFalse(counters.search(mine))
-                self.assertFalse(log.sudo().search(mine))
-
-    def test_a_missing_connection_for_the_bucket_still_counts_the_refusal(self):
-        """The counter row got its slot, the audit bucket finds no connection.
-
-        The refusal still counts for its source, as when the minute has room for one
-        slot only; no audit bucket is written and the capacity shows the one slot.
-        """
-        log = self.env['woow.document.log']
-        ip = '198.51.100.150'
-        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, ip)
-        original = self.registry.cursor
-        calls = []
-
-        def cursor(*args, **kwargs):
-            calls.append(1)
-            if len(calls) > 1:
-                raise PoolError('The Connection Pool Is Full')
-            return original(*args, **kwargs)
-
-        with patch.object(self.registry, 'cursor', cursor):
-            self.assertEqual(log._log_event('share_access', result='denied', channel='share',
-                                            ip=ip), 0)
-        self.assertEqual(len(calls), 2)
-        self.assertEqual(log._peek_denied_across_shares('share_access', ip), 1)
-        self.assertFalse(log.sudo().search([('ip_hash', '=', digest)]))
-        self.assertEqual(_budget(self.env), 1)
-
-    def test_an_error_inside_the_slot_transaction_is_not_hidden(self):
-        """Only a failure to get the connection means "no slot"; other errors propagate."""
-        broken = MagicMock()
-        broken.__enter__.return_value.execute.side_effect = OperationalError(
-            'server closed the connection unexpectedly')
-        broken.__exit__.return_value = False
-        with patch.object(self.registry, 'cursor', return_value=broken), \
-                self.assertRaises(OperationalError):
-            self.env['woow.document.denied.budget']._take_slot()
-        broken.__exit__.assert_called_once()
-
-    def test_slot_reservations_wait_for_their_turn_and_always_give_it_back(self):
-        """A process keeps few reservations open at once, and every outcome returns the turn.
-
-        The second connection of a reservation must not cost other requests theirs. With
-        every turn taken a reservation waits and then finds no slot, without borrowing a
-        connection. The turn is returned after a slot, no slot, a missing connection
-        and an error alike.
-        """
-        budget = self.env['woow.document.denied.budget']
-        gate = threading.BoundedSemaphore(2)
-
-        def turns_free():
-            taken = [gate.acquire(blocking=False) for _turn in range(3)]
-            for _turn in range(sum(taken)):
-                gate.release()
-            return taken == [True, True, False]
-
-        broken = MagicMock()
-        broken.__enter__.return_value.execute.side_effect = OperationalError('connection lost')
-        broken.__exit__.return_value = False
-        with patch.object(document_log_module, '_SLOT_GATE', gate), \
-                patch.object(document_log_module, 'SLOT_WAIT', 0.05):
-            gate.acquire()
-            gate.acquire()
-            with patch.object(self.registry, 'cursor', side_effect=AssertionError(
-                    'a connection was borrowed without a turn')) as second:
-                started = time.monotonic()
-                self.assertFalse(budget._take_slot())
-                self.assertGreaterEqual(time.monotonic() - started, 0.04)
-            second.assert_not_called()
-            gate.release()
-            gate.release()
-            self.assertTrue(turns_free())
-            self.assertTrue(budget._take_slot())
-            self.assertTrue(turns_free())
-            with patch.object(self.registry, 'cursor',
-                              side_effect=PoolError('The Connection Pool Is Full')):
-                self.assertFalse(budget._take_slot())
-            self.assertTrue(turns_free())
-            with patch.object(self.registry, 'cursor', return_value=broken), \
-                    self.assertRaises(OperationalError):
-                budget._take_slot()
-            self.assertTrue(turns_free())
+        before = log.sudo().search_count([])
+        for event in ('share_open', 'rate_limited', 'bogus', ''):
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                log._log_event(event, channel='backend')
+        for channel in ('share', 'bogus', ''):
+            with self.subTest(channel=channel), self.assertRaises(ValueError):
+                log._log_event('upload', channel=channel)
+        self.assertEqual(log.sudo().search_count([]), before)
+        self.assertEqual(log._log_event('upload', channel='cron'), 1)
 
 
-@tagged('woow_docmgmt_core')
-class TestDeniedConcurrency(TransactionCase):
-    """Real Repeatable Read transactions of their own (no registry test mode)."""
+@tagged('woow_docmgmt_http')
+class TestRecordedSource(HttpCase):
+    """The address of a signed-in download is recorded as the settings say."""
 
     def setUp(self):
         super().setUp()
-        # Committed audit buckets and counter rows of the sources a test used are
-        # removed afterwards (after its links, which are cleaned up first).
-        self._committed_sources = set()
-        self.addCleanup(self._drop_source_rows)
-
-    def _drop_source_rows(self):
-        if not self._committed_sources:
-            return
-        with self.registry.cursor() as cr:
-            cr.execute('DELETE FROM woow_document_log WHERE ip_hash = ANY(%s)',
-                       (list(self._committed_sources),))
-            cr.execute('DELETE FROM woow_document_denied_counter WHERE ip_hash = ANY(%s)',
-                       (list(self._committed_sources),))
-
-    def _commit_links(self, count):
-        """Share rows that other real transactions can reference; removed after the test."""
-        with self.registry.cursor() as cr:
-            env = api.Environment(cr, SUPERUSER_ID, {})
-            ids = env['woow.document.share'].create([{
-                'share_type': 'documents', 'company_id': env.company.id,
-                'token_hash': secrets.token_hex(32),
-                'expire_at': fields.Datetime.now() + timedelta(days=1),
-            } for _index in range(count)]).ids
-        self.addCleanup(self._drop_committed_links, ids)
-        return ids
-
-    def _drop_committed_links(self, share_ids):
-        with self.registry.cursor() as cr:
-            cr.execute('DELETE FROM woow_document_log WHERE share_id IN %s', (tuple(share_ids),))
-            cr.execute('DELETE FROM woow_document_share WHERE id IN %s', (tuple(share_ids),))
-
-    def _keep_capacity_rows(self):
-        """Restore the committed minute capacity rows after the test."""
-        with self.registry.cursor() as cr:
-            cr.execute('SELECT bucket_minute, count FROM woow_document_denied_budget')
-            before = dict(cr.fetchall())
-
-        def restore():
-            with self.registry.cursor() as cr:
-                cr.execute('SELECT bucket_minute FROM woow_document_denied_budget')
-                for (minute,) in cr.fetchall():
-                    if minute in before:
-                        cr.execute('UPDATE woow_document_denied_budget SET count = %s '
-                                   'WHERE bucket_minute = %s', (before[minute], minute))
-                    else:
-                        cr.execute('DELETE FROM woow_document_denied_budget '
-                                   'WHERE bucket_minute = %s', (minute,))
-        self.addCleanup(restore)
-
-    def _source(self, ip):
-        return hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, source_key(ip))
-
-    def _new_source(self):
-        """A rate-limit source nobody used before (its own IPv6 /64)."""
-        ip = '2001:db8:%x:%x::1' % (secrets.randbelow(0xffff), secrets.randbelow(0xffff))
-        self._committed_sources.add(self._source(ip))
-        return ip
-
-    def _inside_one_minute(self):
-        """Wait so that the next transactions of a try start in one minute bucket."""
-        self.cr.execute('SELECT EXTRACT(SECOND FROM clock_timestamp())')
-        second_now = float(self.cr.fetchone()[0])
-        if second_now > 50:
-            time.sleep(61 - second_now)
-
-    def test_source_limit_rejects_a_stale_snapshot_from_another_link(self):
-        """Two real Repeatable Read transactions of one source, on two links.
-
-        B takes its snapshot first. A then records the source's last allowed denial
-        on the other link and commits. A COUNT over audit rows in B's snapshot would
-        still see the old total, so B would pass the limit as well. The locked source
-        counter makes B fail with serialization_failure instead, which Odoo retries;
-        the retry reads the committed count and is limited.
-        """
-        limit = 3
-        first, second = self._commit_links(2)
-
-        def attempt(env, ip, share_id):
-            # The decision of the share controller: refuse at the limit, else record.
-            log = env['woow.document.log']
-            prior = log._count_denied_across_shares('share_access', ip)
-            if prior is None or prior >= limit:
-                return 'limited'
-            log._log_event('share_access', result='denied', channel='share',
-                           share_id=share_id, ip=ip)
-            return 'counted'
-
-        # Isolate the source counter: no capacity slot is reserved or committed here
-        # (test_new_sources_never_conflict_on_the_capacity covers the capacity row).
-        with patch.object(type(self.env['woow.document.denied.budget']), '_take_slot',
-                          lambda budget: True):
-            for _try in range(3):
-                self._inside_one_minute()
-                ip = self._new_source()
-                minutes = set()
-                with self.registry.cursor() as setup:
-                    for _index in range(limit - 1):
-                        self.assertEqual(attempt(api.Environment(setup, SUPERUSER_ID, {}),
-                                                 ip, first), 'counted')
-                    minutes.add(_minute(setup))
-                with self.registry.cursor() as cr_b, self.registry.cursor() as cr_a:
-                    minutes.add(_minute(cr_b))   # B's first statement takes its snapshot.
-                    env_a = api.Environment(cr_a, SUPERUSER_ID, {})
-                    env_b = api.Environment(cr_b, SUPERUSER_ID, {})
-                    self.assertEqual(attempt(env_a, ip, first), 'counted')
-                    minutes.add(_minute(cr_a))
-                    cr_a.commit()
-                    with mute_logger('odoo.sql_db'), \
-                            self.assertRaises(errors.SerializationFailure):
-                        attempt(env_b, ip, second)
-                    cr_b.rollback()
-                    retried = attempt(env_b, ip, second)
-                    minutes.add(_minute(cr_b))
-                if len(minutes) > 1:
-                    continue   # a minute boundary fell inside this try; start a new source
-                self.assertEqual(retried, 'limited')
-                with self.registry.cursor() as check:
-                    check.execute(
-                        'SELECT count FROM woow_document_denied_counter '
-                        'WHERE event = %s AND ip_hash = %s', ('share_access', self._source(ip)))
-                    self.assertEqual(check.fetchall(), [(limit,)])
-                    # One bucket per source and minute, whichever link was refused.
-                    check.execute(
-                        'SELECT share_id, count FROM woow_document_log '
-                        'WHERE event = %s AND ip_hash = %s ORDER BY share_id',
-                        ('share_access', self._source(ip)))
-                    self.assertEqual(check.fetchall(), [(None, limit)])
-                return
-        self.fail('no try stayed within one minute')
-
-    def test_source_lock_reads_a_row_changed_after_the_insert_probe(self):
-        """The locked read, not INSERT ... DO NOTHING, refuses a stale count.
-
-        B takes its snapshot and runs the INSERT ... DO NOTHING of _lock_source on
-        the source's existing row, which does not lock a row its snapshot sees. Right
-        after that statement A records the source's last allowed failure on another
-        link and commits. Only SELECT ... FOR UPDATE then makes B fail with
-        serialization_failure; a plain read would return the stale count 2.
-        """
-        limit = 3
-        first, second = self._commit_links(2)
-        event = 'share_unlock_failed'   # needs no capacity slot: nothing else is committed
-
-        def record(env, ip, share_id):
-            log = env['woow.document.log']
-            prior = log._count_denied_across_shares(event, ip)
-            self.assertLess(prior, limit)
-            log._log_event(event, result='denied', channel='share', share_id=share_id, ip=ip)
-
-        for _try in range(3):
-            self._inside_one_minute()
-            ip = self._new_source()
-            minutes = set()
-            with self.registry.cursor() as setup:
-                for _index in range(limit - 1):
-                    record(api.Environment(setup, SUPERUSER_ID, {}), ip, first)
-                minutes.add(_minute(setup))
-            with self.registry.cursor() as cr_b, self.registry.cursor() as cr_a:
-                minutes.add(_minute(cr_b))   # B's first statement takes its snapshot.
-                env_a = api.Environment(cr_a, SUPERUSER_ID, {})
-                env_b = api.Environment(cr_b, SUPERUSER_ID, {})
-                execute = cr_b.execute
-                probes = []
-
-                def execute_then_let_a_commit(query, params=None, log_exceptions=True):
-                    result = execute(query, params, log_exceptions)
-                    if not probes and 'INSERT INTO woow_document_denied_counter' in str(query):
-                        probes.append(cr_b.rowcount)   # 0: DO NOTHING on a row B can see
-                        record(env_a, ip, first)
-                        minutes.add(_minute(cr_a))
-                        cr_a.commit()
-                    return result
-
-                with patch.object(cr_b, 'execute', execute_then_let_a_commit), \
-                        mute_logger('odoo.sql_db'), \
-                        self.assertRaises(errors.SerializationFailure):
-                    env_b['woow.document.log']._count_denied_across_shares(event, ip)
-                self.assertEqual(probes, [0])
-                cr_b.rollback()
-                retried = env_b['woow.document.log']._count_denied_across_shares(event, ip)
-                minutes.add(_minute(cr_b))
-                cr_b.rollback()
-            if len(minutes) > 1:
-                continue   # a minute boundary fell inside this try; start a new source
-            self.assertEqual(retried, limit)
-            return
-        self.fail('no try stayed within one minute')
-
-    def test_new_sources_never_conflict_on_the_capacity(self):
-        """Two new sources on two links reserve capacity without serialization failure.
-
-        B takes its snapshot first; A records a refusal of another new source on the
-        other link and commits. Both reserve slots of the same minute (a counter row
-        and a bucket each), in short transactions of their own, so B's refusal is
-        recorded at once instead of failing on a shared minute row.
-        """
-        first, second = self._commit_links(2)
-        self._keep_capacity_rows()
-        for _try in range(3):
-            self._inside_one_minute()
-            ip_a, ip_b = self._new_source(), self._new_source()
-            with self.registry.cursor() as cr_b, self.registry.cursor() as cr_a:
-                cr_b.execute('SELECT 1')   # B's first statement takes its snapshot.
-                env_a = api.Environment(cr_a, SUPERUSER_ID, {})
-                env_b = api.Environment(cr_b, SUPERUSER_ID, {})
-                before = _budget(env_b)
-                self.assertEqual(env_a['woow.document.log']._log_event(
-                    'share_access', result='denied', channel='share',
-                    share_id=first, ip=ip_a), 1)
-                minutes = {_minute(cr_a), _minute(cr_b)}
-                cr_a.commit()
-                self.assertEqual(env_b['woow.document.log']._log_event(
-                    'share_access', result='denied', channel='share',
-                    share_id=second, ip=ip_b), 1)
-                cr_b.commit()
-            if len(minutes) > 1:
-                continue   # a minute boundary fell inside this try; use new sources
-            with self.registry.cursor() as check:
-                check.execute('SELECT count FROM woow_document_denied_budget '
-                              'WHERE bucket_minute = %s', (minutes.pop(),))
-                self.assertEqual(check.fetchone()[0], before + 4)
-                check.execute('SELECT ip_hash, share_id, count FROM woow_document_log '
-                              'WHERE ip_hash = ANY(%s) ORDER BY ip_hash',
-                              ([self._source(ip_a), self._source(ip_b)],))
-                self.assertEqual(check.fetchall(), sorted(
-                    [(self._source(ip_a), None, 1), (self._source(ip_b), None, 1)]))
-            return
-        self.fail('no try stayed within one minute')
-
-    def test_user_agent_with_nul_never_loses_a_refusal(self):
-        """A refusal whose User-Agent holds NUL is recorded like any other one.
-
-        A new source's slots are committed in their own transactions before its rows
-        are written. Written as is, NUL would make the audit write fail and roll the
-        request back: its counter row and bucket would be lost while both slots stay
-        used, so such refusals would use up the capacity without being counted. The
-        cleaned header is written and the refusal commits with two slots.
-        """
-        self._keep_capacity_rows()
-        ip = self._new_source()
-        with self.registry.cursor() as cr:
-            env = api.Environment(cr, SUPERUSER_ID, {})
-            minute = _minute(cr)
-            before = _budget(env)
-            self.assertEqual(env['woow.document.log']._log_event(
-                'share_access', result='denied', channel='share', ip=ip,
-                user_agent='fixture\x00agent\r\n'), 1)
-        with self.registry.cursor() as check:
-            check.execute('SELECT count FROM woow_document_denied_counter '
-                          'WHERE event = %s AND ip_hash = %s', ('share_access', self._source(ip)))
-            self.assertEqual(check.fetchall(), [(1,)])
-            check.execute("SELECT count, user_agent FROM woow_document_log "
-                          "WHERE result = 'denied' AND ip_hash = %s", (self._source(ip),))
-            self.assertEqual(check.fetchall(), [(1, 'fixtureagent')])
-            self.assertEqual(_budget_version(check, minute)[0], before + 2)
-
-    def test_full_minute_row_is_never_rewritten_from_a_stale_snapshot(self):
-        """A snapshot that still shows room gets no slot once the minute is full.
-
-        B takes its snapshot while the minute has room; another transaction then
-        uses the last slot and commits. B's snapshot still shows room, so B asks its
-        own short transaction for a slot: the minute row is full there, and B gets
-        none while the row keeps its count and its row version.
-        """
-        self._keep_capacity_rows()
-        maximum = document_log_module.MAX_DENIED_ROWS_PER_MIN
-        for _try in range(3):
-            self._inside_one_minute()
-            with self.registry.cursor() as setup:
-                minute = _minute(setup)
-                _set_budget(setup, minute, maximum - 1)
-            with self.registry.cursor() as cr_b:
-                if _minute(cr_b) != minute:   # B's first statement takes its snapshot.
-                    continue
-                env_b = api.Environment(cr_b, SUPERUSER_ID, {})
-                with self.registry.cursor() as other:
-                    _set_budget(other, minute, maximum)
-                with self.registry.cursor() as check:
-                    full = _budget_version(check, minute)
-                self.assertEqual(_budget(env_b), maximum - 1)
-                self.assertFalse(env_b['woow.document.denied.budget']._take_slot())
-                cr_b.rollback()
-            with self.registry.cursor() as check:
-                self.assertEqual(_budget_version(check, minute), full)
-                self.assertEqual(full[0], maximum)
-            return
-        self.fail('no try stayed within one minute')
-
-    def _request_after_the_last_slot_went(self, call):
-        """What ``call(env, ip, digest)`` writes as a request whose snapshot still shows a free slot.
-
-        B takes its snapshot while the capacity of the minute stands one below its maximum;
-        another request then takes the last slot and commits. ``call`` is B, on a new source,
-        and sees one slot free in its own snapshot, while the short transaction in which it
-        reserves the slot sees none. Returns the answer of ``call``, the counter rows and the
-        audit buckets of the source that were committed, and the capacity row of the minute
-        before and after the call; None when a minute boundary fell inside the try.
-        """
-        maximum = document_log_module.MAX_DENIED_ROWS_PER_MIN
-        self._inside_one_minute()
-        ip = self._new_source()
-        digest = self._source(ip)
-        with self.registry.cursor() as setup:
-            minute = _minute(setup)
-            _set_budget(setup, minute, maximum - 1)
-        with self.registry.cursor() as cr_b:
-            if _minute(cr_b) != minute:   # B's first statement takes its snapshot.
-                return None
-            env_b = api.Environment(cr_b, SUPERUSER_ID, {})
-            with self.registry.cursor() as other:
-                _set_budget(other, minute, maximum)
-            with self.registry.cursor() as check:
-                before = _budget_version(check, minute)
-            self.assertEqual(_budget(env_b), maximum - 1)
-            answer = call(env_b, ip, digest)
-            cr_b.rollback()
-        if self._db_minute() != minute:
-            return None
-        with self.registry.cursor() as check:
-            check.execute('SELECT event, count FROM woow_document_denied_counter '
-                          'WHERE ip_hash = %s', (digest,))
-            counters = check.fetchall()
-            check.execute('SELECT event, count FROM woow_document_log '
-                          "WHERE result = 'denied' AND ip_hash = %s", (digest,))
-            buckets = check.fetchall()
-            return answer, counters, buckets, before, _budget_version(check, minute)
-
-    def _assert_nothing_is_kept_without_a_slot(self, call, answer):
-        """The request of ``_request_after_the_last_slot_went`` got no slot and kept no row."""
-        self._keep_capacity_rows()
-        for _try in range(3):
-            result = self._request_after_the_last_slot_went(call)
-            if result is not None:
-                break   # else a minute boundary fell inside this try; start a new source
-        else:
-            self.fail('no try stayed within one minute')
-        got, counters, buckets, before, after = result
-        self.assertEqual(got, answer)
-        self.assertEqual((counters, buckets), ([], []))
-        # The capacity row keeps its count and its row version: nothing took or gave back a slot.
-        self.assertEqual(after, before)
-        self.assertEqual(after[0], document_log_module.MAX_DENIED_ROWS_PER_MIN)
-
-    def test_a_counter_row_is_not_kept_when_the_last_slot_went_after_the_snapshot(self):
-        """The row that finds no slot is rolled back with its short transaction.
-
-        B's snapshot shows a free slot, so B inserts the counter row of its source and asks for
-        the slot in the same short transaction, which sees the capacity used up. The transaction
-        commits when its block ends, so unless the insert is undone the row stays committed
-        without a slot, and the slots used would no longer be the rows written. B answers None
-        and no row is left.
-        """
-        self._assert_nothing_is_kept_without_a_slot(
-            lambda env, ip, digest: env['woow.document.denied.counter']._count_below(
-                'share_access', digest, 5), None)
-
-    def test_an_audit_bucket_is_not_kept_when_the_last_slot_went_after_the_snapshot(self):
-        """The same for the audit bucket of a refusal: B answers 0 and no bucket is left."""
-        def bump(env, ip, _digest):
-            log = env['woow.document.log']
-            return log._bump_denied_bucket(
-                log._event_values('share_access', result='denied', channel='share', ip=ip))
-
-        self._assert_nothing_is_kept_without_a_slot(bump, 0)
-
-    def test_unlock_refused_for_the_source_limit_neither_waits_for_nor_fails_on_other_requests(self):
-        """share_unlock turns away a source that used its limit without a lock or a retry.
-
-        The source's counter row stands at its limit. B, a request of the source, takes its
-        snapshot first. A, another request of the source, is refused and commits the source's
-        bucket of rate-limited requests. A refusal that locked the counter row again and wrote
-        the bucket inside B's own Repeatable Read transaction would fail on A's bucket with
-        serialization_failure, and Odoo would sleep and run the request again with the worker
-        and its connection (T-SHARE-49 shows it over real HTTP). The refusal adds to the bucket
-        with a statement of its own that commits at once, and B holds no lock when it is done.
-        """
-        self._keep_capacity_rows()
-        limit = self.env['woow.document.settings']._get_settings().denied_rate_per_min
-        controller = share_controller.WoowDocShareController()
-        public = self.env.ref('base.public_user')
-
-        def unlock(env, ip):
-            """The route up to its refusal; a link that is only a stand-in is enough for it."""
-            access = share_controller.ShareAccess(
-                SimpleNamespace(id=1, has_password=True), None, ip, '', None)
-            with patch.object(share_controller, 'request', SimpleNamespace(env=env)), \
-                    patch.object(controller, '_share_entry', return_value=access), \
-                    patch.object(streaming, 'too_many_requests', return_value='429'):
-                return controller.share_unlock.original_endpoint(controller, 1)
-
-        def used(cr, minute):
-            row = _budget_version(cr, minute)
-            return row[0] if row else 0
-
-        for _try in range(3):
-            self._inside_one_minute()
-            ip = self._new_source()
-            digest = self._source(ip)
-            minutes = set()
-            with self.registry.cursor() as setup:
-                setup.execute(
-                    """INSERT INTO woow_document_denied_counter
-                           (event, ip_hash, bucket_minute, count)
-                       VALUES ('share_unlock_failed', %s,
-                               date_trunc('minute', now() AT TIME ZONE 'UTC'), %s)""",
-                    (digest, limit))
-                minutes.add(_minute(setup))
-                before = used(setup, _minute(setup))
-            with self.registry.cursor() as cr_b, self.registry.cursor() as cr_a:
-                minutes.add(_minute(cr_b))   # B's first statement takes its snapshot.
-                env_a = api.Environment(cr_a, public.id, {})
-                env_b = api.Environment(cr_b, public.id, {})
-                self.assertEqual(unlock(env_a, ip), '429')
-                minutes.add(_minute(cr_a))
-                cr_a.commit()
-                self.assertEqual(unlock(env_b, ip), '429')
-                minutes.add(_minute(cr_b))
-                with self.registry.cursor() as other:
-                    # B is still open: it holds no lock on the source's counter row.
-                    other.execute(
-                        """SELECT count FROM woow_document_denied_counter
-                           WHERE event = 'share_unlock_failed' AND ip_hash = %s
-                           FOR UPDATE NOWAIT""", (digest,))
-                    self.assertEqual(other.fetchall(), [(limit,)])
-                cr_b.commit()
-            if len(minutes) > 1:
-                continue   # a minute boundary fell inside this try; start a new source
-            with self.registry.cursor() as check:
-                check.execute(
-                    """SELECT count FROM woow_document_denied_counter
-                       WHERE event = 'share_unlock_failed' AND ip_hash = %s""", (digest,))
-                self.assertEqual(check.fetchall(), [(limit,)])
-                # Both refusals are in the one bucket of the source, which took one slot.
-                check.execute(
-                    """SELECT event, share_id, link_ref, count FROM woow_document_log
-                       WHERE result = 'denied' AND ip_hash = %s""", (digest,))
-                self.assertEqual(check.fetchall(), [('rate_limited', None, None, 2)])
-                self.assertEqual(used(check, minutes.pop()), before + 1)
-            return
-        self.fail('no try stayed within one minute')
-
-    def _db_minute(self):
-        """The minute of the database clock now, read on a connection of its own."""
-        with self.registry.cursor() as cr:
-            cr.execute("SELECT date_trunc('minute', clock_timestamp() AT TIME ZONE 'UTC')")
-            return cr.fetchone()[0]
-
-    def _used_slots(self, minute):
-        """The capacity slots reserved in one minute, read on a connection of its own."""
-        with self.registry.cursor() as cr:
-            row = _budget_version(cr, minute)
-        return row[0] if row else 0
-
-    def _between_statements(self, call, hooks):
-        """Run ``call(env)`` with other requests running in the middle of its short transaction.
-
-        ``call`` is one request and gets an environment of its own; its short transaction
-        (``_short_transaction``) is the first connection that ``registry.cursor()`` hands out
-        meanwhile. ``hooks`` are ``(fragment, action)`` pairs: right after the next statement
-        of that transaction whose text holds the fragment, ``action()`` runs (another request,
-        complete, committed at once) and the pair is used up. Returns the answer of ``call``,
-        the ``rowcount`` of each hooked statement, which says what it found, and the text of
-        every statement of that transaction.
-        """
-        original = self.registry.cursor
-        borrowed = []
-        pending = list(hooks)
-        matched = []
-        statements = []
-
-        def cursor(*args, **kwargs):
-            side = original(*args, **kwargs)
-            borrowed.append(side)
-            if len(borrowed) == 1:
-                execute = side.execute
-
-                def execute_then_run_the_others(query, params=None, log_exceptions=True):
-                    result = execute(query, params, log_exceptions)
-                    statements.append(str(query))
-                    if pending and pending[0][0] in str(query):
-                        _fragment, action = pending.pop(0)
-                        matched.append(side.rowcount)
-                        action()
-                    return result
-                side.execute = execute_then_run_the_others
-            return side
-
-        # The others borrow turns of their own, whatever db_maxconn the server runs with.
-        with self.registry.cursor() as request_cr, \
-                patch.object(self.registry, 'cursor', cursor), \
-                patch.object(document_log_module, '_SLOT_GATE', threading.BoundedSemaphore(2)):
-            answer = call(api.Environment(request_cr, SUPERUSER_ID, {}))
-        self.assertEqual(pending, [], 'the other requests did not run in the middle of the call')
-        return answer, matched, statements
-
-    def _race_count_below(self, limit, fragments):
-        """``_count_below`` of a new source with other requests of the source in the middle of it.
-
-        After each statement of its short transaction named by ``fragments`` (in this order),
-        another request of the source runs ``_count_below`` in full. Returns the answer of the
-        call, the answers of the others, the rows each hooked statement found, the committed
-        counter rows of the source and the slots that were reserved; None when a minute
-        boundary fell inside (the counters are per minute), so that the caller tries again.
-        """
-        self._inside_one_minute()
-        digest = self._source(self._new_source())
-        minute = self._db_minute()
-        slots = self._used_slots(minute)
-        others = []
-        with self.registry.cursor() as cr_other:
-            env_other = api.Environment(cr_other, SUPERUSER_ID, {})
-
-            def another_request():
-                others.append(env_other['woow.document.denied.counter']._count_below(
-                    'share_access', digest, limit))
-
-            answer, matched, _statements = self._between_statements(
-                lambda env: env['woow.document.denied.counter']._count_below(
-                    'share_access', digest, limit),
-                [(fragment, another_request) for fragment in fragments])
-        if self._db_minute() != minute:
-            return None
-        with self.registry.cursor() as check:
-            check.execute('SELECT count FROM woow_document_denied_counter '
-                          'WHERE event = %s AND ip_hash = %s', ('share_access', digest))
-            stored = check.fetchall()
-        return answer, others, matched, stored, self._used_slots(minute) - slots
-
-    def test_a_row_that_another_request_creates_during_the_count_is_counted_on(self):
-        """A row that another request creates in the middle of the count is counted on.
-
-        The statement that raises the source's row while it is below the limit matches no row
-        both when the source has none yet and when its row is at the limit. A and B are two
-        requests of a source with no row this minute: A's statement finds nothing, B then
-        inserts the row, takes its slot and commits, and the next statement of A sees that row.
-        It stands below the limit, so A counts on it. Answering 0 (the limit is used) turns away
-        a refusal that the source still had within its limit and leaves its counter one short,
-        against the exact count that ``_count_below`` promises however requests interleave.
-        """
-        self._keep_capacity_rows()
-        update = 'UPDATE woow_document_denied_counter'
-        select = 'SELECT count FROM woow_document_denied_counter'
-        cases = (
-            # name, limit, the statements of A after which another request of the source runs
-            # in full, and what comes out: the answer of A, the answers of the others, the rows
-            # those statements found, the counter rows left, the slots used (the first
-            # other request's row, once)
-            ('the first statement found no row, the limit is far', 10, [update],
-             (2, [1], [0], [(2,)], 1)),
-            ('the row B created is at the limit', 1, [update],
-             (0, [1], [0], [(1,)], 1)),
-            ('the limit is used between A reading the row and counting on it', 2,
-             [update, select], (0, [1, 2], [0, 1], [(2,)], 1)),
-            ('A read no row and B created it before A inserted its own', 10, [select],
-             (2, [1], [0], [(2,)], 1)),
-        )
-        for name, limit, fragments, expected in cases:
-            with self.subTest(name):
-                for _try in range(3):
-                    result = self._race_count_below(limit, fragments)
-                    if result is not None:
-                        break   # else a minute boundary fell inside this try; use a new source
-                else:
-                    self.fail('no try stayed within one minute')
-                self.assertEqual(result, expected)
-
-    def test_a_refusal_that_races_the_first_of_its_source_is_counted_not_limited(self):
-        """The same race through ``_refuse``: both requests are answered 404 and recorded.
-
-        A source far below ``denied_rate_per_min`` is answered 'counted' by both requests and
-        has its two refusals in the counter row and in the one bucket. No ``rate_limited``
-        event, and no capacity slot for it, is written for a source that is not at its limit.
-        """
-        self._keep_capacity_rows()
-        limit = 10
-        for _try in range(3):
-            self._inside_one_minute()
-            ip = self._new_source()
-            digest = self._source(ip)
-            minute = self._db_minute()
-            slots = self._used_slots(minute)
-            others = []
-            with self.registry.cursor() as cr_other:
-                env_other = api.Environment(cr_other, SUPERUSER_ID, {})
-                answer, matched, _statements = self._between_statements(
-                    lambda env: env['woow.document.log']._refuse('share_access', ip, limit=limit),
-                    [('UPDATE woow_document_denied_counter', lambda: others.append(
-                        env_other['woow.document.log']._refuse(
-                            'share_access', ip, limit=limit)))])
-            if self._db_minute() != minute:
-                continue   # a minute boundary fell inside this try; start a new source
-            self.assertEqual((answer, others, matched), ('counted', ['counted'], [0]))
-            with self.registry.cursor() as check:
-                check.execute('SELECT event, count FROM woow_document_denied_counter '
-                              'WHERE ip_hash = %s', (digest,))
-                self.assertEqual(check.fetchall(), [('share_access', 2)])
-                check.execute("SELECT event, count FROM woow_document_log "
-                              "WHERE result = 'denied' AND ip_hash = %s ORDER BY event",
-                              (digest,))
-                self.assertEqual(check.fetchall(), [('share_access', 2)])
-            # The counter row and the bucket, one slot each; nothing for a refusal turned away.
-            self.assertEqual(self._used_slots(minute) - slots, 2)
-            return
-        self.fail('no try stayed within one minute')
-
-    def test_a_source_that_used_its_limit_is_turned_away_after_two_statements(self):
-        """The refusals of a source over its limit, which anybody can send, cost the least.
-
-        The counting statement matches no row once the limit is used, and one read of the row
-        shows that it is at the limit: no further statement counts on it, inserts or takes a slot.
-        """
-        self._keep_capacity_rows()
-        limit = 2
-        for _try in range(3):
-            self._inside_one_minute()
-            ip = self._new_source()
-            digest = self._source(ip)
-            minute = self._db_minute()
-            log = self.env['woow.document.log']
-            self.assertEqual([log._refuse('share_access', ip, limit=limit) for _count in range(2)],
-                             ['counted', 'counted'])
-            slots = self._used_slots(minute)
-            answer, matched, statements = self._between_statements(
-                lambda env: env['woow.document.denied.counter']._count_below(
-                    'share_access', digest, limit), [])
-            if self._db_minute() != minute:
-                continue   # a minute boundary fell inside this try; start a new source
-            self.assertEqual(answer, 0)
-            counter_statements = [text.split()[0] for text in statements
-                                  if 'woow_document_denied_counter' in text]
-            self.assertEqual(counter_statements, ['UPDATE', 'SELECT'])
-            self.assertEqual(self._used_slots(minute), slots)
-            return
-        self.fail('no try stayed within one minute')
-
-
-@tagged('woow_docmgmt_core')
-class TestFailureBucketsOfDeletedLinks(TransactionCase):
-    """Buckets of counted wrong passwords never merge when their links are deleted.
-
-    Deleting a link clears ``share_id`` of its audit rows. The buckets of one source
-    and minute on two links differ only by that link, so a bucket key built on
-    ``share_id`` would make them equal once both links are gone, and the unique index
-    would refuse the delete of the second link (and with it the maintenance job and a
-    purge of the folder that holds the links).
-    """
-
-    def setUp(self):
-        super().setUp()
-        self.admin = self.env.ref('base.user_admin')
-        self.log = self.env['woow.document.log']
-        self.folder = self.env['woow.document.folder'].sudo().create({
-            'name': 'Failure bucket folder', 'owner_id': self.admin.id})
-        self.keys = self.env['woow.document.settings']._share_keys()
-
-    def _link(self):
-        share, _code = self.env['woow.document.share'].with_user(self.admin)._issue({
-            'share_type': 'folder', 'folder_id': self.folder.id,
-            'expire_at': fields.Datetime.now() + timedelta(days=1),
-            'password': secrets.token_urlsafe(16)})
-        return share
-
-    def _wrong_password(self, share, ip):
-        """What share_unlock records for a counted wrong password."""
-        return self.log._log_event('share_unlock_failed', result='denied', channel='share',
-                                   share_id=share.id, ip=ip)
-
-    def _rows(self, ip):
-        """The source's wrong password buckets as {link id: (live link id, count)}."""
-        self.env.flush_all()
-        self.env.invalidate_all()
-        digest = hmac_ip(self.keys.k_ip, source_key(ip))
-        rows = self.log.sudo().search([('event', '=', 'share_unlock_failed'),
-                                       ('ip_hash', '=', digest)])
-        self.assertEqual(len(rows), len(set(rows.mapped('link_ref'))))
-        return {row.link_ref: (row.share_id.id, row.count) for row in rows}
-
-    def _fixture(self, ip):
-        """Three links with buckets of one source in one minute, and a link that stays."""
-        shares = self._link() | self._link() | self._link()
-        for share in shares:
-            self.assertEqual(self._wrong_password(share, ip), 1)
-        self.assertEqual(self._wrong_password(shares[0], ip), 2)
-        bystander = self._link()
-        self.assertEqual(self._wrong_password(bystander, ip), 1)
-        self.log._log_event('upload', channel='backend', detail={'files': 1})
-        return shares, bystander
-
-    def _assert_buckets_kept(self, ip, shares, bystander, upload_rows):
-        self.assertFalse(shares.exists())
-        self.assertTrue(bystander.exists())
-        self.assertEqual(self._rows(ip), {
-            shares[0].id: (False, 2), shares[1].id: (False, 1), shares[2].id: (False, 1),
-            bystander.id: (bystander.id, 1)})
-        digest = hmac_ip(self.keys.k_ip, source_key(ip))
-        counter = self.env['woow.document.denied.counter'].sudo().search([
-            ('event', '=', 'share_unlock_failed'), ('ip_hash', '=', digest)])
-        self.assertEqual(counter.count, 5)
-        self.assertEqual(self.log.sudo().search([('event', '=', 'upload')]), upload_rows)
-
-    def test_deleting_links_that_share_a_failure_minute_keeps_their_buckets(self):
-        orders = {
-            'in order': lambda shares: [share.unlink() for share in shares],
-            'reversed': lambda shares: [share.unlink() for share in shares[::-1]],
-            'in one call': lambda shares: shares.unlink(),
-        }
-        for number, (name, delete) in enumerate(orders.items()):
-            with self.subTest(order=name):
-                ip = '198.51.100.%d' % (170 + number)
-                shares, bystander = self._fixture(ip)
-                upload_rows = self.log.sudo().search([('event', '=', 'upload')])
-                with self.cr.savepoint():
-                    delete(shares.sudo())
-                self._assert_buckets_kept(ip, shares, bystander, upload_rows)
-
-    def test_maintenance_deletes_old_links_that_share_a_failure_minute(self):
-        ip = '198.51.100.180'
-        shares, bystander = self._fixture(ip)
-        upload_rows = self.log.sudo().search([('event', '=', 'upload')])
-        old = fields.Datetime.now() - timedelta(days=SHARE_RECORD_RETENTION_DAYS + 1)
-        shares[0].sudo().write({'state': 'revoked', 'revoked_at': old})
-        shares[1].sudo().write({'state': 'expired', 'expire_at': old})
-        shares[2].sudo().write({'state': 'revoked', 'revoked_at': old})
-        self.env['woow.document.share'].sudo()._maintenance_run()
-        self._assert_buckets_kept(ip, shares, bystander, upload_rows)
-
-    def test_module_update_gives_earlier_denied_rows_their_link_key(self):
-        """Rows an earlier version wrote keep their link in ``link_ref`` and stay unique.
-
-        An earlier version keyed the buckets on ``share_id`` and had no ``link_ref``.
-        The update copies the link of every such denied row before the new index is
-        built, drops the old index, and a second update leaves everything as it is.
-        """
-        cr = self.env.cr
-        ip = '198.51.100.190'
-        digest = hmac_ip(self.keys.k_ip, source_key(ip))
-        shares = self._link() | self._link()
-        cr.execute('DROP INDEX woow_document_log_denied_link_bucket')
-        cr.execute("""CREATE UNIQUE INDEX woow_document_log_denied_bucket
-                      ON woow_document_log (event, (COALESCE(ip_hash, '')),
-                          (COALESCE(share_id, 0)), bucket_minute)
-                      WHERE result = 'denied'""")
-        for share in shares:
-            for event in ('share_access', 'share_unlock_failed'):
-                cr.execute("""INSERT INTO woow_document_log
-                                  (create_uid, create_date, write_uid, write_date, event, result,
-                                   channel, share_id, ip_hash, bucket_minute, count, detail)
-                              VALUES (1, now(), 1, now(), %s, 'denied', 'share', %s, %s,
-                                      date_trunc('minute', now() AT TIME ZONE 'UTC'), 1, '{}'::jsonb)""",
-                           (event, share.id, digest))
-        self.env.invalidate_all()
-        self.log.init()
-        cr.execute("SELECT to_regclass('woow_document_log_denied_bucket') IS NULL, "
-                   "to_regclass('woow_document_log_denied_link_bucket') IS NOT NULL")
-        self.assertEqual(cr.fetchone(), (True, True))
-        cr.execute("""SELECT event, share_id, link_ref FROM woow_document_log
-                      WHERE ip_hash = %s ORDER BY event, share_id""", (digest,))
-        expected = [(event, share, share) for event in ('share_access', 'share_unlock_failed')
-                    for share in shares.ids]
-        self.assertEqual(cr.fetchall(), expected)
-        self.log.init()
-        shares.sudo().unlink()
-        cr.execute("""SELECT event, share_id, link_ref FROM woow_document_log
-                      WHERE ip_hash = %s ORDER BY event, link_ref""", (digest,))
-        self.assertEqual(cr.fetchall(), [(event, None, share) for event in (
-            'share_access', 'share_unlock_failed') for share in shares.ids])
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Source audit folder', 'owner_id': self.env.ref('base.user_admin').id})
+        self.doc = self.env['woow.document'].sudo().create({
+            'name': 'source.txt', 'folder_id': folder.id,
+            'datas': base64.b64encode(b'source-content')})
+        self.params = self.env['ir.config_parameter'].sudo()
+        self.authenticate('admin', 'admin')
+
+    def _digest(self, ip):
+        return hmac_ip(self.env['woow.document.settings']._audit_ip_key(), ip)
+
+    def _download(self, path=None, headers=None):
+        """The one audit row that a download of the fixture leaves."""
+        log = self.env['woow.document.log'].sudo()
+        domain = [('event', '=', 'download'), ('document_id', '=', self.doc.id)]
+        before = log.search(domain)
+        response = self.url_open(path or '/woow_document/doc/%d/download' % self.doc.id,
+                                 headers=headers)
+        self.assertEqual(response.status_code, 200)
+        row = log.search(domain) - before
+        self.assertEqual(len(row), 1)
+        return row
+
+    def test_the_recorded_source_follows_the_log_mode(self):
+        digest = self._digest('127.0.0.1')
+        for mode, shown in (('truncate', '127.0.0.0/24'), ('hash', digest), ('none', False)):
+            with self.subTest(mode=mode):
+                self.params.set_param('woow_document_management.log_ip_mode', mode)
+                row = self._download()
+                self.assertEqual(row.channel, 'backend')
+                self.assertRegex(row.ip_hash, '^[0-9a-f]{64}$')
+                self.assertEqual(row.ip_hash, digest)
+                self.assertEqual(row.ip_display, shown)
+
+    def test_only_a_trusted_proxy_names_the_recorded_source(self):
+        self.params.set_param('woow_document_management.client_ip_header', 'X-Real-IP')
+        named = {'X-Real-IP': '203.0.113.9'}
+        for trusted, source, shown in (('127.0.0.1/32', '203.0.113.9', '203.0.113.0/24'),
+                                       ('', '127.0.0.1', '127.0.0.0/24'),
+                                       ('10.0.0.0/8', '127.0.0.1', '127.0.0.0/24')):
+            with self.subTest(trusted=trusted):
+                self.params.set_param('woow_document_management.trusted_proxies', trusted)
+                row = self._download(headers=named)
+                self.assertEqual(row.ip_hash, self._digest(source))
+                self.assertEqual(row.ip_display, shown)
+        # without the header setting the forwarded address is not read, trusted or not
+        self.params.set_param('woow_document_management.client_ip_header', '')
+        self.params.set_param('woow_document_management.trusted_proxies', '127.0.0.1/32')
+        self.assertEqual(self._download(headers=named).ip_hash, self._digest('127.0.0.1'))
+
+    def test_a_portal_download_is_recorded_with_the_portal_channel(self):
+        password = secrets.token_urlsafe(16)
+        partner = self.env['res.partner'].sudo().create({'name': 'Source audit reader'})
+        user = self.env['res.users'].sudo().create({
+            'name': 'Source audit reader', 'login': 'wdoc-audit-portal', 'password': password,
+            'partner_id': partner.id,
+            'groups_id': [Command.set([self.env.ref('base.group_portal').id])]})
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.doc.folder_id.id, 'subject_type': 'partner',
+            'partner_id': partner.id, 'level': 'read'})
+        self.authenticate(user.login, password)
+        row = self._download(path='/my/docs/file/%d/download' % self.doc.id)
+        self.assertEqual((row.channel, row.user_id), ('portal', user))
+        self.assertEqual(row.folder_id, self.doc.folder_id)
+        self.assertEqual(row.ip_hash, self._digest('127.0.0.1'))
+        self.assertEqual(row.ip_display, '127.0.0.0/24')
 
 
 @tagged('woow_docmgmt_core')

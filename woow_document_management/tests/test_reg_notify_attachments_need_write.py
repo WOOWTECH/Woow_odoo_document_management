@@ -9,9 +9,7 @@ working for a follower who can only read.
 """
 import base64
 import secrets
-from datetime import timedelta
 
-from odoo import fields
 from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import JsonRpcException, new_test_user
@@ -41,14 +39,10 @@ def _fixture(env, suffix, password=None):
     rows = {level: access.create({'folder_id': folder.id, 'subject_type': 'user',
                                   'user_id': users[who].id, 'level': level})
             for who, level in (('reader', 'read'), ('editor', 'edit'))}
-    share, _token = env['woow.document.share'].with_user(admin)._issue({
-        'share_type': 'folder', 'folder_id': folder.id,
-        'expire_at': fields.Datetime.now() + timedelta(days=1)})
     records = {
         'woow.document': document, 'woow.document.folder': folder,
         'woow.document.folder.access': rows['read'],
         'woow.document.tag': env['woow.document.tag'].sudo().create({'name': 'Notify %s' % suffix}),
-        'woow.document.share': share,
         'woow.document.log': env['woow.document.log'].sudo().create({
             'event': 'view', 'result': 'ok', 'channel': 'backend'})}
     assert set(records) == set(WOOW_MODELS)

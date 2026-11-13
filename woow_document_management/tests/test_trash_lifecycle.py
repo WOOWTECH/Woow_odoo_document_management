@@ -14,7 +14,6 @@ from odoo.tests import TransactionCase, tagged
 from odoo.tools import mute_logger
 
 from ..models import cron_jobs, trash_actions
-from ..services.client_ip import hmac_ip, source_key
 
 
 @tagged('woow_docmgmt_trash')
@@ -460,47 +459,6 @@ class TestPurgeBatches(TransactionCase):
             run(recent, stuck)
         self.assertEqual(activities.search_count(domain), 1)   # one activity a day
         self.assertTrue(self._all_exist(recent, stuck))
-
-    def _failing_link(self, folder, ip):
-        """A password link on the folder with a counted wrong password of the source."""
-        share, _code = self.env['woow.document.share'].with_user(self.admin)._issue({
-            'share_type': 'folder', 'folder_id': folder.id,
-            'expire_at': fields.Datetime.now() + timedelta(days=1),
-            'password': secrets.token_urlsafe(16)})
-        self.env['woow.document.log']._log_event(
-            'share_unlock_failed', result='denied', channel='share',
-            share_id=share.id, ip=ip)
-        return share
-
-    def test_purging_a_folder_deletes_its_links_with_their_failure_buckets(self):
-        """Links on a purged folder go with it, whatever their failure buckets are.
-
-        Two links of the folder have buckets of one source in one minute. The links
-        are deleted by the folder's cascade, which clears ``share_id`` of both
-        buckets at once; the buckets stay as audit rows, and the purge neither fails
-        nor skips the folder.
-        """
-        ip = '198.51.100.201'
-        folder = self.folders.create({'name': 'Link purge root', 'owner_id': self.admin.id})
-        document = self._doc(folder, 'in-link-folder.txt')
-        links = self._failing_link(folder, ip) | self._failing_link(folder, ip)
-        other = self.folders.create({'name': 'Link purge bystander', 'owner_id': self.admin.id})
-        bystander = self._failing_link(other, ip)
-        digest = hmac_ip(self.env['woow.document.settings']._share_keys().k_ip, source_key(ip))
-        folder.with_user(self.admin).action_trash()
-        self._expire(folder)
-        with self.assertNoLogs(trash_actions.__name__, 'WARNING'):
-            progress = self._cron()
-        self.assertEqual(progress, {'done': 2, 'remaining': 0})
-        self.assertTrue(self._none_exist(folder, document, links))
-        self.assertTrue(self._all_exist(other, bystander))
-        self.env.flush_all()
-        self.env.invalidate_all()
-        rows = self.env['woow.document.log'].sudo().search([
-            ('event', '=', 'share_unlock_failed'), ('ip_hash', '=', digest)])
-        self.assertEqual({row.link_ref: (row.share_id.id, row.count) for row in rows}, {
-            links[0].id: (False, 1), links[1].id: (False, 1), bystander.id: (bystander.id, 1)})
-
 
     def _stored(self, folder, name):
         """The stored value of a folder flag, read from the table."""
