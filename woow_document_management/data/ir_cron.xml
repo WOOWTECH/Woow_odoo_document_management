@@ -12,15 +12,6 @@
       <field name="interval_number">1</field>
       <field name="interval_type">days</field>
     </record>
-    <record id="ir_cron_woow_document_share_maintenance" model="ir.cron">
-      <field name="name">Documents: Expire and clean share links</field>
-      <field name="model_id" ref="model_woow_document"/>
-      <field name="state">code</field>
-      <field name="code">model._cron_share_maintenance()</field>
-      <field name="user_id" ref="base.user_root"/>
-      <field name="interval_number">1</field>
-      <field name="interval_type">hours</field>
-    </record>
     <record id="ir_cron_woow_document_quota" model="ir.cron">
       <field name="name">Documents: Check storage quota</field>
       <field name="model_id" ref="model_woow_document"/>

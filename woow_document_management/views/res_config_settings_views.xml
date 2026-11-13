@@ -9,17 +9,6 @@
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
                 <app name="woow_document_management" string="Documents" groups="base.group_system">
-                    <block title="Sharing">
-                        <setting string="Who may create links"><field name="woow_doc_share_link_policy"/></setting>
-                        <setting string="Require a share password"><field name="woow_doc_share_require_password"/></setting>
-                        <setting string="Default link lifetime (days)"><field name="woow_doc_share_default_days"/></setting>
-                        <setting string="Maximum link lifetime (days)"><field name="woow_doc_share_max_days"/></setting>
-                        <setting string="Share session (minutes)"><field name="woow_doc_share_session_minutes"/></setting>
-                        <setting string="Unlock attempts"><field name="woow_doc_share_unlock_max_fail"/></setting>
-                        <setting string="Unlock cooldown (minutes)"><field name="woow_doc_share_unlock_cooldown_min"/></setting>
-                        <setting string="Failed requests per minute"><field name="woow_doc_denied_rate_per_min"/></setting>
-                        <setting string="Public link base URL"><field name="woow_doc_share_link_base_url" placeholder="https://example.invalid"/></setting>
-                    </block>
                     <block title="Uploads and storage">
                         <setting string="Portal file limit (MiB)"><field name="woow_doc_portal_max_upload_mb"/></setting>
                         <setting string="Internal file limit (MiB)" help="Highest supported value is 95 MB."><field name="woow_doc_internal_max_upload_mb"/></setting>
@@ -40,7 +29,8 @@
                         <setting string="Audit retention (days)"><field name="woow_doc_log_retention_days"/></setting>
                         <setting string="Audit IP display"><field name="woow_doc_log_ip_mode"/></setting>
                         <setting string="Trusted proxy CIDRs" help="Networks of the reverse proxy that connects to Odoo. Only a request coming directly from one of them may name the client address in the header below. Leave empty to use the connecting address."><field name="woow_doc_trusted_proxies"/></setting>
-                        <setting string="Client IP header" help="Header in which the trusted proxy names the client address. The proxy must set it on every request and drop any value the client sent; the address limits failed share link attempts and appears in the audit log."><field name="woow_doc_client_ip_header"/></setting>
+                        <setting string="Client IP header" help="Header in which the trusted proxy names the client address. The proxy must set it on every request and drop any value the client sent; the address appears in the audit log."><field name="woow_doc_client_ip_header"/></setting>
+                        <setting string="Public address for notice emails"><field name="woow_doc_notice_base_url" placeholder="https://example.invalid"/></setting>
                         <setting string="Allow HTTP document links"><field name="woow_doc_allow_http_links"/></setting>
                         <setting string="Include names in email subjects"><field name="woow_doc_mail_subject_include_name"/></setting>
                         <setting string="Uninstall confirmation"><field name="woow_doc_uninstall_confirm"/></setting>
