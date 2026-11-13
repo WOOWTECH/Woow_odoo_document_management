@@ -18,6 +18,8 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
+from ..models.document_folder import _stored_flag
+
 _USER = 'woow_document_management.group_woow_document_user'
 _MANAGER = 'woow_document_management.group_woow_document_manager'
 _CEILING = 'A member cannot be granted more access than on the parent folder.'
@@ -331,7 +333,6 @@ class TestBooleanFlagsAreJudgedByWhatTheOrmKeeps(TransactionCase):
     # -- the reading itself ---------------------------------------------------------------------
     def test_the_flag_is_read_as_the_column_keeps_it(self):
         """``_stored_flag`` is ``bool(value)`` for a key that is named, and the default for one that is not."""
-        from ..models.document_folder import _stored_flag
         for label, value in _FALSE_LIKE + _TRUE_LIKE:
             with self.subTest(label):
                 kept = bool(value)

@@ -269,8 +269,8 @@ class TestOwnerStaysWithinTheCeiling(TransactionCase):
         values = {
             'an internal user outside the group': self.plain.id,
             'a portal user': self.portal.id,
-            'a user that does not exist': self.env['res.users'].sudo().search(
-                [], order='id desc', limit=1).id + 1000,
+            'a user that does not exist': self.env['res.users'].sudo().with_context(
+                active_test=False).search([], order='id desc', limit=1).id + 1000,
             'text': '5', 'a float': 5.5, 'a flag': True, 'zero': 0, 'a negative number': -3}
         restricted = self._folder('Ceiling checked restricted', members=[(caller, 'manage')])
         inheriting = self._folder('Ceiling checked inheriting', restricted=False,

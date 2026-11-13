@@ -701,6 +701,7 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
                     self.assertEqual(self._statements(rows, vals, cold=True),
                                      self._statements(rows, vals, cold=False))
 
+
 @tagged('woow_docmgmt_core')
 class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, TransactionCase):
     """``0``, ``0.0``, ``[]``, ``{}`` and ``()`` are a token or a field name in the database.

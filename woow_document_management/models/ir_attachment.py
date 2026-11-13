@@ -153,6 +153,7 @@ class IrAttachment(models.Model):
         # whether the write gives the rows a module model, judged as the column keeps the name
         to_module = 'res_model' in vals and is_module_model(vals['res_model'])
         if not self.env.su and any(key in vals for key in GUARDED_WRITE_KEYS):
+            # the checks of a res_field here, in the move below and in _woow_check_field_target overlap: defence in depth
             if to_module and char_is_set(vals.get('res_field')):
                 raise AccessError(_('Document field attachments cannot be reassigned.'))
             self.env.cr.execute(  # sql-ok: Q6
