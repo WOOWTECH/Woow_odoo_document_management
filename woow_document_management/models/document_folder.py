@@ -57,6 +57,18 @@ def _company_value(value):
     return value if type(value) is int else None
 
 
+def _stored_flag(vals, name, default):
+    """What the ORM keeps for the Boolean ``name`` that the values of a create or a write name.
+
+    A Boolean column holds ``bool(value)``: ``0``, ``0.0``, ``None``, ``''`` and ``[]`` are False as
+    ``False`` is, and any other number or text (``'false'`` too) is True. A guard decides on that,
+    never on the type of the value that came in: ``value is False`` is true for the object ``False``
+    and for no other value that the column keeps as False. ``default`` stands for a key that the
+    values leave out.
+    """
+    return bool(vals[name]) if name in vals else default
+
+
 class WoowDocumentFolder(models.Model):
     _name = 'woow.document.folder'
     _inherit = ['mail.thread', 'mail.activity.mixin', 'woow.document.guard.mixin']
@@ -169,9 +181,10 @@ class WoowDocumentFolder(models.Model):
 
         A document user who is not the superuser also has the owner of the new folder checked
         (``_woow_check_owner``): the one that the values name, or else the stored default.
-        An editor does not choose an owner: the folder gets the one of its parent. A caller
-        who is no document user is refused by the access rights of the model, so nothing is
-        asked about the owner.
+        An editor does not choose an owner: the folder gets the one of its parent, and does not
+        turn inheritance off. A caller who is no document user is refused by the access rights of
+        the model, so nothing is asked about the owner. ``inherit_access`` is read as the column
+        keeps it (``_stored_flag``): ``0``, ``None`` and ``''`` turn it off as ``False`` does.
         """
         manager = self.env.su or self.env.user.has_group(_MANAGER)
         checks_owner = not self.env.su and self.env.user.has_group(_USER)
@@ -202,7 +215,7 @@ class WoowDocumentFolder(models.Model):
                 if not parent._woow_has_rank(4):
                     # An editor can organize a child, but must not gain its
                     # implicit owner/manage grant above the parent's ceiling.
-                    if vals.get('owner_id') or vals.get('inherit_access') is False:
+                    if vals.get('owner_id') or not _stored_flag(vals, 'inherit_access', True):
                         raise AccessError(_('You do not have enough rights on this folder.'))
                     vals['owner_id'] = parent.owner_id.id or False
                     editor = True
@@ -212,7 +225,7 @@ class WoowDocumentFolder(models.Model):
                 self._woow_check_owner(
                     self._woow_owner_value(
                         vals['owner_id'] if 'owner_id' in vals else defaults.get('owner_id')),
-                    parent, bool(vals['inherit_access']) if 'inherit_access' in vals else True)
+                    parent, _stored_flag(vals, 'inherit_access', True))
             if not self.env.su and vals.get('active', True):
                 self._woow_check_name_free(
                     vals.get('name'), parent_id, vals.get('company_id', self.env.company.id))
@@ -224,6 +237,9 @@ class WoowDocumentFolder(models.Model):
 
         A caller who is not the superuser also has the owners checked when the values name the
         owner, a parent or the access (``_woow_check_owners``), and a new owner is one audit row.
+        ``inherit_access`` is read as the column keeps it (``_stored_flag``): ``0``, ``None`` and
+        ``''`` turn it off as ``False`` does, for the guards below and for the grants that are
+        kept as member rows.
         """
         if 'name' in vals:
             vals = dict(vals, name=(vals['name'] or '').strip())
@@ -249,9 +265,11 @@ class WoowDocumentFolder(models.Model):
                 new_company = _company_value(vals['company_id'])
                 if any(new_company != (folder.company_id.id or False) for folder in self):
                     raise AccessError(_('Only document administrators can do this.'))
-        if vals.get('inherit_access') is False and 'access_ids' in vals:
+        # the flag is read as the column keeps it (``_stored_flag``): 0, None and '' disable it too
+        disables_inheritance = not _stored_flag(vals, 'inherit_access', True)
+        if disables_inheritance and 'access_ids' in vals:
             raise UserError(_('Save member changes before disabling inherited access.'))
-        if vals.get('inherit_access') is False and 'parent_id' in vals:
+        if disables_inheritance and 'parent_id' in vals:
             raise UserError(_('Save the new parent before disabling inherited access.'))
         if 'parent_id' in vals:
             if not vals['parent_id'] and self.filtered('parent_id'):
@@ -279,7 +297,7 @@ class WoowDocumentFolder(models.Model):
         if not self.env.su and {'owner_id', 'parent_id', 'inherit_access'}.intersection(vals):
             self._woow_check_owners(vals)
         access_model = self.env['woow.document.folder.access']
-        if vals.get('inherit_access') is False:
+        if disables_inheritance:
             for folder in self.filtered('inherit_access'):
                 folder.access_ids._check_parent_ceiling(folder.parent_id)
                 ranks = {}
@@ -359,8 +377,7 @@ class WoowDocumentFolder(models.Model):
                 parent = self.browse(vals['parent_id']) if vals['parent_id'] else self.browse()
             else:
                 parent = folder.parent_id
-            inherit = (bool(vals['inherit_access']) if 'inherit_access' in vals
-                       else folder.inherit_access)
+            inherit = _stored_flag(vals, 'inherit_access', folder.inherit_access)
             if owner is not None and folder.owner_id != owner:
                 check, who = self._woow_check_owner, owner
             elif parent != folder.parent_id or (folder.inherit_access and not inherit):

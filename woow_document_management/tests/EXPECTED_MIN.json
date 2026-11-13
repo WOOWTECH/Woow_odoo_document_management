@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 272,
+    "core": 280,
     "files": 120,
     "portal": 3
   },
@@ -41,6 +41,7 @@
     "test_reg_owner_within_ceiling.py": 20,
     "test_reg_portal_description_cap.py": 5,
     "test_reg_server_columns_ignore_defaults.py": 14,
+    "test_reg_typed_boolean_flags.py": 8,
     "test_reg_wizard_owner_scope.py": 2,
     "test_rpc_exposure.py": 3,
     "test_security_acl.py": 8,
