@@ -44,3 +44,5 @@ woow.document.folder::message_new
 res.config.settings::set_values
 res.config.settings::default_get
 woow.document.*.wizard::default_get
+ir.attachment::generate_access_token
+ir.attachment::validate_access

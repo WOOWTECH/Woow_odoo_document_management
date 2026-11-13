@@ -54,16 +54,20 @@ class IrBinary(models.AbstractModel):
 
     def _find_record(self, xmlid=None, res_model='ir.attachment', res_id=None,
                      access_token=None, field=None):
-        """Module records never take an access token.
+        """Module records, and the attachments of module records, never take an access token.
 
         ``/web/content`` and ``/web/image`` mark a response public (shared caches may
         keep it for a year) whenever the query carries a token, while the module's
-        records are only ever read under the caller's own access rights.
+        records are only ever read under the caller's own access rights. A token is refused
+        however core accepted it: the stored one of an attachment (``validate_access``, which
+        refuses it too) or a signed one for the record and field. Core returns the record as
+        superuser in both cases, so ``res_model`` is read from a record that is already elevated.
         """
         record = super()._find_record(xmlid=xmlid, res_model=res_model, res_id=res_id,
                                       access_token=access_token, field=field)
-        if record._name in WOOW_MODELS and (
-                access_token or (request and request.httprequest.args.get('access_token'))):
+        if (access_token or (request and request.httprequest.args.get('access_token'))) and (
+                record._name in WOOW_MODELS
+                or (record._name == 'ir.attachment' and record.res_model in WOOW_MODELS)):
             raise MissingError(_('The document is unavailable.'))
         return record
 

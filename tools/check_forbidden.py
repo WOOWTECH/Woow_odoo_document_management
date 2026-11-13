@@ -18,6 +18,8 @@ Python (AST), non-test code unless noted:
   F-HASH          hashlib.sha1 / md5
   F-NUMCAST       float( / bool( / complex( of request values
   F-TOKEN-API     limited_field_access_token, _get_limited_field_access_token, generate_access_token
+                  (one exception: ``super().generate_access_token()`` inside the override of that
+                  name in the attachment guard, where the module refuses a token for its own records)
   F-LOG           _logger calls carrying token/password/email/name-like values; print(
   F-HTTPEXC       controllers: raise request.not_found / NotFound / werkzeug.exceptions.*,
                   abort(, return request.not_found(  (T-STAT-23, ER-29)
@@ -84,6 +86,23 @@ def _chain_has_sudo(node):
         else:
             cur = cur.value
     return False
+
+
+# The attachment guard overrides core's generate_access_token so that no attachment of a module
+# record gets a token, and hands every other attachment to super(). That delegation is the only
+# call of the token API the module may have: (file, name of the override that may delegate).
+TOKEN_OVERRIDE = ('woow_document_management/models/ir_attachment.py', 'generate_access_token')
+
+
+def _is_token_override_delegation(path, node):
+    """``super(...).generate_access_token(...)`` in the override of that name, in the guard file."""
+    func = node.func
+    if path != TOKEN_OVERRIDE[0] or not isinstance(func, ast.Attribute) \
+            or func.attr != TOKEN_OVERRIDE[1] or not isinstance(func.value, ast.Call) \
+            or A.call_name(func.value) != 'super':
+        return False
+    enclosing = A.enclosing_function(node)
+    return enclosing is not None and enclosing.name == TOKEN_OVERRIDE[1]
 
 
 SESSION_KEYS = ('uid', 'pre_uid', 'pre_login', 'login', 'session_token')
@@ -196,7 +215,7 @@ def check_python(src, out):
             if name in ('authenticate', 'finalize'):
                 out.append(A.Violation(path, line, 'F-SESSION', '%s( is not allowed' % name))
             if name in ('limited_field_access_token', '_get_limited_field_access_token',
-                        'generate_access_token'):
+                        'generate_access_token') and not _is_token_override_delegation(path, node):
                 out.append(A.Violation(path, line, 'F-TOKEN-API', '%s( is not allowed' % name))
             if name in ('sha1', 'md5') or (name == 'new' and A.dotted(func) == 'hashlib.new'
                                             and node.args and A.const_str(node.args[0]) in ('sha1', 'md5')):

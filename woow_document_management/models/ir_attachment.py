@@ -95,6 +95,39 @@ class IrAttachment(models.Model):
             self._woow_check_field_target(vals)
         return super().write(vals)
 
+    def generate_access_token(self):
+        """The attachments of this module's records never get an access token.
+
+        Core stores a token on each attachment it is asked about, as superuser, and returns the
+        tokens in the order of ``self``: the portal chatter does it for the files of the messages
+        it returns, and the mail queue for the files of a message that are too large to send
+        (the mail then carries a link). The guard of ``write`` skips the superuser, so it stops
+        neither. A row of a document or folder is given none, whoever asks, and its place in the
+        list is ``False``, what a token field holds when it is empty; the other rows are core's.
+        """
+        owned = self.filtered(lambda attachment: attachment.res_model in WOOW_MODELS)
+        if not owned:
+            return super().generate_access_token()
+        others = self - owned
+        tokens = dict(zip(others.ids, super(IrAttachment, others).generate_access_token()))
+        return [tokens.get(attachment.id, False) for attachment in self]
+
+    def validate_access(self, access_token):
+        """A token never opens an attachment of this module's records, whoever stored it.
+
+        Core lets a token alone through: it compares it with the stored one and answers with the
+        attachment as superuser, with no look at the record rules, the membership, the trash or a
+        legal hold. Every caller of this check is covered, ``/web/content`` and ``/web/image``
+        through ``ir.binary`` among them. Core returns the record as superuser once a token has
+        matched, and that record is the one read here, so no escalation of the module's own is
+        needed. The refusal is core's own for a token that does not match, so the answer does not
+        tell the two apart; a request without a token is not changed.
+        """
+        attachment = super().validate_access(access_token)
+        if access_token and attachment.res_model in WOOW_MODELS:
+            raise AccessError('Invalid access token')
+        return attachment
+
     def _woow_check_field_target(self, vals):
         """No write, the superuser's included, makes an attachment back a field of a module record.
 

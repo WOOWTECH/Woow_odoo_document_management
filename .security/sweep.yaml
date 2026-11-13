@@ -91,5 +91,6 @@ verify:
   - woow_document_management/tests/test_reg_notify_attachments_need_write.py
   - woow_document_management/tests/test_reg_access_create_authorizes_before_locking.py
   - woow_document_management/tests/test_reg_portal_description_cap.py
+  - woow_document_management/tests/test_reg_chatter_attachment_tokens.py
   # test_perf.py is tagged -standard and deliberately not listed. Every new tests/test_reg_<slug>.py from a fix is
   # appended here (this touches .security/, so it always goes to a human - expected).

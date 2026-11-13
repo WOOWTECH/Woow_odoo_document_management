@@ -301,6 +301,7 @@
 - ER-35：`force_send=True`（T-STAT-25）。
 - ER-04：rules.xml、controllers 和 models 裡出現 `commercial_partner_id`（T-STAT-24）。
 - R2b-02、R2b-03：`.touch(`；對 `request.session[...]` 做 subscript 指派、`.pop(`、`.update(` 這類原地修改（T-STAT-21）。
+- F-TOKEN-API（arch §6.2）：非測試程式不准呼叫 `limited_field_access_token`、`generate_access_token`。唯一的例外是 `models/ir_attachment.py` 裡名為 `generate_access_token` 的覆寫，以 `super()` 把其他 model 的附件交給 core（§8.6）；別的檔案、別的函式，或不經 `super()` 的呼叫都照舊違規（`tools/tests` 的 fixtures 釘住這三種）。
 
 ### 4.7 check_security_matrix
 - 比對 `tools/security_matrix.yaml`，內容是 arch §4.3 的 ACL 加上 §4.4 的 rule。
@@ -347,6 +348,7 @@ woow.document.folder::message_post  woow.document.folder::message_subscribe
 woow.document.folder::message_unsubscribe  woow.document.folder::message_new
 res.config.settings::set_values  res.config.settings::default_get
 woow.document.*.wizard::default_get
+ir.attachment::generate_access_token  ir.attachment::validate_access
 ```
 清單以 `tools/public_methods.txt` 為準，`check_public_methods` 讀的是那個檔案。
 
@@ -871,15 +873,22 @@ def is_safe(url: str, *, allow_mailto: bool = False) -> bool: ...
 - **使用者**：L11（獨立測試）；L4 和 L8 的行為依賴它。
 
 **ir.attachment 守衛**
-- 只 `_inherit='ir.attachment'`，覆寫 `create(vals_list)` 和 `write(vals)`，**不碰** `unlink`、`check`、`_search`（I-03）。另覆寫 `_index(bin_data, file_type, checksum=None)`：context 帶 `NO_INDEX_CTX_KEY`（`'woow_no_index'`）時回傳 False，否則 super。`WoowDocument.create` 與 `write` 帶這個 context，所以文件的檔案（`datas` 的附件）不產生 `index_content`，不論有沒有安裝 `attachment_indexation`：它的 indexer 不看檔案類型，對任何含 `word/document.xml`、`xl/sharedStrings.xml`、`ppt/slides/slideN.xml`、`content.xml` 成員的壓縮檔整段解壓並建 DOM，而上傳政策只限制壓縮檔的目錄（`_bounded_zip_directory`），不看成員宣告的大小。本模組本身不讀 `index_content`；第二階段的全文檢索 bridge（DEC-13）依賴本模組，載入順序在後，它的 `_index` 排在本模組之前，由它決定讀什麼和上限。
-- 守衛只對非 su 生效（下面「寫入後的目標」一條例外，su 也適用）：
+- 只 `_inherit='ir.attachment'`，覆寫 `create(vals_list)` 和 `write(vals)`，**不碰** `unlink`、`check`、`_search`（I-03）。另覆寫 `_index(bin_data, file_type, checksum=None)`：context 帶 `NO_INDEX_CTX_KEY`（`'woow_no_index'`）時回傳 False，否則 super。`WoowDocument.create` 與 `write` 帶這個 context，所以文件的檔案（`datas` 的附件）不產生 `index_content`，不論有沒有安裝 `attachment_indexation`：它的 indexer 不看檔案類型，對任何含 `word/document.xml`、`xl/sharedStrings.xml`、`ppt/slides/slideN.xml`、`content.xml` 成員的壓縮檔整段解壓並建 DOM，而上傳政策只限制壓縮檔的目錄（`_bounded_zip_directory`），不看成員宣告的大小。本模組本身不讀 `index_content`；第二階段的全文檢索 bridge（DEC-13）依賴本模組，載入順序在後，它的 `_index` 排在本模組之前，由它決定讀什麼和上限。另覆寫 `generate_access_token()` 與 `validate_access(access_token)`（見下面「附件不帶也不收 token」）。
+- 守衛只對非 su 生效（下面「寫入後的目標」與「附件不帶也不收 token」兩條例外，su 也適用）：
   - **create**：`res_model in WOOW_MODELS` 而且符合以下任一條件 → AccessError：`res_field` 有值、`public` 為真、帶 `access_token`。
   - **write**：
     - Q6 查出 self 裡哪些是「本模組 model 的欄位附件」。對這些列，寫入 `GUARDED_WRITE_KEYS = ('raw','datas','db_datas','mimetype','type','url','res_model','res_id','res_field','public','access_token','store_fname')` 任何一鍵 → AccessError。
     - 對本模組 model 的 chatter 附件（res_model 用目前使用者的 ORM 讀取），寫 `public`、`access_token`、`res_model`、`res_id`、`res_field` → AccessError。
     - 把 `res_model` 改成本模組 model、同時設定 `res_field` → AccessError。
-  - `generate_access_token()` 和 `copy()` 會走 write 或 create，所以一起被擋（core 的 generate_access_token 不是 sudo，`ir_attachment.py` L667–676）。
+  - `copy()` 走 create，所以一起被擋。`generate_access_token()` 不是：它走 write，但 Odoo 18 的 core 在兩個地方以 su 呼叫它：`portal/models/mail_message.py` 的 `_portal_message_format`（`/mail/chatter_fetch` 對傳回的每則訊息的附件），以及 `mail/models/mail_mail.py` 的 `_prepare_outgoing_list`（信件超過 `base.default_max_email_size` 時，把記錄擁有的附件換成信裡帶 token 的連結）。上面的守衛只對非 su 生效，擋不住這兩條路，所以另有下面「附件不帶也不收 token」的兩個覆寫。
 - **寫入後的目標（所有 env，含 su）**：write 帶 `res_model`、`res_id` 或 `res_field`，而寫入後 `res_model` 是本模組 model 時，`_woow_check_field_target` 以 Q6 讀出每列原本的（res_model, res_id, res_field）：寫入後帶 `res_field`、且與原本的目標不同 → AccessError。core 以 su 把發文者的待送附件改掛到記錄上（`_process_attachments_for_post`，`message_post` 與可指定任何 `model`／`res_id` 的 `message_notify` 都會走到），binary 欄位只建立附件、從不搬移，所以沒有任何途徑能讓文件或資料夾多出一筆欄位附件。
+- **附件不帶也不收 token（所有 env，含 su；不依賴誰寫入 token）**：`res_model in WOOW_MODELS` 的附件（chatter 附件，以及其他掛在這些 model 上的附件）沒有 access token，也沒有 token 能打開它們。設計決定：不提供連結；core 會寄成 token 連結的超限 chatter 附件，對本模組記錄只剩已登入、有權讀取的人在後台取得。
+  - 發行端：`generate_access_token()` 覆寫。self 裡 `res_model in WOOW_MODELS` 的列不寫 token（不分 su、不分呼叫者），在回傳清單的同一個位置放 `False`（token 欄位為空時讀到的值）；其他列交給 super（回傳依 `self` 的順序；沒有這種列時就是 core 的回傳）。`res_model` 以呼叫者自己的 ORM 讀取，不升權：core 以 su 呼叫的兩條路，record 本來就是 su；其他呼叫者讀不到的列，core 自己的 write 也寫不了。
+  - 取用端：`validate_access(access_token)` 覆寫。先呼叫 super：core 在 token 吻合時以 su 回傳該列，所以讀回傳列的 `res_model` 不需要模組自己升權；`access_token` 有值而且 `res_model in WOOW_MODELS` → `AccessError('Invalid access token')`，與 core 對不吻合的 token 的拒絕相同（`/web/content` 回 404、`/web/image` 回 placeholder，回應不會被標成 public），不論 token 是誰寫入的，已經存入的值也一併失效；沒有帶 token 的呼叫不變。`ir.binary._find_record`（`/web/content`、`/web/image`）對這些列也拒絕任何 token（參數或 query），包含 core 的簽章 token（`limited_field_access_token`），它不經 `validate_access`。
+  - 信件：超限時 core 把附件從信裡拿掉，附上 `…/web/content/<id>?download=1&access_token=` 的連結，token 是空的（沒有 `False` 字樣）：不丟例外、信照寄；沒有 session 的收件者打開連結得 404，已登入而且有權讀取的人以自己的 session 取得檔案。其他 model 的附件照 core：有 token、連結可用。
+  - 內文裡的嵌入圖片：`mail.message.create` 為 `data:` 圖片建立附件，再用 `access_token` 欄位的值組出網址。對本模組的記錄，發文成功（先前非 su 的發文者會被上面的守衛擋下），但網址是 `/web/image/<id>?access_token=False`；它帶著 token，所以圖片只顯示 placeholder。要在 chatter 放圖片，用附件。
+  - 實作不用 `sudo`、`with_user`、`env(su=True)`，也沒有新的 raw SQL（§4.3、§4.4 的白名單不變）；`tools/public_methods.txt` 的 [override] 增列這兩個方法，`check_forbidden` 對覆寫內的 `super().generate_access_token()` 放行（§4.6）。
+  - 測試：`test_reg_chatter_attachment_tokens.py`（`/mail/chatter_fetch` 的回傳與資料庫沒有 token、讀者的 session 照常下載、訪客帶任何 token（su 寫入的、簽章的、`unique=1`）得 404、撤權與進回收桶之後仍是 404、超限寄信不存 token 且信照寄，以及其他 model 的對照）。
 
 **mail_thread_guard（ER-20）**
 ```python
@@ -910,7 +919,7 @@ class _Guard(models.AbstractModel):   # 實際上分別 _inherit woow.document �
 ```
 - `mail.message` 的標籤：core 的 `Many2one.convert_to_read`、`web_read` 的 `display_name` 與 `read_group` 以 `sudo()` 取 many2one 標籤（uid 不變），`mail.notification` 對 `base.group_user` 開放 read，唯一的規則只管 write，`mail_message_id` 的標籤就是訊息的 `record_name`：任何內部使用者（不必是 Document User、不分公司）因此讀得到受限文件的檔名與資料夾的名稱（只要討論串發過有通知對象的訊息）。標籤改在 `mail.message._compute_display_name` 依真正呼叫者折疊（上述）；作者、收件者與讀得到記錄的人看到的名稱不變，`mail.notification` 的 ACL 與規則不動，`search_read`、`read`、`read_group`、`web_read_group`、`web_search_read` 一次涵蓋。
 - `mail.thread._message_route_process`：路由目標是這兩個 model 時，只有 su（fetchmail）或 `base.group_system`（mail gateway 腳本）能處理；其他人經 `message_process` 送信一律 AccessError。
-- `ir.binary`（`models/ir_binary.py`）：`_find_record` 對本模組 model 的記錄，只要帶 `access_token`（參數或 query）就 MissingError，`/web/content` 回 404、`/web/image` 回 placeholder，回應不會被標成 public；`_record_to_stream` 對 `woow.document.datas` 一律從文件自己的 `attachment_id` 建立串流（Q17 讀出儲存位置；必須是不帶 URL、屬於該文件 `datas` 的 binary 附件，否則 MissingError）。下載、預覽、portal、ZIP 與 `/web/content`、`/web/image` 都經過這裡，其他宣稱同一欄位的附件即使存在也不會被送出。
+- `ir.binary`（`models/ir_binary.py`）：`_find_record` 對本模組 model 的記錄，以及 `res_model` 屬於本模組 model 的 `ir.attachment` 列（chatter 附件），只要帶 `access_token`（參數或 query）就 MissingError，`/web/content` 回 404、`/web/image` 回 placeholder，回應不會被標成 public；`_record_to_stream` 對 `woow.document.datas` 一律從文件自己的 `attachment_id` 建立串流（Q17 讀出儲存位置；必須是不帶 URL、屬於該文件 `datas` 的 binary 附件，否則 MissingError）。下載、預覽、portal、ZIP 與 `/web/content`、`/web/image` 都經過這裡，其他宣稱同一欄位的附件即使存在也不會被送出。
 - `message_ids`、`website_message_ids`、`has_message`（mail.thread 的欄位，在 `woow.document` 與 `woow.document.folder` 上）加 `groups='base.group_user'`：auto_join 的 one2many 在 domain 裡以子查詢直接查 `mail_message`，不經 R-M0，portal 使用者能對自己讀得到的記錄測試內部 log note 的文字；`guard_mixin._search` 與 `_read_group_groupby` 對 domain 與 groupby 的第一段欄位名檢查欄位 groups，portal 因此得到 AccessError，內部使用者不變。
 - `ir.binary._record_to_stream` 對文件的 `datas` 回傳 `_DocumentStream`：類型固定為上傳政策對這個檔案提供的類型（`_served_mimetype` 的 base type，由回應補 charset），`ir.binary._get_stream_from` 指派的 `mimetype`（`/web/content`、`/web/image` 的 `?mimetype=`）無效；只有 `INLINE_WHITELIST` 的類型可以 inline，其餘一律 attachment；CSP 固定為 `default-src 'none'; sandbox`。`res_field` 屬於本模組 model 的附件 id（`/web/content/<附件 id>`、`/web/image/<附件 id>`）→ MissingError：文件的檔案只有經由文件這一條路由。
 - **ir.attachment write** 另依「寫入後的值」判斷：`res_model` 改成本模組 model 時，若該列原本或寫入後帶 `res_field`、`public` 或 `access_token` → AccessError（兩步驟搬移也擋）。
@@ -1057,6 +1066,7 @@ class WoowDocumentController(http.Controller):
 | 規則 | 內容 |
 |---|---|
 | 取得文件的方式 | 本模組沒有以連結取得文件的功能：沒有帶秘密 token 的網址、沒有 `auth='public'` 的路由。能讀、下載或上傳，只由資料夾的權限（成員授權）和已登入的頁面（後台與 `/my/docs`）決定。 |
+| chatter 附件 | 文件與資料夾的 chatter 附件同樣不接受連結：它們不帶、也不收 access token（§8.6）。core 在 portal chatter 與超限信件裡放的 token 連結，對這些附件沒有 token，沒有 session 的人打開是 404；超限的附件不以連結寄出，只給已登入、有權讀取的人在後台取得。 |
 
 ### 10.4 IF-MAIL：`W/data/mail_templates.xml`（`noupdate="1"`，程式永遠不寫入，I-14）
 - **提供者**：L8。

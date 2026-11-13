@@ -27,8 +27,10 @@ sharing, which is not part of this module. Retired numbers are not reused.
   *(text pending)*
 - **HD-02** Internal readers of a folder can see its members and effective access. *(text pending)*
 - **HD-03** Readers of a folder can see the numeric ids of its ancestors. *(text pending)*
-- **HD-04** Chatter attachments on documents and folders follow Odoo's native upload rules.
-  *(text pending)*
+- **HD-04** Chatter attachments on documents and folders follow Odoo's native upload rules, with
+  one exception: they never carry or accept an access token, so no link opens them without a
+  sign-in. A file that is too large to be mailed is not sent as a link for these records; it stays
+  available to signed-in readers in the backend. *(text pending)*
 - **HD-05** The "restricted subfolder" flag is visible so that subtrees cannot be trashed blindly.
   *(text pending)*
 - **HD-06** Retired.
@@ -43,7 +45,8 @@ sharing, which is not part of this module. Retired numbers are not reused.
   access are no longer notified, unless a message names them as recipients. *(text pending)*
 - **HD-11** Retired.
 - **HD-12** Chatter attachments keep Odoo's native content-type rules; every streamed response
-  carries a `default-src 'none'` content security policy. *(text pending)*
+  carries a `default-src 'none'` content security policy. A chatter attachment is never served
+  on the strength of an access token, whoever stored the token. *(text pending)*
 
 ## Deployment notes
 

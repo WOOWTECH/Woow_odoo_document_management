@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 204,
+    "core": 216,
     "files": 120,
     "portal": 3
   },
@@ -31,6 +31,7 @@
     "test_record_rules.py": 4,
     "test_reg_access_company_locked.py": 2,
     "test_reg_access_create_authorizes_before_locking.py": 7,
+    "test_reg_chatter_attachment_tokens.py": 12,
     "test_reg_create_batch_cap.py": 3,
     "test_reg_create_ignores_personal_defaults.py": 5,
     "test_reg_document_file_not_indexed.py": 1,
