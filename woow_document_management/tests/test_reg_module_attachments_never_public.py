@@ -11,6 +11,11 @@ is not the superuser; for the superuser it sets both to ``False`` in ``create`` 
 So no row of a record of the module holds either after any create or write, in any environment, and
 no file of the module is shown to a visitor, kept by a shared cache, or left open once the access
 is withdrawn or the record is in the trash.
+
+A token or a field name is judged by what the column keeps: the ORM stores ``str(value)`` for every
+value that is not ``None`` or ``False``, so a token of ``0`` or ``[]`` is the text ``'0'`` or
+``'[]'`` in the database although the value is not truthy. The superuser's reset does not look at
+the values.
 """
 import base64
 import secrets
@@ -21,10 +26,16 @@ from markupsafe import Markup
 
 from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
+from odoo.tests.common import JsonRpcException
 
 from ..models.ir_attachment import IrAttachment
 from ..services.constants import WOOW_MODELS
 from .test_reg_chatter_attachment_tokens import _ChatterFixture, _png
+from .test_reg_server_columns_ignore_defaults import _store
+
+# Values that are not truthy and that a Char column nevertheless keeps as text ('0', '0.0', '[]',
+# '{}', '()'): the ORM stores ``str(value)`` for everything that is not None or False.
+TYPED_FALSY = (0, 0.0, [], {}, ())
 
 
 class _OpenFiles(_ChatterFixture):
@@ -397,21 +408,24 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
         rows.write({'public': False, 'access_token': False})
         self.assertEqual([self._stored(row) for row in rows], [(False, None)] * 4)
 
-    def test_only_a_write_that_can_open_a_row_is_looked_at(self):
-        """The cost: no row is read for a write that cannot set the flag or a token."""
+    def test_only_a_write_that_names_the_flag_the_token_or_a_module_model_is_looked_at(self):
+        """The cost: no row is read for a write that names none of the three, whatever it holds."""
         row = self._module_row('woow.document')
         with patch.object(IrAttachment, '_woow_write_closed', autospec=True,
                           side_effect=IrAttachment._woow_write_closed) as inspected:
-            for vals in ({'name': 'renamed.txt'}, {'description': 'd'}, {'public': False},
-                         {'access_token': False}, {'public': 0, 'access_token': ''},
-                         {'res_id': 0}, {'res_model': 'res.partner', 'res_id': 0},
-                         {'res_model': False}):
+            for vals in ({'name': 'renamed.txt'}, {'description': 'd'}, {'res_id': 0},
+                         {'res_model': 'res.partner', 'res_id': 0}, {'res_model': False}):
                 with self.subTest(vals=vals):
                     row.write(vals)
                     inspected.assert_not_called()
                     row.write({'res_model': 'woow.document', 'res_id': 0})
                     inspected.reset_mock()
-            for vals in ({'public': True}, {'access_token': 'x'},
+            # The values are not judged: a write that names the flag or the token is looked at
+            # whatever it holds (``0`` and ``[]`` are kept by the ORM as text).
+            for vals in ({'public': True}, {'public': False}, {'public': 0},
+                         {'access_token': 'x'}, {'access_token': False}, {'access_token': 0},
+                         {'access_token': []}, {'access_token': ''},
+                         {'public': 0, 'access_token': ''},
                          {'res_model': 'woow.document', 'res_id': 0}):
                 with self.subTest(vals=vals):
                     row.write(vals)
@@ -490,3 +504,205 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
                                  (record._name, record.id, 'inline.png'))
                 self.assertEqual(self._stored(attachment), (False, None))
                 self.assertIn('/web/image/%d?access_token=' % attachment.id, str(reply.body))
+
+
+@tagged('woow_docmgmt_core')
+class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, TransactionCase):
+    """``0``, ``0.0``, ``[]``, ``{}`` and ``()`` are a token or a field name in the database.
+
+    A Char column keeps ``str(value)`` for every value that is not ``None`` or ``False``, so an
+    ``access_token`` or a ``res_field`` of ``0`` is stored as ``'0'`` although ``0`` is not truthy.
+    The guard judges both by what the column keeps (a caller who is not the superuser is refused,
+    ``False`` and ``None`` pass), and the reset of the superuser does not judge the values at all.
+    The control is a row of another model, which keeps what was written.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._fixture()
+        self.attachments = self.env['ir.attachment']
+        self.partner = self.env['res.partner'].sudo().create({'name': 'Typed values partner'})
+        # The record of each model that a row can be made for: a caller who may write the record
+        # (the editor) can make one for the document and the folder, the others have no record.
+        self.targets = {'woow.document': self.document.id, 'woow.document.folder': self.folder.id,
+                        'woow.document.folder.access': 0, 'woow.document.tag': 0,
+                        'woow.document.log': 0}
+        self.assertEqual(set(self.targets), set(WOOW_MODELS))
+
+    def _values(self, name, model, res_id, **extra):
+        return dict({'name': name, 'raw': b'typed bytes', 'type': 'binary',
+                     'mimetype': 'text/plain', 'res_model': model, 'res_id': res_id}, **extra)
+
+    def _columns(self, attachment):
+        """(public, access token, field name) as the database holds them, read around the ORM."""
+        self.env.flush_all()
+        self.env.cr.execute(
+            'SELECT COALESCE(public, FALSE), access_token, res_field FROM ir_attachment '
+            'WHERE id = %s', (attachment.id,))
+        return self.env.cr.fetchone()
+
+    def _pending(self, user, name='pending.txt'):
+        """What the composer uploads: a file of ``user`` that belongs to no record yet."""
+        return self.attachments.with_user(user).create(self._values(
+            name, 'mail.compose.message', 0))
+
+    # -- the superuser --------------------------------------------------------------------------
+    def test_the_superuser_stores_no_typed_value_as_a_token_for_a_module_model(self):
+        su = self.attachments.sudo()
+        for model, res_id in self.targets.items():
+            for value in TYPED_FALSY:
+                with self.subTest(model=model, value=value, way='create'):
+                    row = su.create(self._values('created.txt', model, res_id, access_token=value))
+                    self.assertEqual(self._columns(row), (False, None, None))
+                with self.subTest(model=model, value=value, way='write'):
+                    row = su.create(self._values('written.txt', model, res_id))
+                    row.write({'access_token': value})
+                    self.assertEqual(self._columns(row), (False, None, None))
+
+    def test_the_superuser_resets_both_columns_whichever_one_a_write_names(self):
+        """A write that names the flag or the token, whatever it holds, closes the rows it hits."""
+        su = self.attachments.sudo()
+        for model, res_id in self.targets.items():
+            for value in TYPED_FALSY:
+                with self.subTest(model=model, value=value, way='the flag with the token'):
+                    row = su.create(self._values('both.txt', model, res_id))
+                    row.write({'public': True, 'access_token': value})
+                    self.assertEqual(self._columns(row), (False, None, None))
+                with self.subTest(model=model, value=value, way='a move'):
+                    row = su.create(self._values('move.txt', 'res.partner', self.partner.id))
+                    row.write({'res_model': model, 'res_id': res_id, 'access_token': value})
+                    self.assertEqual(self._columns(row), (False, None, None))
+                with self.subTest(model=model, value=value, way='a mixed set'):
+                    owned = su.create(self._values('owned.txt', model, res_id))
+                    other = su.create(self._values('other.txt', 'res.partner', self.partner.id))
+                    (owned | other).write({'access_token': value})
+                    self.assertEqual(self._columns(owned), (False, None, None))
+                    self.assertEqual(self._columns(other), (False, str(value), None))
+            with self.subTest(model=model, way='a token left by a statement'):
+                row = su.create(self._values('stored.txt', model, res_id))
+                self.env.cr.execute('UPDATE ir_attachment SET access_token = %s WHERE id = %s',
+                                    ('left-by-a-statement', row.id))
+                row.invalidate_recordset()
+                row.write({'access_token': 0})
+                self.assertEqual(self._columns(row), (False, None, None))
+
+    def test_the_superuser_cannot_move_a_row_onto_a_module_record_as_a_field_of_a_typed_name(self):
+        su = self.attachments.sudo()
+        for model, res_id in self.targets.items():
+            for value in TYPED_FALSY:
+                with self.subTest(model=model, value=value):
+                    row = su.create(self._values('field.txt', 'mail.compose.message', 0))
+                    with self.assertRaises(AccessError):
+                        row.write({'res_model': model, 'res_id': res_id, 'res_field': value})
+                    self.assertEqual(self._columns(row), (False, None, None))
+                    self.assertEqual(row.res_model, 'mail.compose.message')
+
+    def test_a_row_with_a_typed_field_name_is_the_file_of_a_field_for_the_own_defaults(self):
+        """The files of binary fields, made as superuser, take the own defaults of such a file.
+
+        A row is one when the column keeps a field name for it, ``'0'`` and ``'[]'`` included. A row
+        that backs no field takes the default that the site stored.
+        """
+        _store(self.env, 'ir.attachment', {'description': 'from a default'})
+        su = self.attachments.sudo()
+        for value in TYPED_FALSY:
+            with self.subTest(value=value):
+                row = su.create(self._values(
+                    'field.txt', 'woow.document', self.document.id, res_field=value))
+                self.assertEqual((row.res_field, row.description), (str(value), False))
+        row = su.create(self._values('plain.txt', 'woow.document', self.document.id))
+        self.assertEqual((row.res_field, row.description), (False, 'from a default'))
+
+    # -- a caller who is not the superuser ------------------------------------------------------
+    def test_an_editor_is_refused_a_typed_value_as_a_token_or_a_field_name(self):
+        editor = self.attachments.with_user(self.editor)
+        for model, res_id in self.targets.items():
+            for value in TYPED_FALSY:
+                for key in ('access_token', 'res_field'):
+                    with self.subTest(model=model, value=value, key=key, way='create'), \
+                            self.assertRaises(AccessError):
+                        editor.create(self._values('refused.txt', model, res_id, **{key: value}))
+
+    def test_an_editor_cannot_move_a_pending_file_with_a_typed_token_or_field_name(self):
+        for model, res_id in self.targets.items():
+            for value in TYPED_FALSY:
+                for key in ('access_token', 'res_field'):
+                    with self.subTest(model=model, value=value, key=key):
+                        pending = self._pending(self.editor)
+                        with self.assertRaises(AccessError):
+                            pending.write({'res_model': model, 'res_id': res_id, key: value})
+                        self.assertEqual(self._columns(pending), (False, None, None))
+                        self.assertEqual(pending.sudo().res_model, 'mail.compose.message')
+
+    def test_an_editor_still_may_pass_values_that_are_empty(self):
+        """``False`` and ``None`` hold nothing in the column, and so does the empty string."""
+        editor = self.attachments.with_user(self.editor)
+        for value in (False, None):
+            with self.subTest(value=value, way='create'):
+                row = editor.create(self._values(
+                    'empty.txt', 'woow.document', self.document.id,
+                    public=value, access_token=value, res_field=value))
+                self.assertEqual(self._columns(row), (False, None, None))
+            with self.subTest(value=value, way='move'):
+                pending = self._pending(self.editor)
+                pending.write({'res_model': 'woow.document', 'res_id': self.document.id,
+                               'public': value, 'access_token': value, 'res_field': value})
+                self.assertEqual((pending.sudo().res_model, self._columns(pending)),
+                                 ('woow.document', (False, None, None)))
+        with self.subTest(value='', way='create'):
+            row = editor.create(self._values('blank.txt', 'woow.document', self.document.id,
+                                             access_token='', res_field=''))
+            public, token, field = self._columns(row)
+            self.assertEqual((public, token or None, field or None), (False, None, None))
+
+    # -- the control ----------------------------------------------------------------------------
+    def test_the_same_values_on_a_row_of_another_model_are_left_as_written(self):
+        su = self.attachments.sudo()
+        for value in TYPED_FALSY:
+            with self.subTest(value=value, way='create'):
+                row = su.create(self._values('control.txt', 'res.partner', self.partner.id,
+                                             access_token=value, res_field=value, public=value))
+                self.assertEqual(self._columns(row), (False, str(value), str(value)))
+            with self.subTest(value=value, way='write'):
+                row = su.create(self._values('control.txt', 'res.partner', self.partner.id))
+                row.write({'access_token': value, 'res_field': value})
+                self.assertEqual(self._columns(row), (False, str(value), str(value)))
+            with self.subTest(value=value, way='an editor, create and write'):
+                # A pending file of a caller who is not the superuser: nothing of the module.
+                row = self.attachments.with_user(self.editor).create(
+                    self._values('own.txt', 'res.partner', 0, access_token=value))
+                self.assertEqual(self._columns(row), (False, str(value), None))
+                pending = self._pending(self.editor)
+                pending.write({'access_token': value})
+                self.assertEqual(self._columns(pending), (False, str(value), None))
+
+
+@tagged('woow_docmgmt_http')
+class TestATypedTokenSentOverRpcIsRefused(_OpenFiles, HttpCase):
+    """The call that the web client makes: ``/web/dataset/call_kw/ir.attachment/create``."""
+
+    def setUp(self):
+        super().setUp()
+        self._fixture()
+        self.authenticate(self.editor.login, self.editor.login)
+
+    def _create(self, **extra):
+        values = dict({'name': 'rpc-typed.txt', 'datas': base64.b64encode(b'rpc bytes').decode(),
+                       'res_model': 'woow.document', 'res_id': self.document.id}, **extra)
+        return self.make_jsonrpc_request('/web/dataset/call_kw/ir.attachment/create', {
+            'model': 'ir.attachment', 'method': 'create', 'args': [values], 'kwargs': {}})
+
+    def test_the_call_of_an_editor_that_carries_a_typed_token_is_refused(self):
+        # What JSON carries: a tuple is a list on the wire.
+        for value in (0, 0.0, [], {}):
+            for key in ('access_token', 'res_field'):
+                with self.subTest(value=value, key=key):
+                    with self.assertRaises(JsonRpcException) as caught:
+                        self._create(**{key: value})
+                    self.assertEqual(str(caught.exception), 'odoo.exceptions.AccessError')
+        self.assertEqual(self.env['ir.attachment'].sudo().search_count(
+            [('name', '=', 'rpc-typed.txt')]), 0)
+        # The same call with an empty value is accepted, and the row holds neither.
+        row = self.env['ir.attachment'].sudo().browse(self._create(access_token=False))
+        self.assertEqual((row.res_model, row.res_id), ('woow.document', self.document.id))
+        self.assertEqual(self._stored(row), (False, None))
