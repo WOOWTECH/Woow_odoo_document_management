@@ -236,6 +236,29 @@ _IMAGE_STRUCTURE_CHECKS = {
 }
 
 
+def _mimetype_member_bounded(info) -> bool:
+    """Whether a ZIP member named ``mimetype`` may be read, by its directory entry alone.
+
+    The ODF specification keeps this member stored. A bzip2 or LZMA member is not read: CPython
+    unpacks a whole compressed block before it cuts the read, so a few hundred bytes cost hundreds
+    of megabytes, whatever size the header declares. The check holds for every ZIP, not only for
+    ODF files: ``ir.attachment`` sniffs a stored file whose name has no type, and the Odoo
+    fallback (``_check_open_container_format``) reads a member of this name whole.
+    """
+    return (info.file_size <= 255 and info.compress_size <= ODF_MIMETYPE_MAX_COMPRESSED
+            and info.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED))
+
+
+def _zip_mimetype_members_bounded(data: bytes) -> bool:
+    """Every member named ``mimetype`` of the ZIP passes ``_mimetype_member_bounded``."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            return all(_mimetype_member_bounded(entry) for entry in archive.infolist()
+                       if entry.filename == 'mimetype')
+    except (OSError, RuntimeError, ValueError, zipfile.BadZipFile):
+        return False
+
+
 def _office_zip_mimetype(data: bytes, ext: str) -> str:
     """Inspect bounded ZIP metadata; never extract an untrusted Office member wholesale."""
     if not _bounded_zip_directory(data):
@@ -256,11 +279,7 @@ def _office_zip_mimetype(data: bytes, ext: str) -> str:
             odf = {'odt': 'text', 'ods': 'spreadsheet', 'odp': 'presentation'}
             if ext in odf:
                 info = archive.getinfo('mimetype')
-                # The ODF specification keeps this member stored. A bzip2 or LZMA member is not read:
-                # CPython unpacks a whole compressed block before it cuts the read, so a few hundred
-                # bytes cost hundreds of megabytes, whatever size the header declares.
-                if (info.file_size > 255 or info.compress_size > ODF_MIMETYPE_MAX_COMPRESSED
-                        or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)):
+                if not _mimetype_member_bounded(info):
                     return ''
                 with archive.open(info) as member:
                     declared = member.read(256)
@@ -340,7 +359,7 @@ class WoowDocumentUploadPolicy(models.AbstractModel):
         if data.startswith(b'PK\x03\x04'):
             # Odoo's ZIP fallback may extract an untrusted ODF member. Classify
             # bounded ZIPs ourselves, including ordinary .zip uploads.
-            if not _bounded_zip_directory(data):
+            if not _bounded_zip_directory(data) or not _zip_mimetype_members_bounded(data):
                 raise WoowUploadRejected('mime', ext=ext)
             mimetype = ('application/zip' if ext == 'zip'
                         else _office_zip_mimetype(data, ext))

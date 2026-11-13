@@ -583,6 +583,61 @@ class TestUploadPolicy(TransactionCase):
                     self.assertEqual(result is not None, opened)
                     self.assertEqual(open_member.called, opened)
 
+    def _zip_with_mimetype_member(self, ext, compression, size=64):
+        """A ZIP of the kind ``ext`` that carries a member named ``mimetype`` of the given method."""
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w', compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr('[Content_Types].xml', '<Types/>')
+            archive.writestr('word/document.xml', '<document/>')
+            archive.writestr('xl/workbook.xml', '<workbook/>')
+            archive.writestr('ppt/presentation.xml', '<presentation/>')
+            archive.writestr(zipfile.ZipInfo('mimetype'), b'x' * size, compress_type=compression)
+        return stream.getvalue()
+
+    def test_a_mimetype_member_is_never_unpacked_by_the_storage_step_in_any_zip(self):
+        """Without libmagic, ``ir.attachment`` falls back to Odoo's sniffer, which reads this member whole.
+
+        The policy decides from the directory entry of the member, for every extension that is a ZIP,
+        and the sniffer of core is never given a chance to read a bzip2 or LZMA member.
+        """
+        from odoo.tools import mimetypes as core_mimetypes
+        for ext in ('zip', 'pptx', 'docx', 'xlsx', 'odt'):
+            for label, compression in (('bzip2', zipfile.ZIP_BZIP2), ('lzma', zipfile.ZIP_LZMA)):
+                content = self._zip_with_mimetype_member(ext, compression)
+                with self.subTest(ext=ext, member=label), \
+                        patch.object(zipfile.ZipFile, 'read', side_effect=AssertionError('read')), \
+                        patch.object(zipfile.ZipFile, 'open', side_effect=AssertionError('opened')):
+                    with self.assertRaises(WoowUploadRejected) as caught:
+                        self.policy._validate('file.' + ext, content)
+                    self.assertEqual(caught.exception.code, 'mime')
+        # what the sniffer of core would have read, to show the member is what the test is about
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as archive:
+            archive.writestr('data.txt', 'x')
+            archive.writestr(zipfile.ZipInfo('mimetype'), b'x' * 64, compress_type=zipfile.ZIP_BZIP2)
+        bomb = stream.getvalue()
+        with patch.object(zipfile.ZipFile, 'read', autospec=True,
+                          side_effect=zipfile.ZipFile.read) as spy:
+            core_mimetypes._odoo_guess_mimetype(bomb)
+        self.assertIn('mimetype', [call.args[1] for call in spy.call_args_list])
+
+    def test_a_large_or_odd_mimetype_member_is_refused_in_any_zip_and_a_small_one_passes(self):
+        for ext in ('zip', 'pptx'):
+            for label, compression, size in (('large', zipfile.ZIP_STORED, 256),
+                                             ('deflated large', zipfile.ZIP_DEFLATED, 4096)):
+                with self.subTest(ext=ext, member=label):
+                    with self.assertRaises(WoowUploadRejected) as caught:
+                        self.policy._validate(
+                            'file.' + ext, self._zip_with_mimetype_member(ext, compression, size))
+                    self.assertEqual(caught.exception.code, 'mime')
+            for label, compression in (('stored', zipfile.ZIP_STORED),
+                                       ('deflated', zipfile.ZIP_DEFLATED)):
+                with self.subTest(ext=ext, member=label, small=True):
+                    result = self.policy._validate(
+                        'file.' + ext, self._zip_with_mimetype_member(ext, compression))
+                    self.assertEqual(result.mimetype, 'application/zip' if ext == 'zip' else
+                                     'application/vnd.openxmlformats-officedocument.presentationml.presentation')
+
     def test_excessive_zip_entries_rejected_before_parser(self):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, 'w') as archive:
