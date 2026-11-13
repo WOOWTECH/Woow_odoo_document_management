@@ -3,7 +3,7 @@
 """Transaction-level advisory locks (IF-LOCK, owned by upload-quota; ER-24, ER-47.3).
 
 Every advisory lock of the module goes through this file: transaction-level locks that a
-transaction must take in the rank order zip, share, quota, access.
+transaction must take in the rank order zip, quota, access.
 """
 from __future__ import annotations
 
@@ -22,9 +22,8 @@ class LockBusy(Exception):
     """The lock could not be taken in time; the transaction is still usable."""
 
 
-RANK: dict[str, int] = {'zip': 1, 'share': 2, 'quota': 3, 'access': 4}
-NAME_RE = re.compile(
-    r'^(zip:u:\d+|zip:slot:[1-4]|zip:s:\d+:[0-9a-f]{16}|share:\d+|quota(?::warn|:u:\d+)?|access:\d+)$')
+RANK: dict[str, int] = {'zip': 1, 'quota': 2, 'access': 3}
+NAME_RE = re.compile(r'^(zip:u:\d+|zip:slot:[1-4]|quota(?::warn|:u:\d+)?|access:\d+)$')
 _TRACKER = weakref.WeakKeyDictionary()
 _HELD_QUERY = """SELECT (classid::bigint << 32) | objid::bigint
                  FROM pg_locks WHERE pid = pg_backend_pid() AND locktype = 'advisory'

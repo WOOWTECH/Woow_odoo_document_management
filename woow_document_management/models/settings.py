@@ -83,13 +83,6 @@ class WoowDocSettings:
     uninstall_confirm: str = ''
 
 
-@dataclasses.dataclass(frozen=True)
-class ShareKeys:
-    k_share: bytes   # HMAC-SHA256(database.secret, b"woow_document_management/share-token/v1")
-    k_hint: bytes    # same, label b"woow_document_management/share-hint/v1"
-    k_ip: bytes      # same, label b"woow_document_management/audit-ip/v1"
-
-
 def _parse_value(key, raw):
     if key in _INT_RANGES:
         if isinstance(raw, bool):
@@ -186,13 +179,14 @@ class WoowDocumentSettings(models.AbstractModel):
         raw = self._read_params(PARAM_PREFIX + key for key in _PARAM_KEYS)
         return parse_settings({key: raw.get(PARAM_PREFIX + key) for key in _PARAM_KEYS})
 
-    def _share_keys(self) -> ShareKeys:
-        """Derive the HMAC keys in memory; empty or unreadable database.secret -> ValueError."""
+    def _audit_ip_key(self) -> bytes:
+        """HMAC key of the audit IP hashes, derived in memory from database.secret.
+
+        HMAC-SHA256(database.secret, b"woow_document_management/audit-ip/v1"); an empty or
+        unreadable database.secret -> ValueError.
+        """
         secret = self._read_params(('database.secret',)).get('database.secret')
         if not secret:
             raise ValueError('database.secret is unavailable')
-        key = secret.encode('utf-8')
-        def derive(label):
-            return hmac.new(key, ('woow_document_management/' + label + '/v1').encode(),
-                            hashlib.sha256).digest()
-        return ShareKeys(derive('share-token'), derive('share-hint'), derive('audit-ip'))
+        return hmac.new(secret.encode('utf-8'), b'woow_document_management/audit-ip/v1',
+                        hashlib.sha256).digest()

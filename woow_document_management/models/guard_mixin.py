@@ -62,14 +62,8 @@ class WoowDocumentGuardMixin(models.AbstractModel):
                    if not key.startswith('default_') or key in self._woow_allowed_defaults}
         model = self if len(context) == len(self.env.context) else self.with_context(context)
         if not model.env.su:
-            secret_fields = frozenset()
-            if model._name == 'woow.document.share':
-                from .document_share import SECRET_CTX_KEY, _SECRET_SENTINEL
-                if model.env.context.get(SECRET_CTX_KEY) is _SECRET_SENTINEL:
-                    secret_fields = frozenset({'token_hash', 'password_hash'})
             for vals in vals_list:
-                model.check_field_access_rights('create', [
-                    key for key in vals if key not in secret_fields])
+                model.check_field_access_rights('create', list(vals))
         return super(WoowDocumentGuardMixin, model).create(vals_list)
 
     @api.model
@@ -96,7 +90,7 @@ class WoowDocumentGuardMixin(models.AbstractModel):
         return super()._read_group_groupby(groupby_spec, query)
 
     def copy(self, default=None):
-        """Duplicating folders, documents and share links is not offered."""
+        """Duplicating folders and documents is not offered."""
         raise UserError(_('Duplicating this record is not supported.'))
 
     def _require_manager(self):

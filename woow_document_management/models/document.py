@@ -31,9 +31,9 @@ class WoowDocument(models.Model):
         'document_type', 'datas', 'url', 'mimetype', 'owner_id', 'uploaded_by_partner_id',
         'shared_user_ids', 'shared_partner_ids', 'source_res_model', 'source_res_id',
         'legal_hold', 'active', 'trashed_date', 'trashed_by_id', 'restored_date',
-        # computed from the file, the folder and the dates, and the chatter of the record
+        # computed from the file and the folder, and the chatter of the record
         'attachment_id', 'checksum', 'file_size', 'company_id', 'folder_in_trash',
-        'effective_restored_at', 'woow_user_can_write', 'source_display', 'activity_ids',
+        'woow_user_can_write', 'source_display', 'activity_ids',
         'message_follower_ids', 'message_ids', 'website_message_ids'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
@@ -51,8 +51,6 @@ class WoowDocument(models.Model):
                                 check_company=True, ondelete='restrict')
     company_id = fields.Many2one(related='folder_id.company_id', store=True, index=True)
     folder_in_trash = fields.Boolean(related='folder_id.in_trash', store=True, index=True)
-    effective_restored_at = fields.Datetime(compute='_compute_effective_restored_at', store=True,
-                                            groups='base.group_user')
     owner_id = fields.Many2one('res.users', default=lambda self: (
         self.env.user if self.env.user._is_internal() else False), tracking=True,
                                ondelete='set null', groups='base.group_user')
@@ -90,13 +88,6 @@ class WoowDocument(models.Model):
             by_doc.setdefault(attachment.res_id, attachment.id)
         for doc in self:
             doc.attachment_id = by_doc.get(doc.id, False)
-
-    @api.depends('restored_date', 'folder_id.subtree_restored_at')
-    def _compute_effective_restored_at(self):
-        for doc in self:
-            dates = [value for value in (
-                doc.restored_date, doc.folder_id.subtree_restored_at) if value]
-            doc.effective_restored_at = max(dates) if dates else False
 
     @api.depends('source_res_model', 'source_res_id')
     def _compute_source_display(self):
@@ -265,7 +256,7 @@ class WoowDocument(models.Model):
             protected = {'mimetype', 'attachment_id', 'checksum', 'file_size',
                          'uploaded_by_partner_id', 'folder_in_trash', 'company_id',
                          'active', 'trashed_date', 'trashed_by_id', 'restored_date',
-                         'legal_hold', 'effective_restored_at', 'woow_user_can_write'}
+                         'legal_hold', 'woow_user_can_write'}
             if protected.intersection(vals):
                 raise AccessError(_('File metadata is set by the server.'))
             if {'source_res_model', 'source_res_id'}.intersection(vals) and \

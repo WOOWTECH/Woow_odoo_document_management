@@ -15,18 +15,16 @@ LEVELS: tuple[str, ...] = ('read', 'upload', 'edit', 'manage')
 PORTAL_LEVELS: tuple[str, ...] = ('read', 'upload')
 SUBJECT_TYPES: tuple[str, ...] = ('user', 'group', 'partner')
 
-EVENTS: tuple[str, ...] = (  # 21 events, fixed order (ER-37)
+EVENTS: tuple[str, ...] = (  # 12 events, fixed order (ER-37)
     'view', 'download', 'zip', 'upload', 'replace', 'trash', 'restore', 'purge', 'move',
-    'access_change', 'legal_hold', 'share_create', 'share_send', 'share_open', 'share_access',
-    'share_download', 'share_unlock_failed', 'share_revoke', 'share_expire', 'settings_change',
-    'rate_limited',
+    'access_change', 'legal_hold', 'settings_change',
 )
-CHANNELS: tuple[str, ...] = ('backend', 'portal', 'share', 'rpc', 'cron')
-RESULTS: tuple[str, ...] = ('ok', 'denied')
+CHANNELS: tuple[str, ...] = ('backend', 'portal', 'rpc', 'cron')
+RESULTS: tuple[str, ...] = ('ok',)
 
 WOOW_MODELS: tuple[str, ...] = (
     'woow.document', 'woow.document.folder', 'woow.document.folder.access',
-    'woow.document.tag', 'woow.document.share', 'woow.document.log',
+    'woow.document.tag', 'woow.document.log',
 )
 TRASHABLE_MODELS: tuple[str, ...] = ('woow.document', 'woow.document.folder')   # I-04
 

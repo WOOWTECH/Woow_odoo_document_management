@@ -24,7 +24,7 @@ _EFF_FIELDS = frozenset(name for lines in _EFFECTIVE_FIELDS.values() for name, _
 _SUBJECT_FIELD = {'user': 'user_id', 'group': 'group_id', 'partner': 'partner_id'}
 _SUBJECT_MODEL = {'user': 'res.users', 'group': 'res.groups', 'partner': 'res.partner'}
 _SERVER_ONLY_FIELDS = frozenset({
-    'parent_path', 'complete_name', 'in_trash', 'subtree_restored_at',
+    'parent_path', 'complete_name', 'in_trash',
     'has_restricted_descendant', 'subtree_legal_hold', 'woow_user_rank',
     'woow_has_portal_members', 'document_count', 'subfolder_count',
     'effective_access_lines', 'child_ids', 'document_ids',
@@ -114,8 +114,6 @@ class WoowDocumentFolder(models.Model):
     trashed_date = fields.Datetime(groups='base.group_user')
     trashed_by_id = fields.Many2one('res.users', ondelete='set null', groups='base.group_user')
     restored_date = fields.Datetime(groups='base.group_user')
-    subtree_restored_at = fields.Datetime(compute='_compute_subtree_restored_at', store=True,
-                                          recursive=True, groups='base.group_user')
     has_restricted_descendant = fields.Boolean(compute='_compute_has_restricted_descendant',
                                                store=True, recursive=True, groups='base.group_user')
     legal_hold = fields.Boolean(groups=_MANAGER)
@@ -361,13 +359,6 @@ class WoowDocumentFolder(models.Model):
         for folder in self:
             folder.in_trash = not folder.active or bool(folder.parent_id.in_trash)
 
-    @api.depends('restored_date', 'parent_id.subtree_restored_at')
-    def _compute_subtree_restored_at(self):
-        for folder in self:
-            dates = [value for value in (
-                folder.restored_date, folder.parent_id.subtree_restored_at) if value]
-            folder.subtree_restored_at = max(dates) if dates else False
-
     @api.depends('inherit_access', 'child_ids.inherit_access', 'child_ids.has_restricted_descendant')
     def _compute_has_restricted_descendant(self):
         """Every child counts, trashed ones included (see ``_compute_subtree_legal_hold``)."""
@@ -527,9 +518,8 @@ class WoowDocumentFolder(models.Model):
     def _woow_filter_rank(self, n):
         """The folders of ``self`` that pass ``_woow_has_rank(n)``, found with one search.
 
-        Checking each folder of a long list one by one costs a query per folder (a
-        share of a few thousand documents would take thousands), however few folders
-        hold them.
+        Checking each folder of a long list one by one costs a query per folder (a few
+        thousand documents would take thousands), however few folders hold them.
         """
         if not self:
             return self

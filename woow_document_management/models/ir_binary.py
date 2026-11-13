@@ -71,7 +71,7 @@ class IrBinary(models.AbstractModel):
         """Stream a document file from the attachment the document records, and only that one.
 
         Core streams the newest attachment that claims the field. Every module
-        path (download, preview, portal, share, ZIP) and ``/web/content`` or
+        path (download, preview, portal, ZIP) and ``/web/content`` or
         ``/web/image`` for a document's file come here, so another attachment that
         claims the same field, however it was made, is never served: the stream is
         built from the document's own ``attachment_id`` (Q17), the attachment its
