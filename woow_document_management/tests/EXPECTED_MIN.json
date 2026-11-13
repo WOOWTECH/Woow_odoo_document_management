@@ -1,7 +1,7 @@
 {
   "batches": {
     "core": 368,
-    "files": 120,
+    "files": 123,
     "portal": 3
   },
   "files": {
@@ -52,7 +52,7 @@
     "test_settings_bounds.py": 12,
     "test_trash_lifecycle.py": 29,
     "test_uninstall.py": 4,
-    "test_upload_policy.py": 26,
+    "test_upload_policy.py": 29,
     "test_url_policy.py": 4,
     "test_zip_builder.py": 5
   },

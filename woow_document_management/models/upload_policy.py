@@ -35,6 +35,7 @@ REJECT_CODES = ('size', 'filename', 'extension', 'mime', 'content', 'pixels', 'q
 
 ZIP_MAX_ENTRIES = 4096
 ZIP_MAX_DIRECTORY = 1024 * 1024
+ODF_MIMETYPE_MAX_COMPRESSED = 1024    # the compressed size of the ``mimetype`` member of an ODF file
 _ZIP_ENTRY = b'PK\x01\x02'
 
 
@@ -255,7 +256,11 @@ def _office_zip_mimetype(data: bytes, ext: str) -> str:
             odf = {'odt': 'text', 'ods': 'spreadsheet', 'odp': 'presentation'}
             if ext in odf:
                 info = archive.getinfo('mimetype')
-                if info.file_size > 255:
+                # The ODF specification keeps this member stored. A bzip2 or LZMA member is not read:
+                # CPython unpacks a whole compressed block before it cuts the read, so a few hundred
+                # bytes cost hundreds of megabytes, whatever size the header declares.
+                if (info.file_size > 255 or info.compress_size > ODF_MIMETYPE_MAX_COMPRESSED
+                        or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)):
                     return ''
                 with archive.open(info) as member:
                     declared = member.read(256)

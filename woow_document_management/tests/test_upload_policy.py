@@ -530,6 +530,59 @@ class TestUploadPolicy(TransactionCase):
             self.policy._validate('bomb.odt', stream.getvalue())
         self.assertEqual(caught.exception.code, 'mime')
 
+    ODF = {'odt': 'application/vnd.oasis.opendocument.text',
+           'ods': 'application/vnd.oasis.opendocument.spreadsheet',
+           'odp': 'application/vnd.oasis.opendocument.presentation'}
+
+    def _odf(self, ext, compression):
+        """An ODF file whose members (the ``mimetype`` one included) are written with ``compression``."""
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w', compression=compression) as archive:
+            archive.writestr('mimetype', self.ODF[ext])
+            archive.writestr('content.xml', '<document/>')
+        return stream.getvalue()
+
+    def test_a_stored_or_deflated_odf_mimetype_member_is_accepted(self):
+        """The specification keeps the member stored; a writer that deflates it is accepted as before."""
+        for ext, mimetype in self.ODF.items():
+            for label, compression in (('stored', zipfile.ZIP_STORED),
+                                       ('deflated', zipfile.ZIP_DEFLATED)):
+                with self.subTest(ext=ext, member=label):
+                    result = self.policy._validate('report.' + ext, self._odf(ext, compression))
+                    self.assertEqual(result.mimetype, mimetype)
+
+    def test_a_bzip2_or_lzma_odf_mimetype_member_is_refused_without_being_opened(self):
+        """CPython unpacks a whole compressed block of such a member before it cuts the read."""
+        for ext in self.ODF:
+            for label, compression in (('bzip2', zipfile.ZIP_BZIP2), ('lzma', zipfile.ZIP_LZMA)):
+                content = self._odf(ext, compression)
+                info = zipfile.ZipFile(io.BytesIO(content)).getinfo('mimetype')
+                self.assertEqual((info.compress_type, info.file_size <= 255, info.compress_size <= 1024),
+                                 (compression, True, True))
+                with self.subTest(ext=ext, member=label), \
+                        patch.object(zipfile.ZipFile, 'open', side_effect=AssertionError('opened')):
+                    with self.assertRaises(WoowUploadRejected) as caught:
+                        self.policy._validate('report.' + ext, content)
+                    self.assertEqual(caught.exception.code, 'mime')
+
+    def test_an_odf_mimetype_member_that_declares_a_large_compressed_size_is_not_opened(self):
+        """The compressed size is read from the directory of the archive, as the other sizes are."""
+        for compression in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+            content = bytearray(self._odf('odt', compression))
+            first = content.index(b'PK\x01\x02')
+            for size, opened in ((1024, True), (1025, False), (10 ** 6, False)):
+                struct.pack_into('<I', content, first + 20, size)     # the compressed size
+                with self.subTest(compression=compression, size=size), patch.object(
+                        zipfile.ZipFile, 'open', return_value=io.BytesIO(self.ODF['odt'].encode())
+                ) as open_member:
+                    try:
+                        result = self.policy._validate('report.odt', bytes(content))
+                    except WoowUploadRejected as caught:
+                        self.assertEqual(caught.code, 'mime')
+                        result = None
+                    self.assertEqual(result is not None, opened)
+                    self.assertEqual(open_member.called, opened)
+
     def test_excessive_zip_entries_rejected_before_parser(self):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, 'w') as archive:
