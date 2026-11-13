@@ -44,17 +44,35 @@ def _eff(comodel, relation, column, field_name):
         depends=(*_EFF_LOCAL_DEPENDS, f'parent_id.{field_name}'))
 
 
-def _company_value(value):
-    """The company a write names, as an id or False; None when the value has no known shape."""
+def _m2o_value(value, comodel):
+    """The id that a many2one to ``comodel`` keeps for ``value`` (False for none), None for no id.
+
+    This is the one reading of the value of a many2one that every guard of a folder uses (the
+    parent, the owner and the company), and it follows ``Many2one.convert_to_cache``: a number is an
+    id only when it is an ``int`` (a bool is not one), a record of the comodel is its id (several
+    records, or a record of another model, have none), a tuple is its first element (the pair of an
+    id and a name) and ``None``, ``False`` and an empty list are no record. Anything else (a list with
+    something in it, a text, a float, a dict) has no id: the ORM keeps NULL for it, so a guard that
+    read an id from it would judge a record that is not the one that is stored.
+    """
     if isinstance(value, models.BaseModel):
-        if len(value) > 1:
+        if value._name != comodel or len(value) > 1:
             return None
-        value = value.id
-    elif isinstance(value, (list, tuple)):
+        if not value:
+            return False
+        return value.id if type(value.id) is int else None
+    if isinstance(value, list):
+        return False if not value else None
+    if isinstance(value, tuple):
         value = value[0] if value else False
     if value is None or value is False:
         return False
     return value if type(value) is int else None
+
+
+def _company_value(value):
+    """The company a write names, as an id or False; None when the value has no known shape."""
+    return _m2o_value(value, 'res.company')
 
 
 def _stored_flag(vals, name, default):
@@ -180,16 +198,23 @@ class WoowDocumentFolder(models.Model):
         """Apply the site root policy and parent edit grant before creating folders.
 
         A document user who is not the superuser also has the owner of the new folder checked
-        (``_woow_check_owner``): the one that the values name, or else the stored default.
-        An editor does not choose an owner: the folder gets the one of its parent, and does not
-        turn inheritance off. A caller who is no document user is refused by the access rights of
-        the model, so nothing is asked about the owner. ``inherit_access`` is read as the column
-        keeps it (``_stored_flag``): ``0``, ``None`` and ``''`` turn it off as ``False`` does.
+        (``_woow_check_owner``): the one that the values name, or else the one that the default of
+        the field gives when core makes the row, read with the context that ``create`` hands to core
+        (``_woow_without_ambient_defaults``). An editor does not choose an owner: the folder gets the
+        one of its parent, and does not turn inheritance off. A caller who is no document user is
+        refused by the access rights of the model, so nothing is asked about the owner.
+        ``inherit_access`` is read as the column keeps it (``_stored_flag``).
+
+        The parent, the owner and the company that were judged are written into the values, each read
+        once (``_woow_parent_value``, ``_woow_owner_value``, ``_company_value``), so that the folder
+        is made with what was checked. What the ORM then holds is judged again, whatever the values
+        were (``_woow_check_stored_state``), and that is the check that counts.
         """
         manager = self.env.su or self.env.user.has_group(_MANAGER)
         checks_owner = not self.env.su and self.env.user.has_group(_USER)
-        defaults = self.default_get(['parent_id', 'owner_id'])
-        default_parent = defaults.get('parent_id')
+        # the defaults of the rows that core makes, not those that a key of the caller's context gives
+        defaults = self._woow_without_ambient_defaults().default_get(['parent_id', 'owner_id'])
+        answers = {}
         for vals in vals_list:
             if 'name' in vals:
                 vals['name'] = (vals['name'] or '').strip()
@@ -198,39 +223,50 @@ class WoowDocumentFolder(models.Model):
             if not self.env.su and (_SERVER_ONLY_FIELDS.intersection(vals) or
                                     any(key.startswith('eff_') for key in vals)):
                 raise AccessError(_('This folder field cannot be changed directly.'))
-            if not manager and 'company_id' in vals and not _company_value(vals['company_id']):
+            if not manager and 'company_id' in vals:
                 # A folder that belongs to no company is open to every company's
                 # administrators (R-F0 / R-D0), so only a document administrator makes one.
-                raise AccessError(_('Only document administrators can do this.'))
-            parent_id = vals.get('parent_id', default_parent)
-            parent = self.browse()
+                company = _company_value(vals['company_id'])
+                if not company:
+                    raise AccessError(_('Only document administrators can do this.'))
+                vals['company_id'] = company
+            if self.env.su:
+                continue
+            parent = self._woow_parent_value(
+                vals['parent_id'] if 'parent_id' in vals else defaults.get('parent_id'))
+            vals['parent_id'] = parent.id or False
+            inherit = _stored_flag(vals, 'inherit_access', True)
+            vals['inherit_access'] = inherit
             editor = False
-            if not parent_id:
+            if not parent:
                 self._woow_require_root_right()
+                answers[('root',)] = True
             elif not manager:
-                parent = self.browse(parent_id)
-                parent._woow_require_rank(3)
-                if parent.in_trash:
+                if not parent._woow_rank_once(3, answers) or parent.in_trash:
                     raise AccessError(_('You do not have enough rights on this folder.'))
-                if not parent._woow_has_rank(4):
+                if not parent._woow_rank_once(4, answers):
                     # An editor can organize a child, but must not gain its
                     # implicit owner/manage grant above the parent's ceiling.
-                    if vals.get('owner_id') or not _stored_flag(vals, 'inherit_access', True):
+                    if vals.get('owner_id') or not inherit:
                         raise AccessError(_('You do not have enough rights on this folder.'))
                     vals['owner_id'] = parent.owner_id.id or False
                     editor = True
             if checks_owner and not editor:
                 # The owner has the manage level of the new folder: a document user, and when the
                 # folder does not inherit its access, within the grants of its parent (AC-2).
-                self._woow_check_owner(
-                    self._woow_owner_value(
-                        vals['owner_id'] if 'owner_id' in vals else defaults.get('owner_id')),
-                    parent, _stored_flag(vals, 'inherit_access', True))
-            if not self.env.su and vals.get('active', True):
+                owner = self._woow_owner_value(
+                    vals['owner_id'] if 'owner_id' in vals else defaults.get('owner_id'))
+                vals['owner_id'] = owner.id or False
+                self._woow_ask_owner(None, owner, parent, inherit, answers)
+            if vals.get('active', True):
                 self._woow_check_name_free(
-                    vals.get('name'), parent_id, vals.get('company_id', self.env.company.id))
-        return super(WoowDocumentFolder, self.with_context(
+                    vals.get('name'), vals['parent_id'],
+                    vals.get('company_id', self.env.company.id))
+        records = super(WoowDocumentFolder, self.with_context(
             mail_create_nosubscribe=True, mail_create_nolog=True)).create(vals_list)
+        if not self.env.su:
+            records._woow_check_stored_state({}, answers)
+        return records
 
     def write(self, vals):
         """Preserve effective access as explicit grants when inheritance is disabled.
@@ -239,7 +275,10 @@ class WoowDocumentFolder(models.Model):
         owner, a parent or the access (``_woow_check_owners``), and a new owner is one audit row.
         ``inherit_access`` is read as the column keeps it (``_stored_flag``): ``0``, ``None`` and
         ``''`` turn it off as ``False`` does, for the guards below and for the grants that are
-        kept as member rows.
+        kept as member rows. The parent, the owner and the company that were judged are written
+        into the values, each read once, so that the rows get what was checked; what the ORM holds
+        after the write is judged again (``_woow_check_stored_state``), and that is the check that
+        counts.
         """
         if 'name' in vals:
             vals = dict(vals, name=(vals['name'] or '').strip())
@@ -265,17 +304,21 @@ class WoowDocumentFolder(models.Model):
                 new_company = _company_value(vals['company_id'])
                 if any(new_company != (folder.company_id.id or False) for folder in self):
                     raise AccessError(_('Only document administrators can do this.'))
+                vals = dict(vals, company_id=new_company)
         # the flag is read as the column keeps it (``_stored_flag``): 0, None and '' disable it too
         disables_inheritance = not _stored_flag(vals, 'inherit_access', True)
         if disables_inheritance and 'access_ids' in vals:
             raise UserError(_('Save member changes before disabling inherited access.'))
         if disables_inheritance and 'parent_id' in vals:
             raise UserError(_('Save the new parent before disabling inherited access.'))
+        answers, before = {}, None
         if 'parent_id' in vals:
-            if not vals['parent_id'] and self.filtered('parent_id'):
+            new_parent = self._woow_parent_value(vals['parent_id'])
+            vals = dict(vals, parent_id=new_parent.id or False)
+            if not new_parent and self.filtered('parent_id'):
                 # Moving a folder to the top level is creating a root folder.
                 self._woow_require_root_right()
-            new_parent = self.browse(vals['parent_id']) if vals['parent_id'] else self.browse()
+                answers[('root',)] = True
             for folder in self:
                 if new_parent and not self.env.su:
                     new_parent._woow_require_rank(3)
@@ -294,8 +337,12 @@ class WoowDocumentFolder(models.Model):
                     vals['parent_id'] if 'parent_id' in vals else folder.parent_id.id,
                     vals['company_id'] if 'company_id' in vals else folder.company_id.id,
                     exclude=folder.ids)
-        if not self.env.su and {'owner_id', 'parent_id', 'inherit_access'}.intersection(vals):
-            self._woow_check_owners(vals)
+        if not self.env.su and {'owner_id', 'parent_id', 'inherit_access', 'company_id'}.intersection(vals):
+            before = self._woow_state()
+            if {'owner_id', 'parent_id', 'inherit_access'}.intersection(vals):
+                if 'owner_id' in vals:
+                    vals = dict(vals, owner_id=self._woow_owner_value(vals['owner_id']).id or False)
+                self._woow_check_owners(vals, answers)
         access_model = self.env['woow.document.folder.access']
         if disables_inheritance:
             for folder in self.filtered('inherit_access'):
@@ -325,6 +372,8 @@ class WoowDocumentFolder(models.Model):
         owner_before = ({folder.id: folder.owner_id.id or 0 for folder in self}
                         if 'owner_id' in vals else {})
         result = super().write(vals)
+        if before is not None:
+            self._woow_check_stored_state(before, answers)
         if hold_before:
             for folder in self:
                 if hold_before[folder.id] != folder.legal_hold:
@@ -347,18 +396,44 @@ class WoowDocumentFolder(models.Model):
     def _woow_owner_value(self, value):
         """The ``res.users`` record (empty for none) that a value of ``owner_id`` names.
 
-        ``_company_value`` reads a many2one value the way the ORM does, with one difference that
-        only makes the check stricter: a list counts as a pair. What it cannot read, and a number
+        ``_m2o_value`` reads a many2one value the way the ORM keeps it. What has no id, and a number
         that no record has (the ORM would keep 0 as an id), is refused with the message of the
         member rows, so that it cannot reach the field as another kind of value.
         """
-        owner_id = _company_value(value)
+        owner_id = _m2o_value(value, 'res.users')
         if owner_id is None or (owner_id is not False and owner_id < 1):
             raise ValidationError(_('Choose a document user.'))
         return self.env['res.users'].browse(owner_id or [])
 
-    def _woow_check_owners(self, vals):
-        """Hold the owners of ``self`` to ``_woow_check_owner`` after a write of ``vals``.
+    @api.model
+    def _woow_parent_value(self, value):
+        """The folder (empty for none) that a value of ``parent_id`` names.
+
+        The same reading as the owner's: ``_m2o_value`` follows what the ORM keeps for the value,
+        which is NULL for a list, a text, a float, a flag or a dict, and a guard that took such a
+        value for a folder (of an inactive folder, for which no other check looks) would judge a
+        parent that is not the one that is stored. What has no id, and a number that no folder has,
+        is refused; no value, ``False`` and ``None`` are the top level.
+        """
+        parent_id = _m2o_value(value, self._name)
+        if parent_id is None or (parent_id is not False and parent_id < 1):
+            raise ValidationError(_('Choose an available folder.'))
+        return self.browse(parent_id or [])
+
+    def _woow_state(self):
+        """{id: (owner, parent, inherits its access, company)} as the records of ``self`` hold it."""
+        return {folder.id: (folder.owner_id, folder.parent_id, bool(folder.inherit_access),
+                            folder.company_id) for folder in self}
+
+    def _woow_rank_once(self, n, answers):
+        """``_woow_has_rank(n)`` of the one folder in ``self``, asked once for every ``answers``."""
+        key = ('rank', n, self.id)
+        if key not in answers:
+            answers[key] = self._woow_has_rank(n)
+        return answers[key]
+
+    def _woow_check_owners(self, vals, answers):
+        """Hold the owners of ``self`` to ``_woow_check_owner`` for a write of ``vals``.
 
         The owner has the manage level of the folder (``_compute_effective``), so the rule that a
         folder that does not inherit its access only narrows the access of its parent (AC-2) has to
@@ -366,29 +441,74 @@ class WoowDocumentFolder(models.Model):
         who stays is held to the ceiling when the write moves the folder below another parent or
         stops it from inheriting, so that the ceiling cannot be passed in two steps: first an owner
         while the folder inherits, then the restriction. The parent and the access that count are
-        the ones the folder has after the write, and a flag is read as the ORM stores it.
+        the ones the folder has after the write, and a flag is read as the ORM stores it. This asks
+        before the write, for a refusal that costs nothing; ``_woow_check_stored_state`` asks again
+        of what was stored, and ``answers`` keeps what was asked, so that nothing is asked twice.
         """
         if not self:
             return
         owner = self._woow_owner_value(vals['owner_id']) if 'owner_id' in vals else None
-        done = set()
+        parent = self._woow_parent_value(vals['parent_id']) if 'parent_id' in vals else None
         for folder in self:
-            if 'parent_id' in vals:
-                parent = self.browse(vals['parent_id']) if vals['parent_id'] else self.browse()
-            else:
-                parent = folder.parent_id
-            inherit = _stored_flag(vals, 'inherit_access', folder.inherit_access)
-            if owner is not None and folder.owner_id != owner:
-                check, who = self._woow_check_owner, owner
-            elif parent != folder.parent_id or (folder.inherit_access and not inherit):
-                check, who = self._woow_check_owner_ceiling, folder.owner_id
-            else:
-                continue
-            # one answer for the folders that have the same owner, parent and access
-            key = (check.__name__, who.id, parent.id, inherit)
-            if key not in done:
-                done.add(key)
-                check(who, parent, inherit)
+            self._woow_ask_owner(
+                (folder.owner_id, folder.parent_id, bool(folder.inherit_access)),
+                folder.owner_id if owner is None else owner,
+                folder.parent_id if parent is None else parent,
+                _stored_flag(vals, 'inherit_access', folder.inherit_access), answers)
+
+    def _woow_ask_owner(self, was, owner, parent, inherit, answers):
+        """Ask for the check that is due when a folder gets this owner, parent and access.
+
+        ``was`` is (owner, parent, inherits its access) of the folder before the call, None for a
+        folder that is made. A new owner passes ``_woow_check_owner``; the owner who stays is held
+        to the ceiling (``_woow_check_owner_ceiling``) when the folder moves or stops inheriting;
+        nothing else is asked. One answer is kept for the folders that have the same owner, parent
+        and access, in ``answers``, whichever of the checks before and after the write asks first.
+        """
+        if was is None or owner != was[0]:
+            check = self._woow_check_owner
+        elif parent != was[1] or (was[2] and not inherit):
+            check = self._woow_check_owner_ceiling
+        else:
+            return
+        key = (check.__name__, owner.id, parent.id, inherit)
+        if key not in answers:
+            check(owner, parent, inherit)
+            answers[key] = True
+
+    def _woow_check_stored_state(self, before, answers):
+        """Ask the rules of the owner, the parent and the company again of what the records hold.
+
+        Called after a create or a write of a caller who is not the superuser. The checks before the
+        call judge the values that came in; this judges the state that the ORM made of them, read
+        back from the records, with the same helper functions, and a violation raises and rolls the
+        request back. Whatever the shape of a value was (another type, a default of another kind, a
+        value that was read in one way and stored in another), no state is left that was not
+        checked. ``before`` is the state of each folder before a write (``_woow_state``) and empty
+        for a create; ``answers`` holds what the checks before the call asked, so that the usual
+        case asks nothing again. The rules: a folder that has no company is made, and the company
+        of a folder is changed, only by a document administrator; a folder at the top level needs
+        the root right; the folder of an editor takes the owner of its parent and inherits its
+        access; any other owner is held to ``_woow_check_owner`` and the ceiling.
+        """
+        if self.env.su:
+            return
+        manager = self.env.user.has_group(_MANAGER)
+        checks_owner = self.env.user.has_group(_USER)
+        for folder in self:
+            was = before.get(folder.id)
+            owner, parent, inherit = folder.owner_id, folder.parent_id, bool(folder.inherit_access)
+            company = folder.company_id
+            if not manager and (not company if was is None else company != was[3]):
+                raise AccessError(_('Only document administrators can do this.'))
+            if not parent and (was is None or was[1]) and ('root',) not in answers:
+                self._woow_require_root_right()
+                answers[('root',)] = True
+            if was is None and parent and not manager and not parent._woow_rank_once(4, answers):
+                if not inherit or owner != parent.owner_id:
+                    raise AccessError(_('You do not have enough rights on this folder.'))
+            elif was is not None or checks_owner:
+                self._woow_ask_owner(was and was[:3], owner, parent, inherit, answers)
 
     @api.model
     def _woow_check_owner(self, owner, parent, inherit_access):

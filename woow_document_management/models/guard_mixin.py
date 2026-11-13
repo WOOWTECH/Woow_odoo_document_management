@@ -55,12 +55,23 @@ class WoowDocumentGuardMixin(models.AbstractModel):
     # each model overrides this, e.g. frozenset({'default_folder_id'})
     _woow_allowed_defaults = frozenset()
 
+    def _woow_without_ambient_defaults(self):
+        """``self`` with the context that ``create`` hands to core: the ``default_*`` keys of the caller
+        are dropped, except the ones that the model allows (``_woow_allowed_defaults``).
+
+        Core reads the defaults of the fields that a create leaves out with this context. A guard that
+        decides on the value that a default will give (the owner of a folder that a create does not
+        name, say) reads it with the same context, from this model, so that the value it judges is the
+        value that is stored and not the one that a key of the caller's context would give.
+        """
+        context = {key: value for key, value in self.env.context.items()
+                   if not key.startswith('default_') or key in self._woow_allowed_defaults}
+        return self if len(context) == len(self.env.context) else self.with_context(context)
+
     @api.model_create_multi
     def create(self, vals_list):
         """Prevent ambient defaults and field groups from bypassing model checks."""
-        context = {key: value for key, value in self.env.context.items()
-                   if not key.startswith('default_') or key in self._woow_allowed_defaults}
-        model = self if len(context) == len(self.env.context) else self.with_context(context)
+        model = self._woow_without_ambient_defaults()
         if not model.env.su:
             for vals in vals_list:
                 model.check_field_access_rights('create', list(vals))

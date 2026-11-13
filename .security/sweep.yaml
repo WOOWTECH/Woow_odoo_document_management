@@ -96,5 +96,6 @@ verify:
   - woow_document_management/tests/test_reg_owner_within_ceiling.py
   - woow_document_management/tests/test_reg_typed_boolean_flags.py
   - woow_document_management/tests/test_reg_attachment_model_as_stored.py
+  - woow_document_management/tests/test_reg_folder_stored_state.py
   # test_perf.py is tagged -standard and deliberately not listed. Every new tests/test_reg_<slug>.py from a fix is
   # appended here (this touches .security/, so it always goes to a human - expected).
