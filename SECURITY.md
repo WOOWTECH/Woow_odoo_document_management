@@ -29,12 +29,12 @@ sharing, which is not part of this module. Retired numbers are not reused.
 - **HD-03** Readers of a folder can see the numeric ids of its ancestors. *(text pending)*
 - **HD-04** Chatter attachments on documents and folders follow Odoo's native upload rules, with
   one exception: they are never public and never carry or accept an access token, in any
-  environment, so no link opens them without a sign-in. A file that is too large to be mailed is
-  still taken out of the mail and replaced by a download link, but the link has no token. It opens
-  only for a signed-in internal user who can read the record. Everybody else gets a not-found
-  answer (HTTP 404) and no file: visitors without a session, and portal users as well. Portal
-  members are a mail audience (HD-10), so they receive the mail and the link, but neither the file
-  nor a working link. *(text pending)*
+  environment, so no link opens them without a sign-in (HD-12 is the same rule for what is served).
+  A file that is too large to be mailed is still taken out of the mail and replaced by a download
+  link, but the link has no token. It opens only for a signed-in internal user who can read the
+  record. Everybody else gets a not-found answer (HTTP 404) and no file: visitors without a
+  session, and portal users as well. Portal members are a mail audience (HD-10), so they receive
+  the mail and the link, but neither the file nor a working link. *(text pending)*
 - **HD-05** The "restricted subfolder" flag is visible so that subtrees cannot be trashed blindly.
   *(text pending)*
 - **HD-06** Retired.
@@ -50,7 +50,9 @@ sharing, which is not part of this module. Retired numbers are not reused.
 - **HD-11** Retired.
 - **HD-12** Chatter attachments keep Odoo's native content-type rules; every streamed response
   carries a `default-src 'none'` content security policy. A chatter attachment is never served
-  on the strength of an access token, whoever stored the token. *(text pending)*
+  on the strength of an access token, whoever stored the token, and never because it is public:
+  the public flag is kept off these files too (HD-04). The two decisions are one rule: no link
+  opens a chatter attachment without a sign-in. *(text pending)*
 
 ## Deployment notes
 

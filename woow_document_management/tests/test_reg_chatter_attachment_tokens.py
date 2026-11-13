@@ -371,7 +371,12 @@ class TestChatterAttachmentTokenCalls(_ChatterFixture, TransactionCase):
 
 @tagged('woow_docmgmt_core')
 class TestLargeFilesInMail(_ChatterFixture, TransactionCase, MockEmail):
-    """Core mails a link, with the token of the file, in place of a file that is too large."""
+    """Core takes a file that is too large out of the mail and mails a link to it instead.
+
+    For the file of another model the link carries the token of the file (the control below). For
+    the file of a document or folder it carries none: only a signed-in user who may read the record
+    opens it, and nobody else does.
+    """
 
     def setUp(self):
         super().setUp()
