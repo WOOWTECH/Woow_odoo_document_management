@@ -223,11 +223,11 @@ class WoowDocumentFolder(models.Model):
             if not self.env.su and (_SERVER_ONLY_FIELDS.intersection(vals) or
                                     any(key.startswith('eff_') for key in vals)):
                 raise AccessError(_('This folder field cannot be changed directly.'))
-            if not manager and 'company_id' in vals:
+            if 'company_id' in vals and not self.env.su:
                 # A folder that belongs to no company is open to every company's
                 # administrators (R-F0 / R-D0), so only a document administrator makes one.
-                company = _company_value(vals['company_id'])
-                if not company:
+                company = self._woow_company_value(vals['company_id'], manager)
+                if not manager and not company:
                     raise AccessError(_('Only document administrators can do this.'))
                 vals['company_id'] = company
             if self.env.su:
@@ -266,6 +266,7 @@ class WoowDocumentFolder(models.Model):
             mail_create_nosubscribe=True, mail_create_nolog=True)).create(vals_list)
         if not self.env.su:
             records._woow_check_stored_state({}, answers)
+            records._woow_check_stored_values(vals_list)
         return records
 
     def write(self, vals):
@@ -296,13 +297,15 @@ class WoowDocumentFolder(models.Model):
                           'access_ids', 'active', 'trashed_date', 'trashed_by_id',
                           'restored_date', 'legal_hold'}
             self._woow_require_rank(4 if privileged.intersection(vals) else 3)
-            if 'company_id' in vals and not self.env.user.has_group(_MANAGER):
+            if 'company_id' in vals:
                 # Only a document administrator moves a folder to another company or to
                 # none. A member with the manage grant keeps the company of the folder,
                 # because the same write on the root of a subtree would hand the whole
                 # subtree to another company's administrators, folder by folder.
-                new_company = _company_value(vals['company_id'])
-                if any(new_company != (folder.company_id.id or False) for folder in self):
+                manager = self.env.user.has_group(_MANAGER)
+                new_company = self._woow_company_value(vals['company_id'], manager)
+                if not manager and any(
+                        new_company != (folder.company_id.id or False) for folder in self):
                     raise AccessError(_('Only document administrators can do this.'))
                 vals = dict(vals, company_id=new_company)
         # the flag is read as the column keeps it (``_stored_flag``): 0, None and '' disable it too
@@ -374,6 +377,8 @@ class WoowDocumentFolder(models.Model):
         result = super().write(vals)
         if before is not None:
             self._woow_check_stored_state(before, answers)
+        if not self.env.su:
+            self._woow_check_stored_values(vals)
         if hold_before:
             for folder in self:
                 if hold_before[folder.id] != folder.legal_hold:
@@ -419,6 +424,42 @@ class WoowDocumentFolder(models.Model):
         if parent_id is None or (parent_id is not False and parent_id < 1):
             raise ValidationError(_('Choose an available folder.'))
         return self.browse(parent_id or [])
+
+    @api.model
+    def _woow_company_value(self, value, manager):
+        """The id (False for none) that a value of ``company_id`` names.
+
+        The same reading as the parent's and the owner's (``_m2o_value``). A value that has no id, and
+        a number that no company has, is refused: to a caller who is not a document administrator
+        (``manager``) with the answer that they cannot choose a company, to an administrator, who may
+        choose any, with a request to choose one. The id is what the callers write back into the
+        values, so the folder is stored with the company that was judged.
+        """
+        company_id = _company_value(value)
+        if company_id is None or (company_id is not False and company_id < 1):
+            if not manager:
+                raise AccessError(_('Only document administrators can do this.'))
+            raise ValidationError(_('Choose an available company.'))
+        return company_id
+
+    def _woow_check_stored_values(self, checked):
+        """The parent and the company that the folders hold are the ones that were judged.
+
+        ``checked`` is the values after the checks, one dict for every folder of ``self`` or a list
+        with one dict for each of them in order: the id that each many2one names, or False, as
+        ``_m2o_value`` read it and the callers wrote it back. Called after a create or a write of a
+        caller who is not the superuser. A folder that holds another parent or company than the one
+        that was judged is refused, and the request is rolled back, even when the rules would accept
+        what it holds: what was authorised is the value that the guards looked at, and the ORM must
+        have stored that one (it reads a list, a text or a dict as no record at all). The owner is
+        asked again by ``_woow_check_stored_state``, which holds the one that is stored to the rules
+        of an owner.
+        """
+        values = checked if isinstance(checked, list) else [checked] * len(self)
+        for folder, vals in zip(self, values):
+            for name in ('parent_id', 'company_id'):
+                if name in vals and (folder[name].id or False) != vals[name]:
+                    raise AccessError(_('This folder field cannot be changed directly.'))
 
     def _woow_state(self):
         """{id: (owner, parent, inherits its access, company)} as the records of ``self`` hold it."""

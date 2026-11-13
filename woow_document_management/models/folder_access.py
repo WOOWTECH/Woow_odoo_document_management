@@ -118,6 +118,9 @@ class WoowDocumentFolderAccess(models.Model):
             if any(company != ((target or line.folder_id).company_id.id or False)
                    for line in self):
                 raise AccessError(_('This folder field cannot be changed directly.'))
+            # the row is stored with the company that was judged: the number, the record and the pair
+            # are the id, and ``0`` or an empty list is no company, as the ORM keeps them
+            vals = dict(vals, company_id=company or False)
         before = self._members_by_folder() if vals else {}
         result = super().write(vals)
         if vals:

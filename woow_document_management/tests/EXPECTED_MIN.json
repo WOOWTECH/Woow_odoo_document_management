@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 350,
+    "core": 364,
     "files": 120,
     "portal": 3
   },
@@ -38,6 +38,7 @@
     "test_reg_document_file_not_indexed.py": 1,
     "test_reg_folder_stored_state.py": 32,
     "test_reg_inbound_mail_replies.py": 18,
+    "test_reg_many2one_typed_values.py": 14,
     "test_reg_module_attachments_never_public.py": 35,
     "test_reg_notification_label.py": 4,
     "test_reg_notify_attachments_need_write.py": 8,

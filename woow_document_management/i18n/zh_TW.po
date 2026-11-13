@@ -357,6 +357,12 @@ msgstr "請選擇文件使用者。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Choose an available company."
+msgstr "請選擇可用的公司。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/folder_access.py:0
 #: code:addons/woow_document_management/wizards/restore_wizard.py:0
 msgid "Choose an available folder."
