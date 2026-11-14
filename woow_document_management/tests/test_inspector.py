@@ -239,11 +239,48 @@ class TestInspectorData(InspectorCase):
             'document_id': doc.id, 'subject_type': 'user', 'user_id': self.outsider.id,
             'role': 'viewer'})
         self.env.flush_all()
+        # a request starts with an empty cache: the rows made above must not stand in for it
+        self.env.invalidate_all()
         data = self._data(self.outsider, doc)
         self.assertFalse(data['folder']['selectable'])
         self.assertEqual(data['folder']['name'], 'Restricted folder')
         self.assertFalse(data['can_write'])
         self.assertFalse(data['can_share'])
+        self.assertFalse(data['has_portal_members'])
+
+    def test_a_shared_document_in_a_hidden_folder_opens_with_a_cold_cache(self):
+        """The 'Shared with me' case, as a real request sees it (nothing cached before the call)."""
+        hidden = self._folder('Hidden shelf', {self.uploader: 'upload'})
+        # the hidden folder also has a portal member: the flag must not tell the caller so
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': hidden.id, 'subject_type': 'partner',
+            'partner_id': self.portal_partner.id, 'level': 'read'})
+        doc = self._document('shared2.txt', b'shared two', folder=hidden)
+        for user, role in ((self.outsider, 'viewer'), (self.editor, 'editor')):
+            self.env['woow.document.share'].sudo().create({
+                'document_id': doc.id, 'subject_type': 'user', 'user_id': user.id, 'role': role})
+        self.env.flush_all()
+        for user, may_write in ((self.outsider, False), (self.editor, True)):
+            with self.subTest(user=user.login):
+                self.env.invalidate_all()
+                data = self._data(user, doc)
+                self.assertEqual(data['folder'], {'id': hidden.id, 'name': 'Restricted folder',
+                                                  'selectable': False})
+                self.assertFalse(data['has_portal_members'])
+                self.assertEqual(data['can_write'], may_write)
+                self.assertNotIn('Hidden shelf', repr(data))
+        # a member of the hidden folder still gets the flag of a folder that they may read
+        self.env.invalidate_all()
+        self.assertTrue(self._data(self.uploader, doc)['has_portal_members'])
+
+    def test_every_answer_is_the_same_with_a_cold_cache(self):
+        """No field of the answer relies on records that an earlier read of the test left cached."""
+        for user in (self.reader, self.uploader, self.editor, self.foldermgr, self.docmgr):
+            with self.subTest(user=user.login):
+                self.env.invalidate_all()
+                cold = self._data(user)
+                warm = self._data(user)
+                self.assertEqual(cold, warm)
 
 
 @tagged('woow_docmgmt_inspector')
@@ -570,3 +607,16 @@ class TestInspectorBrowser(HttpCase):
         self.start_tour(
             '/odoo/%d/action-woow_document_management.action_woow_document_inspector' % document.id,
             'tour_woow_inspector', login='admin')
+
+    def test_tour_of_the_page_closed_from_a_direct_address(self):
+        """The page is the first screen: the close button opens the workspace, no error dialog."""
+        env = self.env
+        admin = env.ref('base.user_admin')
+        folder = env['woow.document.folder'].sudo().create({
+            'name': 'Inspector close folder', 'owner_id': admin.id})
+        document = env['woow.document'].sudo().create({
+            'name': 'inspector-close.txt', 'folder_id': folder.id, 'owner_id': admin.id,
+            'datas': base64.b64encode(b'inspector close')})
+        self.start_tour(
+            '/odoo/%d/action-woow_document_management.action_woow_document_inspector' % document.id,
+            'tour_woow_inspector_close', login='admin')

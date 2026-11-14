@@ -92,3 +92,27 @@ registry.category("web_tour.tours").add("tour_woow_inspector", {
         },
     ],
 });
+
+// The page opened by its direct address has no screen before it: the close button opens the
+// workspace instead of failing with "No controller to restore".
+registry.category("web_tour.tours").add("tour_woow_inspector_close", {
+    steps: () => [
+        {
+            content: "the panel shows the document",
+            trigger: ".o_woow_inspector .o_woow_inspector_name:contains('inspector-close.txt')",
+        },
+        {
+            content: "close the panel",
+            trigger: ".o_woow_inspector .o_woow_inspector_close",
+            run: "click",
+        },
+        {
+            content: "the workspace opens and shows the document",
+            trigger: ".o_kanban_record:contains('inspector-close.txt')",
+        },
+        {
+            content: "no error dialog was raised",
+            trigger: "body:not(:has(.o_error_dialog)):not(:has(.o_dialog))",
+        },
+    ],
+});

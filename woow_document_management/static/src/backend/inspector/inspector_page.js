@@ -10,6 +10,8 @@ import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { standardActionServiceProps } from "@web/webclient/actions/action_service";
 
+const WORKSPACE_ACTION = "woow_document_management.action_woow_document_workspace";
+
 export class WoowDocumentInspectorPage extends Component {
     static template = "woow_document_management.InspectorPage";
     static props = { ...standardActionServiceProps };
@@ -30,8 +32,16 @@ export class WoowDocumentInspectorPage extends Component {
         return Number.isSafeInteger(id) && id > 0 ? id : false;
     }
 
+    /**
+     * Go back to the screen that opened the page. When the page is the first screen (a direct
+     * address) there is none: open the workspace instead of failing.
+     */
     close() {
-        return this.action.restore();
+        const trail = this.env.config && this.env.config.breadcrumbs;
+        if (trail && trail.length > 1) {
+            return this.action.restore();
+        }
+        return this.action.doAction(WORKSPACE_ACTION, { clearBreadcrumbs: true });
     }
 }
 

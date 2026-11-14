@@ -6,12 +6,14 @@
 // and that it tells the screen about every change. The chatter of core `mail` is replaced by a stub
 // here (the browser tour mounts the real one).
 import { describe, expect, test } from "@odoo/hoot";
+import { press } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
 import { Component, useState, xml } from "@odoo/owl";
 import {
     contains,
     defineModels,
     fields,
+    getService,
     makeServerError,
     mockService,
     models,
@@ -20,6 +22,7 @@ import {
     patchWithCleanup,
 } from "@web/../tests/web_test_helpers";
 import { defineMailModels } from "@mail/../tests/mail_test_helpers";
+import { Thread } from "@mail/core/common/thread_model";
 import { registry } from "@web/core/registry";
 
 import { WoowDocumentInspector } from "@woow_document_management/backend/inspector/inspector";
@@ -383,7 +386,33 @@ test("a refused call shows the message of the server and keeps the panel", async
     await contains(".o_woow_inspector_lock").click();
     expect(".o_woow_inspector_error").toHaveText("This document is locked by another user.");
     expect(".o_woow_inspector_name").toHaveCount(1);
-    expect.verifySteps(["read 7"]);
+    // the record is read again after the refusal, but nothing changed for the screen
+    expect.verifySteps(["read 7", "read 7"]);
+});
+
+test("after a refused call the buttons match what the server now says", async () => {
+    serve();
+    onRpc("woow.document", "action_lock", () => {
+        // another user locked the file first
+        Object.assign(documents[7], {
+            is_locked: true,
+            locked_by: "Bob Lin",
+            can_lock: false,
+            can_unlock: false,
+        });
+        throw makeServerError({ description: "This document is locked by another user." });
+    });
+    await mountPanel();
+    expect(".o_woow_inspector_lock").toHaveCount(1);
+    await contains(".o_woow_inspector_lock").click();
+    expect(".o_woow_inspector_error").toHaveText("This document is locked by another user.");
+    expect(".o_woow_inspector_lock").toHaveCount(0);
+    expect(".o_woow_inspector_lockstate").toHaveText("Locked by Bob Lin");
+    // the next call that works clears the message
+    onRpc("woow.document", "action_toggle_favorite", () => true);
+    await contains(".o_woow_inspector_star").click();
+    expect(".o_woow_inspector_error").toHaveCount(0);
+    expect.verifySteps(["changed"]);
 });
 
 test("a record that cannot be read shows the message of the server", async () => {
@@ -479,4 +508,87 @@ test("the close button calls onClose", async () => {
     await mountPanel({ onClose: () => expect.step("closed") });
     await contains(".o_woow_inspector_close").click();
     expect.verifySteps(["read 7", "closed"]);
+});
+
+test("the list of tags closes with Escape, with a click elsewhere, and Enter adds the first", async () => {
+    serve(true);
+    onRpc("woow.document", "write", ({ args }) => {
+        expect.step(`write ${JSON.stringify(args[1])}`);
+        documents[7].tags.push({ id: 2, name: "Legal", color: 1 });
+        return true;
+    });
+    await mountPanel();
+    expect(".o_woow_inspector_tag_input").toHaveAttribute("aria-label", "Add a tag");
+    // Escape closes the list and clears the term
+    await contains(".o_woow_inspector_tag_input").edit("leg", { confirm: false });
+    await animationFrame();
+    expect(".o_woow_inspector_tag_choice").toHaveCount(1);
+    await press("Escape");
+    await animationFrame();
+    expect(".o_woow_inspector_tag_choice").toHaveCount(0);
+    expect(".o_woow_inspector_tag_input").toHaveValue("");
+    // a click elsewhere closes it
+    await contains(".o_woow_inspector_tag_input").edit("leg", { confirm: false });
+    await animationFrame();
+    expect(".o_woow_inspector_tag_choice").toHaveCount(1);
+    await contains(".o_woow_inspector_name").click();
+    expect(".o_woow_inspector_tag_choice").toHaveCount(0);
+    // Enter chooses the first match
+    await contains(".o_woow_inspector_tag_input").edit("leg", { confirm: false });
+    await animationFrame();
+    expect(".o_woow_inspector_tag_choice").toHaveCount(1);
+    await press("Enter");
+    await animationFrame();
+    expect(".o_woow_inspector_tag").toHaveCount(2);
+    expect(".o_woow_inspector_tag_choice").toHaveCount(0);
+    expect.verifySteps(["read 7", 'write {"tag_ids":[[4,2]]}', "read 7", "changed"]);
+});
+
+test("a message, a file or a follower added in the chatter reads the record again", async () => {
+    serve(true);
+    let chatterProps;
+    class SpyChatter extends Component {
+        static template = xml`<div class="o_stub_chatter"/>`;
+        static props = ["*"];
+        setup() {
+            chatterProps = this.props;
+        }
+    }
+    patchWithCleanup(WoowDocumentInspector, {
+        components: { ...WoowDocumentInspector.components, Chatter: SpyChatter },
+    });
+    await mountWithCleanup(Host, {
+        props: {
+            panel: { resModel: "woow.document", resId: 7, onChanged: () => expect.step("changed") },
+        },
+    });
+    expect(chatterProps.hasParentReloadOnMessagePosted).toBe(true);
+    expect(chatterProps.hasParentReloadOnAttachmentsChanged).toBe(true);
+    expect(chatterProps.hasParentReloadOnFollowersUpdate).toBe(true);
+    // what the chatter calls when it changed the record
+    await chatterProps.saveRecord();
+    documents[7].name = "Renamed in the chatter.pdf";
+    await chatterProps.webRecord.load();
+    await animationFrame();
+    expect(".o_woow_inspector_name").toHaveText("Renamed in the chatter.pdf");
+    expect.verifySteps(["read 7", "read 7", "changed"]);
+});
+
+test("a change made by the panel fetches the chatter of the record again", async () => {
+    serve(true);
+    onRpc("woow.document", "action_toggle_favorite", () => true);
+    patchWithCleanup(Thread.prototype, {
+        async fetchData(requestList) {
+            expect.step(`chatter ${this.model} ${this.id} ${requestList.join(",")}`);
+        },
+    });
+    await mountPanel();
+    getService("mail.store").Thread.insert({ model: "woow.document", id: 7 });
+    await contains(".o_woow_inspector_star").click();
+    expect.verifySteps([
+        "read 7",
+        "read 7",
+        "chatter woow.document 7 activities,attachments,followers,messages",
+        "changed",
+    ]);
 });

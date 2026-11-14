@@ -133,7 +133,9 @@ class WoowDocumentInspector(models.Model):
                              and (not lock_user or holder_is_me)),
             'can_unlock': can_unlock,
             'version_count': doc.version_count if doc.document_type == 'binary' else 0,
-            'has_portal_members': bool(doc.woow_has_portal_members),
+            # only for a folder the caller may read: the flag is a fact about the members of that
+            # folder, and reading it from a folder the rules hide would refuse the whole panel
+            'has_portal_members': bool(folder_readable and doc.woow_has_portal_members),
             'can_share': bool(doc.woow_user_can_share),
             'shares': doc._woow_inspector_share_rows(),
             'source': False,

@@ -16,7 +16,13 @@ screen.
 - Under it the chatter of the record (messages, notes, activities) of core `mail`, with the warning that
   the form shows when the folder has portal members.
 - Every change made in the panel is shown at once and the screen that hosts the panel is told, so that
-  its list or cards reload that record.
+  its list or cards reload that record. A message, a file or a follower added in the chatter does the
+  same (the panel gives the chatter the parent-reload hooks of core `mail`), and after a change made by
+  a button the chatter fetches its messages and activities again. A call that the server refuses shows
+  the server's message and reads the record again, so that the buttons match the server.
+- The tag list closes with Escape and when the field loses the focus; Enter adds the first match.
+- The close button of the page returns to the screen that opened it; when the page is the first screen
+  (a direct address) it opens the workspace instead.
 - The panel is a component of the web client. It is registered in the registry category
   `woow_document_components` under the key `inspector` and takes `{ resModel, resId, onClose, onChanged }`
   (and an optional `onSelectFolder(folderId)`: without it a click on the folder opens the workspace with
@@ -81,10 +87,16 @@ user is refused before anything is read, with a message that does not depend on 
 
 Update the module (`-u woow_document_management`); nothing to migrate. The browser tests need the
 staged browser of the test sandbox, like the existing tour. A deployment that does not load the
-JavaScript of the module keeps the standard views: the "Details" button of the form then shows an empty
-page and nothing else changes.
+JavaScript of the module keeps the standard views, but the "Details" button of the form then ends in the
+web client's generic error dialog (the client action is not registered); nothing else changes. An
+exception thrown while the file loads is a different case: like any script of the backend bundle it
+stops the loader, so the fragile imports are kept to a minimum (the chatter of core `mail` is the only
+one from another module).
 
 ## Known limits
 
+- The chatter's own activity buttons (mark done, upload) refresh the chatter but do not tell the host
+  screen; only messages, attachments and followers do. A requested file filled through such a button shows
+  its new state in the panel after the next reload of the record.
 - "Show versions" opens the list of the versions (with its download, make current and delete buttons)
   instead of the "Versions" tab of the form: Odoo 18 has no way to open a form on a chosen tab.

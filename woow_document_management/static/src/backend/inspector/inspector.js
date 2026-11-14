@@ -21,6 +21,9 @@ const WORKSPACE_ACTION = "woow_document_management.action_woow_document_workspac
 const VERSION_LIST_VIEW = "woow_document_management.view_woow_document_version_list";
 const TAG_SUGGESTIONS = 8;
 const SEARCH_MAX_CHARS = 100;
+// What the chatter of the panel is asked to fetch again after the panel itself changed something
+// (a lock or a share may log a message; filling a request closes its activity).
+const CHATTER_REFRESH = ["activities", "attachments", "followers", "messages"];
 
 // The icon of the kinds of document that the server does not tell by their type of file.
 const KIND_ICONS = { shortcut: "fa-share", request: "fa-inbox" };
@@ -50,6 +53,7 @@ export class WoowDocumentInspector extends Component {
     setup() {
         this.orm = useService("orm");
         this.action = useService("action");
+        this.store = useService("mail.store");
         this.state = useState({
             data: null,
             error: "",
@@ -59,6 +63,10 @@ export class WoowDocumentInspector extends Component {
         });
         this.loadToken = 0;
         this.tagToken = 0;
+        // What the chatter calls when it changed the record (a message was posted, a file was
+        // attached, a follower was added): the panel reads the record again and tells the screen.
+        this.chatterHost = { load: () => this.reloadAfterChatter() };
+        this.saveChatterRecord = async () => true;
         onWillStart(() => this.load(this.props));
         onWillUpdateProps((nextProps) => {
             if (nextProps.resId !== this.props.resId || nextProps.resModel !== this.props.resModel) {
@@ -124,24 +132,53 @@ export class WoowDocumentInspector extends Component {
         }
     }
 
-    /** Run one call of a button, then show the new state and tell the screen. */
+    /**
+     * Run one call of a button, then show the new state and tell the screen. When the call is
+     * refused the server's message is shown and the state is read again, so that the buttons match
+     * what the server now says (another user may have locked the file in the meantime).
+     */
     async run(call, { changes = true } = {}) {
         if (this.state.busy) {
             return;
         }
         this.state.busy = true;
+        this.state.error = "";
         try {
             const result = await call();
             if (changes) {
                 await this.load(this.props);
+                this.refreshChatter();
                 this.notifyChanged();
             }
             return result;
         } catch (error) {
-            this.state.error = errorMessage(error);
+            const message = errorMessage(error);
+            await this.load(this.props);
+            // when the record cannot be read any more, that message (shown by load) says more
+            if (!this.state.error) {
+                this.state.error = message;
+            }
         } finally {
             this.state.busy = false;
         }
+    }
+
+    /** Ask the chatter of this record to fetch its messages and activities again. */
+    refreshChatter() {
+        try {
+            const thread = this.store.Thread.get({ model: DOCUMENT_MODEL, id: this.props.resId });
+            if (thread) {
+                thread.fetchData(CHATTER_REFRESH).catch(() => {});
+            }
+        } catch {
+            // the chatter is a convenience of the panel: it never stops a change
+        }
+    }
+
+    /** The chatter changed the record: read it again and tell the screen (the chatter is fresh). */
+    async reloadAfterChatter() {
+        await this.load(this.props);
+        this.notifyChanged();
     }
 
     notifyChanged() {
@@ -174,6 +211,7 @@ export class WoowDocumentInspector extends Component {
             await this.action.doAction(result, {
                 onClose: async () => {
                     await this.load(this.props);
+                    this.refreshChatter();
                     this.notifyChanged();
                 },
             });
@@ -256,6 +294,24 @@ export class WoowDocumentInspector extends Component {
         }
     }
 
+    closeTagChoices() {
+        this.tagToken++;
+        this.state.tagChoices = [];
+    }
+
+    onTagKeydown(ev) {
+        if (ev.key === "Escape" && (this.state.tagChoices.length || this.state.tagSearch)) {
+            // closes the list and the term, but not the panel or a dialog around it
+            ev.preventDefault();
+            ev.stopPropagation();
+            this.state.tagSearch = "";
+            this.closeTagChoices();
+        } else if (ev.key === "Enter" && this.state.tagChoices.length) {
+            ev.preventDefault();
+            return this.addTag(this.state.tagChoices[0]);
+        }
+    }
+
     async changeTags(command) {
         await this.run(() =>
             this.orm.write(DOCUMENT_MODEL, [this.props.resId], { tag_ids: [command] })
@@ -264,7 +320,7 @@ export class WoowDocumentInspector extends Component {
 
     async addTag(tag) {
         this.state.tagSearch = "";
-        this.state.tagChoices = [];
+        this.closeTagChoices();
         await this.changeTags([4, tag.id]);
     }
 
