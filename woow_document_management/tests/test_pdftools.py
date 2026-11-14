@@ -5,6 +5,7 @@ import base64
 import io
 import json
 import random
+import sys
 import time
 import zlib
 from unittest.mock import patch
@@ -1220,3 +1221,163 @@ class TestViewsAndScope(PdfToolsCase):
         with self.assertRaises(AccessError):
             self._merge(self.member, [source, self._pdf('home.pdf')])
         self.assertEqual(self._count(self.target), 0)
+
+
+def padded_pdf(content):
+    """A one-page PDF whose content stream is ``content`` (bytes written as they are)."""
+    return pdf_of_objects([
+        b'<< /Type /Catalog /Pages 2 0 R >>',
+        b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Contents 4 0 R >>',
+        b'<< /Length %d >>\nstream\n' % len(content) + content + b'\nendstream'])
+
+
+def flate_scan_pdf(pages, megabytes):
+    """A PDF of ``pages`` pages, each with a flate content stream that inflates to ``megabytes`` MB.
+
+    The data are random zeros and ones (an ordinary scan packs them about six times). The stream is
+    built from one block that is repeated after a full flush, so making it takes no time.
+    """
+    chunk = random.Random(7).randbytes(1024 * 1024).translate(bytes(value & 1 for value in range(256)))
+    raw = zlib.compressobj(6, zlib.DEFLATED, -15)
+    block = raw.compress(chunk) + raw.flush(zlib.Z_FULL_FLUSH)
+    last = raw.flush(zlib.Z_FINISH)
+    adler = 1
+    for _index in range(megabytes):
+        adler = zlib.adler32(chunk, adler)
+    packed = b'\x78\x9c' + block * megabytes + last + adler.to_bytes(4, 'big')
+    kids = ' '.join('%d 0 R' % (3 + 2 * index) for index in range(pages))
+    bodies = [b'<< /Type /Catalog /Pages 2 0 R >>',
+              ('<< /Type /Pages /Kids [%s] /Count %d >>' % (kids, pages)).encode()]
+    for index in range(pages):
+        bodies.append(b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Contents %d 0 R >>'
+                      % (4 + 2 * index))
+        bodies.append(b'<< /Length %d /Filter /FlateDecode >>\nstream\n' % len(packed) + packed
+                      + b'\nendstream')
+    return pdf_of_objects(bodies)
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestPrechecksAreCheap(PdfToolsCase):
+    """The checks on the raw bytes are linear, bounded and inside the time budget."""
+
+    def _timed(self, function, data, limit=3):
+        started = time.monotonic()
+        try:
+            function(data)
+            outcome = 'ok'
+        except PdfToolError as exc:
+            outcome = exc.code
+        self.assertLess(time.monotonic() - started, limit)
+        return outcome
+
+    def test_many_prev_like_keys_outside_trailers_cost_little(self):
+        keys = b'/Prev 1 ' * 50000
+        data = padded_pdf(keys + b'a' * (20 * 1024 * 1024))
+        self.assertGreater(len(data), 20 * 1024 * 1024)
+        self.assertEqual(self._timed(pdf_tools._check_markers, data), 'ok')
+        started = time.monotonic()
+        self.assertEqual(pdf_tools.open_pdf(data)[1], 1)
+        self.assertLess(time.monotonic() - started, pdf_tools.PDF_PARSE_SECONDS / 2)
+
+    def test_more_prev_keys_than_the_limit_are_refused_without_scanning_them_all(self):
+        data = padded_pdf(b'/Prev 1 ' * (3 * pdf_tools.PDF_MAX_PREV_KEYS) + b'a' * (20 * 1024 * 1024))
+        self.assertEqual(self._timed(pdf_tools._check_markers, data), 'damaged')
+        self._refused_fast(data)
+
+    def test_prev_keys_of_trailers_between_busy_objects_are_still_found(self):
+        busy = b'/Prev 1 ' * 400
+        data = revisions_pdf(20).replace(b'endobj\n', busy + b'\nendobj\n')
+        self._refused_fast(data)
+        self.assertEqual(pdf_tools.open_pdf(revisions_pdf(2).replace(b'endobj\n', busy + b'\nendobj\n'))[1], 1)
+
+    def _refused_fast(self, data):
+        self.assertEqual(self._code(data), 'damaged')
+
+    def _code(self, data):
+        started = time.monotonic()
+        with self.assertRaises(PdfToolError) as caught:
+            pdf_tools.open_pdf(data)
+        self.assertLess(time.monotonic() - started, 2)
+        return caught.exception.code
+
+    def test_many_small_flate_streams_are_refused_in_a_moment(self):
+        data = b'%PDF-1.4\n' + b'stream\nx\x9c\xff' * 1500000
+        self.assertGreater(len(data), 14 * 1024 * 1024)
+        self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'damaged')
+        self.assertEqual(self._code(data), 'damaged')
+
+    def test_a_few_thousand_small_flate_streams_are_still_looked_at(self):
+        data = padded_pdf(b'stream\nx\x9c\xff' * 20000)
+        self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'ok')
+        bomb = flate_bomb_pdf(80 * 1024 * 1024)
+        self.assertEqual(self._timed(pdf_tools._check_inflated_size,
+                                     padded_pdf(b'stream\nx\x9c\xff' * 20000) + bomb), 'damaged')
+
+    def test_the_check_reads_no_more_than_a_multiple_of_the_file(self):
+        data = padded_pdf(b'stream\n' + zlib.compress(b'q Q\n' * 4000))
+        self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'ok')
+        with patch.object(pdf_tools, 'PDF_INFLATE_INPUT_RATIO', 0):
+            self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'damaged')
+
+    def test_a_scan_of_large_flate_images_opens(self):
+        data = flate_scan_pdf(11, 27)
+        self.assertGreater(len(data), 30 * 1024 * 1024)
+        started = time.monotonic()
+        self.assertEqual(pdf_tools.open_pdf(data)[1], 11)
+        self.assertLess(time.monotonic() - started, pdf_tools.PDF_PARSE_SECONDS)
+
+    def test_a_bomb_that_claims_many_pages_is_still_refused(self):
+        claims = b'% /Type /Page\n' * 400
+        data = padded_pdf(claims) + flate_bomb_pdf(16 * 1024 * 1024)
+        self.assertLess(len(data), 100000)
+        self.assertEqual(self._code(data), 'damaged')
+
+    def test_the_checks_run_inside_the_time_budget(self):
+        seen = []
+
+        def spy(name):
+            original = getattr(pdf_tools, name)
+
+            def wrapper(data):
+                hook = sys.getprofile()
+                seen.append(isinstance(getattr(hook, '__self__', None), pdf_tools._Deadline))
+                return original(data)
+            return wrapper
+
+        with patch.object(pdf_tools, '_check_markers', spy('_check_markers')), \
+                patch.object(pdf_tools, '_check_inflated_size', spy('_check_inflated_size')):
+            pdf_tools.open_pdf(raw_pdf([101]))
+        self.assertEqual(seen, [True, True])
+
+    def test_the_budget_restores_the_profile_function_that_was_installed(self):
+        calls = []
+
+        def before(frame, event, arg):
+            calls.append(event)
+
+        saved = sys.getprofile()
+        sys.setprofile(before)
+        try:
+            pdf_tools.open_pdf(raw_pdf([101]))
+            self.assertIs(sys.getprofile(), before)
+            with patch.object(pdf_tools, 'PDF_PARSE_SECONDS', 0):
+                self.assertEqual(self._code(raw_pdf([101, 102])), 'damaged')
+            self.assertIs(sys.getprofile(), before)
+            with pdf_tools._Deadline(0):
+                pass          # an expired budget must not fire inside its own ``__exit__``
+            self.assertIs(sys.getprofile(), before)
+            with self.assertRaises(PdfToolError):
+                with pdf_tools._Deadline(0):
+                    pdf_tools.parse_ranges('1', 1)
+            self.assertIs(sys.getprofile(), before)
+        finally:
+            sys.setprofile(saved)
+
+    def test_the_timeout_signal_never_leaves_open_pdf(self):
+        class Slow:
+            def __init__(self, *args, **kwargs):
+                raise pdf_tools._Timeout()
+
+        with patch.object(pdf_tools.odoo_pdf, 'PdfReader', Slow):
+            self.assertEqual(self._code(raw_pdf([101])), 'damaged')
