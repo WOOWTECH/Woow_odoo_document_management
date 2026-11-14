@@ -84,8 +84,8 @@ registry.category("web_tour.tours").add("tour_woow_workspace_screen", {
             trigger: ".o_list_view .woow-strip .woow-crumb:contains('Tour projects')",
         },
         {
-            content: "a click on a row selects it",
-            trigger: ".o_list_view .o_data_row:contains('tour-notes.txt') td[name='name']",
+            content: "the check box of a row selects it",
+            trigger: ".o_list_view .o_data_row:contains('tour-notes.txt') .o_list_record_selector input",
             run: "click",
         },
         {

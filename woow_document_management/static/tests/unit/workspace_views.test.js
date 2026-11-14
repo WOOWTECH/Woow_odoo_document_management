@@ -597,32 +597,38 @@ test("a change made in the details panel reloads the records", async () => {
 });
 
 // -- the list --------------------------------------------------------------------------------
-test("the list shows the strip of folders and selects a row with a click", async () => {
+test("the list shows the strip of folders and selects a row with its check box", async () => {
     await mountList();
     expect(".woow-folder-card").toHaveCount(2);
     expect(".woow-crumb").toHaveCount(1);
-    await click(".o_data_row:first td[name=name]");
+    await click(".o_data_row:first .o_list_record_selector input");
     await animationFrame();
     expect(".o_data_row.o_data_row_selected").toHaveCount(1);
     expect(".woow-selection-bar").toHaveCount(1);
     expect(".woow-selection-bar .o_woow_actions").toHaveCount(1);
-    // a click on a row does not open the form
-    expect(".o_form_view").toHaveCount(0);
 });
 
-test("a double click on a row of the list opens the file", async () => {
+test("a click on a row of the list does not select it: the row keeps its standard behaviour", async () => {
     await mountList();
-    await dblclick(".o_data_row:first td[name=name]");
+    await click(".o_data_row:first td[name=name]");
+    await animationFrame();
+    expect(".woow-selection-bar").toHaveCount(0);
+    expect(".o_data_row.o_data_row_selected").toHaveCount(0);
+});
+
+test("the Open button of a selected row shows the file in the viewer", async () => {
+    await mountList();
+    await click(".o_data_row:first .o_list_record_selector input");
+    await animationFrame();
+    await click(".woow-selection-bar .o_woow_open");
     await animationFrame();
     expect(".o-FileViewer").toHaveCount(1);
 });
 
 test("the list has the Actions menu and the Download of the selection", async () => {
     await mountList();
-    await click(".o_data_row:first td[name=name]");
-    await keyDown("ctrl");
-    await click(".o_data_row:eq(1) td[name=name]");
-    await keyUp("ctrl");
+    await click(".o_data_row:first .o_list_record_selector input");
+    await click(".o_data_row:eq(1) .o_list_record_selector input");
     await animationFrame();
     expect(".woow-selection-bar .o_woow_download").toHaveCount(1);
     await click(".o_woow_actions");

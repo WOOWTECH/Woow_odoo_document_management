@@ -28,10 +28,4 @@
         </xpath>
     </t>
 
-    <t t-name="woow_document_management.ListRenderer.RecordRow" t-inherit="web.ListRenderer.RecordRow" t-inherit-mode="primary">
-        <xpath expr="//tr[hasclass('o_data_row')]" position="attributes">
-            <attribute name="t-on-dblclick">(ev) => this.onRowDoubleClick(record, ev)</attribute>
-        </xpath>
-    </t>
-
 </templates>
