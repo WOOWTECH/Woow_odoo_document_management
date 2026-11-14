@@ -24,7 +24,7 @@
     "test_folding_service.py": 4,
     "test_i18n_complete.py": 1,
     "test_inspector.py": 46,
-    "test_integration.py": 19,
+    "test_integration.py": 22,
     "test_internal_routes.py": 8,
     "test_locks.py": 7,
     "test_mail_thread_guard.py": 26,

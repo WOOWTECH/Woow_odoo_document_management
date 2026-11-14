@@ -301,3 +301,40 @@ class TestWorkspaceSectionsFollowTheSharingLists(_Case):
         self.assertEqual(rows.user_id, outsider)
         self.assertEqual(rows.role, 'viewer')
         self.assertIn(self.doc, self._section(outsider))
+
+
+@tagged('woow_docmgmt_integration')
+class TestAContentReplacementByWriteKeepsAVersionAndRespectsTheLock(_Case):
+    """A direct write of the content keeps a version, after the lock and the share checks."""
+
+    def _replace(self, user, doc, data=b'replaced content'):
+        return doc.with_user(user).write({'datas': _b64(data)})
+
+    def test_a_replacement_by_write_keeps_the_old_content_as_a_version(self):
+        self._replace(self.alice, self.doc)
+        self.assertEqual(base64.b64decode(self.doc.datas), b'replaced content')
+        versions = self.env['woow.document.version'].sudo().search([('document_id', '=', self.doc.id)])
+        self.assertEqual(len(versions), 1)
+        self.assertEqual(base64.b64decode(versions.datas), b'plain content')
+
+    def test_another_users_lock_refuses_a_replacement_by_write_and_keeps_everything(self):
+        self.doc.with_user(self.alice).action_lock()
+        with self.assertRaises(UserError):
+            self._replace(self.bob, self.doc)
+        self.assertEqual(base64.b64decode(self.doc.datas), b'plain content')
+        self.assertFalse(self.env['woow.document.version'].sudo().search(
+            [('document_id', '=', self.doc.id)]))
+        self._replace(self.alice, self.doc)       # the holder may
+        self.assertEqual(self.doc.sudo().version_count, 1)
+
+    def test_an_editor_by_share_replaces_the_content_and_a_version_is_kept(self):
+        outsider = new_test_user(self.env, login='int_share_editor', groups=_USER)
+        self.env['woow.document.share'].with_user(self.admin).create({
+            'document_id': self.doc.id, 'subject_type': 'user', 'user_id': outsider.id,
+            'role': 'editor'})
+        self._replace(outsider, self.doc)
+        self.assertEqual(base64.b64decode(self.doc.sudo().datas), b'replaced content')
+        self.assertEqual(self.doc.sudo().version_count, 1)
+        # the editor by share still cannot read, change or remove the history
+        versions = self.env['woow.document.version'].with_user(outsider)
+        self.assertFalse(versions.search([('document_id', '=', self.doc.id)]))
