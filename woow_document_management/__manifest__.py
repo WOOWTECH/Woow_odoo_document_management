@@ -17,6 +17,7 @@
         'security/trash_access.xml',
         'security/backend_access.xml',
         'security/workspace_rules.xml',
+        'security/versions_rules.xml',
         'data/ir_cron.xml',
         'data/mail_templates.xml',
         'views/safe_url_templates.xml',
@@ -38,6 +39,8 @@
         'views/portal_templates.xml',
         'views/backend/docactions_views.xml',
         'views/wizards/docactions_wizard_views.xml',
+        'views/backend/versions_views.xml',
+        'views/wizards/versions_wizard_views.xml',
         'views/menus.xml',
     ],
     'assets': {

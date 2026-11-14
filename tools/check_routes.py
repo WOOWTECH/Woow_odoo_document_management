@@ -332,9 +332,9 @@ def check(root, args):
             if lock_key(row) not in code_keys:
                 out.append(A.Violation(LOCK_FILE, 1, 'R12',
                                        'locked route %s is not implemented' % row.get('func')))
-        if len(infos) + 1 != 10:
+        if len(infos) + 1 != 11:
             out.append(A.Violation(LOCK_FILE, 1, 'R12',
-                                   'expected 10 entry points, found %d' % (len(infos) + 1)))
+                                   'expected 11 entry points, found %d' % (len(infos) + 1)))
     if getattr(args, 'target', None):
         same, want, got = compare_target(entry_points(lock if args.from_lock else infos), args.target)
         if not same:

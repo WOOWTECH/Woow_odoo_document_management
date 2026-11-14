@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_version_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.version.wizard.form</field>
+    <field name="model">woow.document.version.wizard</field>
+    <field name="arch" type="xml">
+      <form string="New version">
+        <group>
+          <field name="document_id" readonly="1" force_save="1"/>
+          <field name="datas" filename="filename" required="1"/>
+          <field name="filename" invisible="1"/>
+        </group>
+        <p class="text-muted">The file that is current now is kept as the newest version. The document keeps its name; if the new file has another extension, the name takes it.</p>
+        <footer>
+          <button name="action_confirm" string="Upload" type="object" class="btn-primary"/>
+          <button string="Cancel" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>

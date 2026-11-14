@@ -6,4 +6,5 @@ from . import (
     res_config_settings, trash_actions, cron_jobs, zip_actions, backend_actions,
     favorite, workspace,
     docactions_trash,
+    versions, versions_binary,
 )

@@ -80,7 +80,8 @@ class _Fixture(_ChatterFixture):
         self.attachments = self.env['ir.attachment']
         self.targets = {'woow.document': self.document.id, 'woow.document.folder': self.folder.id,
                         'woow.document.folder.access': 0, 'woow.document.tag': 0,
-                        'woow.document.log': 0, 'woow.document.favorite': 0}
+                        'woow.document.log': 0, 'woow.document.favorite': 0,
+                        'woow.document.version': 0}
         self.assertEqual(set(self.targets), set(WOOW_MODELS))
 
     def _file(self, user, **extra):
