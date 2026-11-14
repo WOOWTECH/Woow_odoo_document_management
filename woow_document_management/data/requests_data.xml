@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <data noupdate="1">
+    <record id="mail_template_woow_document_request_reminder" model="mail.template">
+      <field name="name">Requested file reminder</field>
+      <field name="model_id" ref="model_woow_document"/>
+      <field name="subject">A file is still requested from you</field>
+      <field name="body_html" type="html">
+        <div>
+          <p>A file is requested from you: <strong><t t-out="object.name"/></strong></p>
+          <p t-if="object.request_deadline">Due date: <t t-out="format_date(object.request_deadline)"/></p>
+          <p t-if="object.request_note"><t t-out="object.request_note"/></p>
+          <p>Sign in to send the file:</p>
+          <p><a t-att-href="ctx.get('woow_notice_url')"><t t-out="ctx.get('woow_notice_url')"/></a></p>
+        </div>
+      </field>
+    </record>
+  </data>
+</odoo>

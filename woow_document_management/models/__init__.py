@@ -8,4 +8,5 @@ from . import (
     docactions_trash,
     versions, versions_binary,
     shortcuts,
+    requests,
 )

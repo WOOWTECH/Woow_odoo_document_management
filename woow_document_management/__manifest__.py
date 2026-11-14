@@ -19,6 +19,7 @@
         'security/workspace_rules.xml',
         'security/versions_rules.xml',
         'security/shortcuts_rules.xml',
+        'security/requests_rules.xml',
         'data/ir_cron.xml',
         'data/mail_templates.xml',
         'views/safe_url_templates.xml',
@@ -44,6 +45,9 @@
         'views/wizards/docactions_wizard_views.xml',
         'views/backend/versions_views.xml',
         'views/wizards/versions_wizard_views.xml',
+        'data/requests_data.xml',
+        'views/wizards/requests_wizard_views.xml',
+        'views/backend/requests_views.xml',
         'views/menus.xml',
     ],
     'assets': {

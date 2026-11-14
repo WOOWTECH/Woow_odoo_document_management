@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_request_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.request.wizard.form</field>
+    <field name="model">woow.document.request.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Ask for a file">
+        <group>
+          <field name="name" placeholder="For example: signed contract"/>
+          <field name="folder_id" domain="[('in_trash', '=', False)]" options="{'no_create': True}"/>
+          <field name="request_user_id" options="{'no_create': True}"/>
+          <field name="days"/>
+          <field name="tag_ids" widget="many2many_tags" options="{'no_create': True}"/>
+          <field name="note"/>
+        </group>
+        <footer>
+          <button name="action_create" string="Send request" type="object" class="btn-primary"/>
+          <button string="Cancel" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_woow_document_request_fulfil_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.request.fulfil.wizard.form</field>
+    <field name="model">woow.document.request.fulfil.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Upload the requested file">
+        <group>
+          <field name="document_id" readonly="1"/>
+          <field name="file" filename="filename"/>
+          <field name="filename" invisible="1"/>
+        </group>
+        <footer>
+          <button name="action_fulfil" string="Upload" type="object" class="btn-primary"/>
+          <button string="Cancel" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>

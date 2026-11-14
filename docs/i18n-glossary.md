@@ -29,6 +29,10 @@
 | Make current | 設為目前版本 |
 | Shortcut | 捷徑 |
 | Shortcut target | 捷徑目標 |
+| Requested file | 索取的檔案 |
+| Ask for a file | 索取檔案 |
+| Reminder | 提醒 |
+| Due date | 到期日 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
 

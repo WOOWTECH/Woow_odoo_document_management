@@ -32,6 +32,8 @@ acl:
   woow.document.version: {user: '1011', manager: '1011'}
   woow.document.version.wizard: {user: '1110', manager: '1110'}
   woow.document.shortcut.wizard: {user: '1110', manager: '1110'}
+  woow.document.request.wizard: {user: '1110', manager: '1110'}
+  woow.document.request.fulfil.wizard: {user: '1110', manager: '1110'}
 hd07: [woow.document.folder, portal]
 rules:
 - id: rule_woow_document_folder_company
@@ -283,6 +285,26 @@ rules:
 - id: rule_woow_document_shortcut_wizard_owner
   ref: R-W7
   model: woow.document.shortcut.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+# R-Q0 is a global rule on the documents: share users never see a placeholder of a requested file.
+- id: rule_woow_document_request_share_users
+  ref: R-Q0
+  model: woow.document
+  groups: []
+  perms: '1111'
+  domain: "[(1, '=', 1)] if not user.share else [('document_type', '!=', 'request')]"
+# R-Q1, R-Q2: a wizard row is its creator's alone.
+- id: rule_woow_document_request_wizard_owner
+  ref: R-Q1
+  model: woow.document.request.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_request_fulfil_wizard_owner
+  ref: R-Q2
+  model: woow.document.request.fulfil.wizard
   groups: [user]
   perms: '1111'
   domain: "[('create_uid', '=', user.id)]"
