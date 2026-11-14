@@ -55,6 +55,42 @@ def raw_pdf(widths, filler=0):
     return out.getvalue()
 
 
+def pdf_of_objects(bodies):
+    """A PDF whose objects are ``bodies`` (object 1 is the catalog), with a correct xref table."""
+    out = io.BytesIO()
+    out.write(b'%PDF-1.4\n')
+    offsets = []
+    for number, body in enumerate(bodies, 1):
+        offsets.append(out.tell())
+        out.write(b'%d 0 obj\n' % number + body + b'\nendobj\n')
+    xref = out.tell()
+    out.write(b'xref\n0 %d\n0000000000 65535 f \n' % (len(bodies) + 1))
+    for offset in offsets:
+        out.write(b'%010d 00000 n \n' % offset)
+    out.write(b'trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n'
+              % (len(bodies) + 1, xref))
+    return out.getvalue()
+
+
+def shared_tree_pdf(depth):
+    """A few hundred bytes that describe 2 ** depth pages: every node lists the next one twice."""
+    bodies = [b'<< /Type /Catalog /Pages 2 0 R >>']
+    for level in range(depth):
+        child = 3 + level
+        bodies.append(b'<< /Type /Pages /Kids [%d 0 R %d 0 R] /Count 2 >>' % (child, child))
+    bodies.append(b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>')
+    return pdf_of_objects(bodies)
+
+
+def chain_tree_pdf(depth):
+    """A tree without sharing: ``depth`` branches one inside the other, a single page at the end."""
+    bodies = [b'<< /Type /Catalog /Pages 2 0 R >>']
+    for level in range(depth):
+        bodies.append(b'<< /Type /Pages /Kids [%d 0 R] /Count 1 >>' % (3 + level))
+    bodies.append(b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>')
+    return pdf_of_objects(bodies)
+
+
 def encrypted_pdf(widths):
     writer = odoo_pdf.PdfFileWriter()
     for width in widths:
@@ -660,7 +696,7 @@ class TestMerge(PdfToolsCase):
                          [self.third.id, self.first.id])
         self.assertEqual([command[2]['sequence'] for command in values['line_ids']], [10, 20])
         self.assertEqual(values['folder_id'], self.folder.id)
-        for ids in ('x', [], [0], [-1], [True], list(range(1, 200))):
+        for ids in ('x', [], [0], [-1], [True]):
             with self.subTest(ids=ids):
                 self.assertFalse(model.with_context(active_model='woow.document', active_ids=ids)
                                  .default_get(['line_ids']).get('line_ids'))
@@ -739,3 +775,265 @@ class TestEntryPoints(PdfToolsCase):
             self.assertFalse(access, model)
             self.assertFalse(self.env['ir.model.access'].sudo().search([
                 ('model_id.model', '=', model), ('group_id', '=', False)]), model)
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestPageTreeLimits(PdfToolsCase):
+    """A small file must not make the worker walk a page tree that is far larger than the file."""
+
+    def test_a_node_that_is_listed_twice_is_refused_before_the_pages_are_counted(self):
+        # 2 ** 14 pages in 1.5 KB: the library would visit every one of them to count
+        data = shared_tree_pdf(14)
+        self.assertLess(len(data), 2000)
+        with self.assertRaises(PdfToolError) as caught:
+            pdf_tools.open_pdf(data)
+        self.assertEqual(caught.exception.code, 'damaged')
+
+    def test_a_tree_that_loops_back_is_refused(self):
+        data = pdf_of_objects([
+            b'<< /Type /Catalog /Pages 2 0 R >>',
+            b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+            b'<< /Type /Pages /Kids [2 0 R] /Count 1 >>'])
+        with self.assertRaises(PdfToolError) as caught:
+            pdf_tools.open_pdf(data)
+        self.assertEqual(caught.exception.code, 'damaged')
+
+    def test_a_tree_with_more_nodes_than_the_limit_allows_is_refused(self):
+        with patch.object(pdf_tools, 'PAGE_TREE_NODES_MAX', 20):
+            reader, count = pdf_tools.open_pdf(chain_tree_pdf(10))
+            self.assertEqual(count, 1)
+            with self.assertRaises(PdfToolError) as caught:
+                pdf_tools.open_pdf(chain_tree_pdf(30))
+        self.assertEqual(caught.exception.code, 'damaged')
+
+    def test_a_branch_that_lists_more_children_than_the_limit_is_refused_as_too_long(self):
+        with patch.object(pdf_tools, 'PAGE_TREE_NODES_MAX', 3):
+            with self.assertRaises(PdfToolError) as caught:
+                pdf_tools.open_pdf(raw_pdf([101, 102, 103, 104]))
+        self.assertEqual(caught.exception.code, 'pages')
+
+    def test_files_with_a_nested_page_tree_still_open(self):
+        data = pdf_of_objects([
+            b'<< /Type /Catalog /Pages 2 0 R >>',
+            b'<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 3 >>',
+            b'<< /Type /Pages /Kids [5 0 R 6 0 R] /Count 2 /Parent 2 0 R >>',
+            b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>',
+            b'<< /Type /Page /Parent 3 0 R /MediaBox [0 0 20 10] >>',
+            b'<< /Type /Page /Parent 3 0 R /MediaBox [0 0 30 10] >>'])
+        reader, count = pdf_tools.open_pdf(data)
+        self.assertEqual(count, 3)
+        self.assertEqual([int(float(page.mediabox.width))
+                          for page in pdf_tools.page_range(reader, 1, 3)], [20, 30, 10])
+
+    def test_the_wizards_answer_such_a_file_with_a_message(self):
+        bomb = self._doc('bomb.pdf', shared_tree_pdf(14))
+        before = self._count(self.folder)
+        with self.assertRaises(UserError):
+            self._split(self.member, bomb).action_split()
+        with self.assertRaises(UserError):
+            self._merge(self.member, [bomb, self._pdf('ok.pdf')]).action_merge()
+        self.assertEqual(self._count(self.folder), before)
+        self.assertEqual(self._count(self.target), 0)
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestStoredRowsAreChecked(PdfToolsCase):
+    """The ids that a row keeps are judged even when they arrive through the context."""
+
+    def setUp(self):
+        super().setUp()
+        self.hidden = self._pdf('hidden.pdf', widths=(101, 102))
+        self.private = self.env['woow.document.folder'].sudo().create({
+            'name': 'Pdf private', 'owner_id': self.admin.id})
+        self.gone = self.hidden.id + 100000
+        self._grant(self.target, self.outsider, 'upload')
+        self.env.flush_all()
+
+    def _answers(self, make):
+        """The message of the AccessError of ``make(id)`` for a hidden and for a missing id."""
+        messages = set()
+        for ref in (self.hidden, self.gone):
+            with self.assertRaises(AccessError) as caught:
+                make(ref if isinstance(ref, int) else ref.id)
+            messages.add(str(caught.exception))
+        self.assertEqual(len(messages), 1)
+
+    def test_a_default_of_the_context_cannot_name_a_document_of_a_split(self):
+        model = self.env[_SPLIT].with_user(self.outsider)
+        self._answers(lambda ref: model.with_context(default_document_id=ref).create(
+            {'ranges': '1'}))
+        self._answers(lambda ref: model.with_context(default_document_id=ref).create({}))
+
+    def test_a_default_of_the_context_cannot_name_a_folder_of_a_merge(self):
+        model = self.env[_MERGE].with_user(self.outsider)
+        self._answers(lambda ref: model.with_context(default_folder_id=self.private.id).create(
+            {'name': 'x.pdf'}))
+        self._answers(lambda ref: model.with_context(default_folder_id=ref + 100000).create(
+            {'name': 'x.pdf'}))
+        with self.assertRaises(AccessError) as hidden:
+            model.with_context(default_folder_id=self.private.id).create({'name': 'x.pdf'})
+        with self.assertRaises(AccessError) as missing:
+            model.with_context(default_folder_id=self.private.id + 100000).create({'name': 'x.pdf'})
+        self.assertEqual(str(hidden.exception), str(missing.exception))
+
+    def test_a_default_of_the_context_cannot_name_a_document_of_a_line(self):
+        wizard = self.env[_MERGE].with_user(self.outsider).create({
+            'folder_id': self.target.id, 'name': 'x.pdf'})
+        model = self.env[_LINE].with_user(self.outsider)
+        self._answers(lambda ref: model.with_context(default_document_id=ref).create(
+            {'wizard_id': wizard.id}))
+        self._answers(lambda ref: model.with_context(default_wizard_id=wizard.id).create(
+            {'document_id': ref}))
+
+    def test_a_line_cannot_be_put_in_the_merge_of_another_user(self):
+        mine = self._pdf('mine.pdf', owner_id=self.member.id, widths=(101,))
+        other = self._pdf('other.pdf', owner_id=self.member.id, widths=(102,))
+        victim = self._merge(self.member, [other, mine], name='Layoff-list.pdf')
+        shared = self._pdf('shared.pdf', shared_user_ids=[(4, self.outsider.id)], widths=(101,))
+        lines = self.env[_LINE].with_user(self.outsider)
+        with self.assertRaises(AccessError) as caught:
+            lines.create({'wizard_id': victim.id, 'document_id': shared.id})
+        with self.assertRaises(AccessError) as missing:
+            lines.create({'wizard_id': victim.id + 100000, 'document_id': shared.id})
+        self.assertEqual(str(caught.exception), str(missing.exception))
+        # the line of one's own merge is fine, and moving it to someone else's is not
+        own = self.env[_MERGE].with_user(self.outsider).create({
+            'folder_id': self.target.id, 'name': 'own.pdf'})
+        line = lines.create({'wizard_id': own.id, 'document_id': shared.id})
+        with self.assertRaises(AccessError):
+            line.write({'wizard_id': victim.id})
+        self.assertEqual(line.wizard_id, own)
+
+    def test_the_dialogs_still_fill_in_their_rows_from_the_selection(self):
+        first, second = self._pdf('a.pdf', widths=(101,)), self._pdf('b.pdf', widths=(102,))
+        action = (first | second).with_user(self.member).action_open_pdf_merge_wizard()
+        wizard = self.env[_MERGE].with_user(self.member).with_context(**action['context'])
+        values = wizard.default_get(['line_ids', 'folder_id'])
+        made = wizard.create(dict(values, name='both.pdf'))
+        self.assertEqual(made.line_ids.document_id, first | second)
+        split = self.env[_SPLIT].with_user(self.member).with_context(
+            **first.with_user(self.member).action_open_pdf_split_wizard()['context'])
+        self.assertEqual(split.create(dict(split.default_get(['document_id']), ranges='1'))
+                         .document_id, first)
+
+    def test_opening_a_dialog_answers_alike_for_a_hidden_and_a_missing_document(self):
+        for method in ('action_open_pdf_split_wizard', 'action_open_pdf_merge_wizard'):
+            messages = set()
+            for doc_id in (self.hidden.id, self.gone):
+                with self.assertRaises(AccessError) as caught:
+                    getattr(self.env['woow.document'].with_user(self.outsider).browse(doc_id),
+                            method)()
+                messages.add(str(caught.exception))
+            self.assertEqual(len(messages), 1, method)
+
+    def test_more_files_than_a_merge_takes_are_told_so(self):
+        docs = self.hidden | self._pdf('two.pdf') | self._pdf('three.pdf')
+        with patch('odoo.addons.woow_document_management.models.pdftools.PDF_MAX_INPUTS', 2), \
+                self.assertRaises(UserError):
+            docs.with_user(self.admin).action_open_pdf_merge_wizard()
+        with patch.object(pdftools_merge_wizard, 'PDF_MAX_INPUTS', 2), self.assertRaises(UserError):
+            self.env[_MERGE].with_user(self.member).with_context(
+                active_model='woow.document', active_ids=docs.ids).default_get(['line_ids'])
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestWorkIsBounded(PdfToolsCase):
+
+    def test_the_parts_of_a_split_are_made_as_they_are_stored(self):
+        """No more parts than one call of create takes are in memory before the call is made."""
+        source = self._pdf(widths=range(101, 107))
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.max_files_per_upload', '2')
+        made_so_far, at_create = [], []
+        real_write = pdf_tools.write_pdf
+        real_create = type(self.env['woow.document']).create
+
+        def counting_write(pages):
+            made_so_far.append(1)
+            return real_write(pages)
+
+        def spying_create(model, vals_list):
+            if any(isinstance(vals, dict) and vals.get('name', '').startswith('source (')
+                   for vals in vals_list):
+                at_create.append((len(vals_list), len(made_so_far)))
+            return real_create(model, vals_list)
+
+        with patch.object(pdf_tools, 'write_pdf', counting_write), \
+                patch.object(type(self.env['woow.document']), 'create', spying_create):
+            made = self._made(self._split(self.member, source, mode='pages').action_split())
+        self.assertEqual(len(made), 6)
+        self.assertEqual(at_create, [(2, 2), (2, 4), (2, 6)])
+
+    def test_parts_are_stored_as_soon_as_they_add_up_to_the_upload_limit(self):
+        source = self._pdf(widths=range(101, 106))
+        self.env['ir.config_parameter'].sudo().set_param(
+            'woow_document_management.internal_max_upload_mb', '1')
+        sizes = []
+        real_create = type(self.env['woow.document']).create
+
+        def spying_create(model, vals_list):
+            if any(isinstance(vals, dict) and vals.get('name', '').startswith('source (')
+                   for vals in vals_list):
+                sizes.append(len(vals_list))
+            return real_create(model, vals_list)
+
+        with patch.object(pdf_tools, 'write_pdf', lambda pages: raw_pdf([101], filler=600_000)), \
+                patch.object(type(self.env['woow.document']), 'create', spying_create):
+            self._split(self.member, source, mode='pages').action_split()
+        self.assertEqual(sizes, [2, 2, 1])
+
+    def test_a_merge_of_more_pages_than_the_total_limit_is_refused_before_any_page_is_copied(self):
+        first = self._pdf('first.pdf', widths=(101, 102))
+        second = self._pdf('second.pdf', widths=(201, 202))
+        written = []
+        with patch.object(pdf_tools, 'MERGE_MAX_PAGES', 3), \
+                patch.object(pdf_tools, 'write_pdf', lambda pages: written.append(1)):
+            with self.assertRaises(UserError):
+                self._merge(self.member, [first, second]).action_merge()
+        self.assertFalse(written)
+        self.assertEqual(self._count(self.target), 0)
+        self.assertEqual(len(self._events('pdf_merge')), 0)
+        with patch.object(pdf_tools, 'MERGE_MAX_PAGES', 4):
+            made = self._made(self._merge(self.member, [first, second]).action_merge())
+        self.assertEqual(widths_of(made), [101, 102, 201, 202])
+
+    def test_the_total_limit_is_the_documented_one(self):
+        self.assertEqual(pdf_tools.MERGE_MAX_PAGES, 2500)
+        self.assertEqual(pdf_tools.PAGE_TREE_NODES_MAX, 2000)
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestViewsAndScope(PdfToolsCase):
+
+    def test_the_document_administrator_loads_the_forms_and_the_buttons(self):
+        manager = new_test_user(self.env, login='pdf_manager', groups=_USER + ',' +
+                                'woow_document_management.group_woow_document_manager')
+        form = self.env['woow.document'].with_user(manager).get_view(
+            self.env.ref('woow_document_management.view_woow_document_document_form').id, 'form')
+        self.assertIn('action_open_pdf_split_wizard', form['arch'])
+        self.assertIn('action_open_pdf_merge_wizard', form['arch'])
+        for model in (_SPLIT, _MERGE):
+            self.assertIn('<form', self.env[model].with_user(manager).get_view(None, 'form')['arch'])
+
+    def test_an_archived_source_is_unavailable(self):
+        source = self._pdf()
+        wizard = self._split(self.member, source)
+        source.write({'active': False})
+        with self.assertRaises(AccessError):
+            wizard.action_split()
+        self.assertEqual(self._count(self.folder), 1)
+
+    def test_a_source_of_another_company_is_unavailable(self):
+        other = self.env['res.company'].sudo().create({'name': 'Pdf other company'})
+        owner = new_test_user(self.env, login='pdf_other_owner', groups=_USER,
+                              company_id=other.id, company_ids=[(6, 0, [other.id])])
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Pdf other', 'owner_id': owner.id, 'company_id': other.id})
+        self._grant(folder, self.member, 'edit')
+        source = self._pdf('abroad.pdf', folder=folder)
+        self.assertNotIn(other, self.member.company_ids)
+        with self.assertRaises(AccessError):
+            self._split(self.member, source)
+        with self.assertRaises(AccessError):
+            self._merge(self.member, [source, self._pdf('home.pdf')])
+        self.assertEqual(self._count(self.target), 0)
