@@ -7,3 +7,4 @@ from . import move_wizard, restore_wizard, purge_wizard, add_attachment_wizard, 
 from . import move_wizard, restore_wizard, purge_wizard, add_attachment_wizard, notify_wizard, shortcut_wizard
 from . import requests_wizard
 from . import autofile_wizard
+from . import pdftools_common, pdftools_split_wizard, pdftools_merge_wizard

@@ -23,6 +23,7 @@
         'security/sharing_rules.xml',
         'security/mailin_rules.xml',
         'security/autofile_rules.xml',
+        'security/pdftools_rules.xml',
         'data/ir_cron.xml',
         'data/sharing_data.xml',
         'data/mail_templates.xml',
@@ -56,6 +57,8 @@
         'views/backend/mailin_views.xml',
         'views/backend/autofile_views.xml',
         'views/wizards/autofile_wizard_views.xml',
+        'views/wizards/pdftools_wizard_views.xml',
+        'views/backend/pdftools_views.xml',
         'views/menus.xml',
     ],
     'assets': {

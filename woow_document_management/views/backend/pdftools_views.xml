@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_document_form_pdftools" model="ir.ui.view">
+    <field name="name">woow.document.form.pdftools</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <field name="mimetype" invisible="1"/>
+        <button name="action_open_pdf_split_wizard" string="Split PDF" type="object"
+                invisible="not id or document_type != 'binary' or mimetype != 'application/pdf'"/>
+        <button name="action_open_pdf_merge_wizard" string="Merge PDF files" type="object"
+                invisible="not id or document_type != 'binary' or mimetype != 'application/pdf'"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

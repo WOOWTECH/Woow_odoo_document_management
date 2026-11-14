@@ -45,6 +45,10 @@
 | Filing rule | 歸檔規則 |
 | Filed documents | 歸檔的文件 |
 | Source Attachment | 來源附件 |
+| Split (a PDF) | 分割 |
+| Merge (PDF files) | 合併 |
+| Page range | 頁碼範圍 |
+| PDF file | PDF 檔案 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
 

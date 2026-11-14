@@ -13,3 +13,4 @@ from . import (
     mailin,
     autofile,
 )
+from . import pdftools

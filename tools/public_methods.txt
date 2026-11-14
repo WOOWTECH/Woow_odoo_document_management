@@ -52,6 +52,10 @@ woow.document::action_open_share_dialog
 woow.document.folder::action_open_share_dialog
 woow.document.auto.rule::action_open_backfill
 woow.document.autofile.wizard::action_file
+woow.document::action_open_pdf_split_wizard
+woow.document::action_open_pdf_merge_wizard
+woow.document.pdf.split.wizard::action_split
+woow.document.pdf.merge.wizard::action_merge
 
 [override]
 *::create

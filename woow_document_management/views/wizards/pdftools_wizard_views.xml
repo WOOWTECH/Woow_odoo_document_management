@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_pdf_split_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.pdf.split.wizard.form</field>
+    <field name="model">woow.document.pdf.split.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Split PDF">
+        <field name="can_trash" invisible="1"/>
+        <group>
+          <field name="document_id" options="{'no_create': True, 'no_open': True}"
+                 domain="[('document_type', '=', 'binary'), ('mimetype', '=', 'application/pdf')]"/>
+          <field name="mode" widget="radio"/>
+          <field name="ranges" placeholder="1-3, 4, 5-8"
+                 invisible="mode != 'ranges'" required="mode == 'ranges'"/>
+          <field name="trash_original" invisible="not can_trash"/>
+        </group>
+        <p class="text-muted">Every part becomes a new document in the same folder, with the tags of the original. The original is kept unless you choose to move it to the trash.</p>
+        <footer>
+          <button name="action_split" string="Split" type="object" class="btn-primary"/>
+          <button string="Cancel" special="cancel" class="btn-secondary"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_woow_document_pdf_merge_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.pdf.merge.wizard.form</field>
+    <field name="model">woow.document.pdf.merge.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Merge PDF files">
+        <group>
+          <field name="name" placeholder="merged.pdf"/>
+          <field name="folder_id" options="{'no_create': True}"
+                 domain="[('in_trash', '=', False)]"/>
+          <field name="trash_originals"/>
+        </group>
+        <field name="line_ids" nolabel="1" colspan="2">
+          <list editable="bottom">
+            <field name="sequence" widget="handle"/>
+            <field name="document_id" options="{'no_create': True, 'no_open': True}"
+                   domain="[('document_type', '=', 'binary'), ('mimetype', '=', 'application/pdf')]"/>
+          </list>
+        </field>
+        <p class="text-muted">The files are joined from top to bottom. Drag the handle to change the order. The originals are kept; only the ones you may edit are moved to the trash when you choose that.</p>
+        <footer>
+          <button name="action_merge" string="Merge" type="object" class="btn-primary"/>
+          <button string="Cancel" special="cancel" class="btn-secondary"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <record id="action_woow_document_pdf_split_wizard" model="ir.actions.act_window">
+    <field name="name">Split PDF</field>
+    <field name="res_model">woow.document.pdf.split.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_woow_document_pdf_split_wizard_form"/>
+    <field name="target">new</field>
+    <field name="binding_model_id" ref="model_woow_document"/>
+    <field name="binding_view_types">list,form</field>
+    <field name="groups_id" eval="[(4, ref('group_woow_document_user'))]"/>
+  </record>
+  <record id="action_woow_document_pdf_merge_wizard" model="ir.actions.act_window">
+    <field name="name">Merge PDF files</field>
+    <field name="res_model">woow.document.pdf.merge.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_woow_document_pdf_merge_wizard_form"/>
+    <field name="target">new</field>
+    <field name="binding_model_id" ref="model_woow_document"/>
+    <field name="binding_view_types">list,form</field>
+    <field name="groups_id" eval="[(4, ref('group_woow_document_user'))]"/>
+  </record>
+</odoo>
