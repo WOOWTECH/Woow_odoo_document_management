@@ -91,7 +91,8 @@ of `models/versions.py` (an object that exists in the process only, kept under t
 
 - Upgrade (`-u`) adds the table, the ACL rows, the rules and the views; nothing is migrated.
   Existing documents have no versions. Replacing a file by a direct write (the old way of the API)
-  still works and does not keep a version: only the **New version** form does.
+  still works and, since the fix round of 18.0.2, keeps the previous content as a version too
+  (only the superuser and the server paths that create the first content keep none).
 - The limit of 20 versions per document is `MAX_VERSIONS_PER_DOCUMENT` in `services/constants.py`.
 - The route is registered in `tools/routes.lock.json` (11 entry points with the added route).
 - The raw statement is registered in `tools/sql_allowlist.yaml` as Q31.
