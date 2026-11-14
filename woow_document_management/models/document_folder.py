@@ -99,7 +99,7 @@ class WoowDocumentFolder(models.Model):
     _woow_own_default_fields = _SERVER_ONLY_FIELDS | _EFF_FIELDS | frozenset({
         'company_id', 'legal_hold', 'inherit_access', 'active', 'trashed_date', 'trashed_by_id',
         'restored_date', 'activity_ids', 'message_follower_ids', 'message_ids',
-        'website_message_ids'})
+        'website_message_ids', 'woow_all_users_level'})
 
     name = fields.Char(required=True, tracking=True)
     complete_name = fields.Char(compute='_compute_complete_name', store=True, recursive=True,

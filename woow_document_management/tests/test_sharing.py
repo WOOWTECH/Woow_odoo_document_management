@@ -19,6 +19,7 @@ from odoo.tests import Form, HttpCase, TransactionCase, tagged
 from odoo.tests.common import JsonRpcException, new_test_user
 
 from ..models import share as share_module
+from ..models.document import WoowDocument
 from ..models import sharing as sharing_module
 from ..services.constants import WOOW_MODELS
 
@@ -998,3 +999,239 @@ class TestSharingOverRpc(HttpCase):
             with self.subTest(column=column), self.assertRaises(JsonRpcException):
                 self._call(self.owner, 'woow.document.share', 'write', [[row_id], {column: False}])
         self.assertFalse(self.document.sudo().shared_editor_user_ids)
+
+
+@tagged('woow_docmgmt_core')
+class TestReviewedSharing(_SharingCase):
+    """Cases found by the review of the lane: each fails without the fix that it belongs to."""
+
+    def _member(self, folder, user, level='read', end=None):
+        values = {'folder_id': folder.id, 'level': level, 'subject_type': 'user',
+                  'user_id': user.id}
+        if end:
+            values['expiry_date'] = fields.Date.today() + timedelta(days=end)
+        return self.env['woow.document.folder.access'].sudo().create(values)
+
+    def _children(self):
+        folders = self.env['woow.document.folder']
+        parent = folders.sudo().create({'name': 'Review parent', 'owner_id': self.owner.id})
+        self.env.flush_all()
+        child = folders.with_user(self.owner).create({'name': 'Review child', 'parent_id': parent.id})
+        self.assertTrue(child.inherit_access)
+        return parent, child
+
+    def _lines(self, folder):
+        names = {'user': 'user_id', 'group': 'group_id', 'partner': 'partner_id'}
+        return {(line.subject_type, line[names[line.subject_type]].id):
+                (line.level, line.expiry_date) for line in folder.sudo().access_ids}
+
+    # -- turning inheritance off keeps the end of the access that is copied ----------------------
+    def test_turning_inheritance_off_keeps_the_end_dates_of_the_copied_access(self):
+        parent, child = self._children()
+        today = fields.Date.today()
+        group = self.env.ref(_USER)
+        access = self.env['woow.document.folder.access'].sudo()
+        self._member(parent, self.viewer, 'read', end=1)
+        self._member(parent, self.target, 'edit', end=3)
+        self._member(parent, self.read_member, 'read')              # no end
+        access.create({'folder_id': parent.id, 'subject_type': 'group', 'group_id': group.id,
+                       'level': 'read', 'expiry_date': today + timedelta(days=2)})
+        access.create({'folder_id': parent.id, 'subject_type': 'partner',
+                       'partner_id': self.portal.partner_id.id, 'level': 'read',
+                       'expiry_date': today + timedelta(days=2)})
+        document = self._document(child, 'review-child.txt', owner=self.owner)
+        self.assertTrue(self._can_read(self.viewer, document))
+        self.env.flush_all()
+        child.with_user(self.owner).write({'inherit_access': False})
+        lines = self._lines(child)
+        self.assertEqual(lines[('user', self.viewer.id)], ('read', today + timedelta(days=1)))
+        self.assertEqual(lines[('user', self.target.id)], ('edit', today + timedelta(days=3)))
+        self.assertEqual(lines[('user', self.read_member.id)], ('read', False))
+        self.assertEqual(lines[('group', group.id)], ('read', today + timedelta(days=2)))
+        self.assertEqual(lines[('partner', self.portal.partner_id.id)],
+                         ('read', today + timedelta(days=2)))
+        # the parent's grants end and the cron runs: the copies end with them
+        self._expire(access.search([('folder_id', 'in', (parent | child).ids),
+                                    ('expiry_date', '!=', False)]))
+        self.env['woow.document'].sudo()._cron_expire_access()
+        self.assertFalse(self._can_read(self.viewer, document))
+        self.assertFalse(self._can_read(self.target, document))
+        self.assertFalse(self._can_read(self.portal, document))
+        self.assertTrue(self._can_read(self.read_member, document))
+
+    def test_a_copied_grant_ends_when_the_last_source_of_that_level_does(self):
+        folders = self.env['woow.document.folder']
+        today = fields.Date.today()
+        top = folders.sudo().create({'name': 'Review top', 'owner_id': self.owner.id})
+        self.env.flush_all()
+        parent = folders.with_user(self.owner).create({'name': 'Review mid', 'parent_id': top.id})
+        self.env.flush_all()
+        child = folders.with_user(self.owner).create({'name': 'Review low', 'parent_id': parent.id})
+        self._member(top, self.viewer, 'read', end=1)
+        self._member(parent, self.viewer, 'read', end=5)
+        self._member(top, self.target, 'read', end=1)
+        self._member(parent, self.target, 'read')                   # one source never ends
+        self._member(parent, self.read_member, 'edit', end=4)
+        self._member(child, self.read_member, 'read')               # own, lower and permanent
+        self._member(top, self.editor, 'read')
+        self._member(child, self.editor, 'read', end=2)             # own, same level, ending
+        self._member(top, self.edit_member, 'edit', end=2)
+        self._member(parent, self.edit_member, 'edit')              # a permanent one raises it
+        self.env.flush_all()
+        child.with_user(self.owner).write({'inherit_access': False})
+        lines = self._lines(child)
+        self.assertEqual(lines[('user', self.viewer.id)], ('read', today + timedelta(days=5)))
+        self.assertEqual(lines[('user', self.target.id)], ('read', False))
+        self.assertEqual(lines[('user', self.read_member.id)], ('edit', today + timedelta(days=4)))
+        self.assertEqual(lines[('user', self.editor.id)], ('read', today + timedelta(days=2)))
+        self.assertEqual(lines[('user', self.edit_member.id)], ('edit', False))
+        self.assertNotIn(('user', self.owner.id), lines)             # the owner is never copied
+
+    def test_a_grant_that_ended_and_waits_for_the_cron_is_not_copied(self):
+        parent, child = self._children()
+        gone = self._member(parent, self.viewer, 'read', end=1)
+        raised = self._member(parent, self.read_member, 'edit', end=1)
+        self._member(child, self.read_member, 'read')
+        self._expire(gone | raised)
+        self.env.flush_all()
+        child.with_user(self.owner).write({'inherit_access': False})
+        lines = self._lines(child)
+        self.assertNotIn(('user', self.viewer.id), lines)
+        self.assertEqual(lines[('user', self.read_member.id)], ('read', False))
+
+    def test_a_row_of_the_folder_that_the_copy_did_not_touch_keeps_its_own_end(self):
+        parent, child = self._children()
+        self._member(child, self.viewer, 'read', end=9)
+        self._member(parent, self.viewer, 'read', end=2)
+        self.env.flush_all()
+        child.with_user(self.owner).write({'inherit_access': False})
+        self.assertEqual(self._lines(child)[('user', self.viewer.id)],
+                         ('read', fields.Date.today() + timedelta(days=9)))
+
+    # -- the rows of a folder in the trash --------------------------------------------------------
+    def test_the_manager_of_a_trashed_folder_does_not_read_the_rows_of_its_documents(self):
+        row = self._row(user=self.viewer, role='editor')
+        domain = [('document_id', '=', self.document.id)]
+        self.assertEqual(self.shares.with_user(self.owner).search(domain), row)
+        self.folder.with_user(self.owner).action_trash()
+        self.env.flush_all()
+        self.assertFalse(self.shares.with_user(self.owner).search(domain))
+        with self.assertRaises(AccessError):
+            row.with_user(self.owner).read(['role'])
+        # an administrator reads them, and the manager reads them again with the folder
+        self.assertEqual(self.shares.with_user(self.manager).search(domain), row)
+        self.folder.with_user(self.owner).action_restore()
+        self.env.flush_all()
+        self.assertEqual(self.shares.with_user(self.owner).search(domain), row)
+
+    def test_nobody_changes_the_rows_of_a_document_in_a_trashed_folder(self):
+        """The rule lets the manager of the folder change rows whether the folder is in the trash or
+        not; what refuses is the check of the document itself, with the same text."""
+        row = self._row(user=self.viewer)
+        self.folder.with_user(self.owner).action_trash()
+        self.env.flush_all()
+        message = 'cannot change who this document is shared with'
+        with self.assertRaisesRegex(AccessError, message), self.env.cr.savepoint():
+            self.shares.with_user(self.owner).create({
+                'document_id': self.document.id, 'subject_type': 'user', 'user_id': self.target.id})
+        with self.assertRaisesRegex(AccessError, message), self.env.cr.savepoint():
+            row.with_user(self.owner).unlink()
+        with self.assertRaisesRegex(AccessError, message), self.env.cr.savepoint():
+            row.with_user(self.owner).write({'role': 'editor'})
+        self.assertTrue(row.exists())
+
+    def test_a_missing_and_a_hidden_document_get_the_same_answer(self):
+        message = 'cannot change who this document is shared with'
+        for label, document_id in (('missing', self.document.id + 10 ** 6),
+                                   ('hidden', self.document.id)):
+            with self.subTest(label), self.assertRaisesRegex(AccessError, message), \
+                    self.env.cr.savepoint():
+                self.shares.with_user(self.plain).create({
+                    'document_id': document_id, 'subject_type': 'user',
+                    'user_id': self.target.id})
+
+    # -- the mirror keeps the people the caller's rules hide ------------------------------------
+    def test_the_mirror_keeps_a_contact_that_the_caller_does_not_see(self):
+        company_b = self.env['res.company'].sudo().create({'name': 'Review company B'})
+        hidden = self.portal.partner_id
+        self._row(partner=hidden)
+        self.env.flush_all()
+        # below the check of core that a contact's company fits its account's companies
+        self.env.cr.execute('UPDATE res_partner SET company_id = %s WHERE id = %s',
+                            (company_b.id, hidden.id))
+        self.env.invalidate_all()
+        self.assertFalse(self.env['res.partner'].with_user(self.owner).search(
+            [('id', '=', hidden.id)]))
+        self.document.with_user(self.owner).write({
+            'shared_partner_ids': [Command.link(self.portal_two.partner_id.id)]})
+        rows = self.shares.sudo().search([('document_id', '=', self.document.id)])
+        self.assertEqual(rows.partner_id, hidden | self.portal_two.partner_id)
+        self.env.flush_all()
+        self.assertEqual(sorted(self.document.sudo().shared_partner_ids.ids),
+                         sorted([hidden.id, self.portal_two.partner_id.id]))
+        self.assertTrue(self._can_read(self.portal))
+        # naming the person removes the row all the same
+        self.document.with_user(self.owner).write({'shared_partner_ids': [Command.unlink(hidden.id)]})
+        self.assertEqual(self.shares.sudo().search(
+            [('document_id', '=', self.document.id)]).partner_id, self.portal_two.partner_id)
+
+    # -- the choice of all document users is not a default -------------------------------------
+    def test_a_stored_default_does_not_give_a_folder_to_all_document_users(self):
+        group = self.env.ref(_USER)
+        self.env['ir.default'].with_user(self.owner).set(
+            'woow.document.folder', 'woow_all_users_level', 'edit', user_id=True)
+        folders = self.env['woow.document.folder']
+        under = {'parent_id': self.folder.id}
+        made = folders.with_user(self.owner).create(dict(under, name='Review default folder'))
+        self.assertEqual(made.woow_all_users_level, 'none')
+        by_server = folders.with_user(self.owner).sudo().create(
+            dict(under, name='Review server folder'))
+        self.assertEqual(by_server.woow_all_users_level, 'none')
+        self.assertFalse(self.env['woow.document.folder.access'].sudo().search([
+            ('folder_id', 'in', (made | by_server).ids), ('group_id', '=', group.id)]))
+        self.assertFalse(self._can_read(self.plain, self._document(by_server, 'review-default.txt')))
+        # the context of a caller does not choose it either
+        context = folders.with_user(self.owner).with_context(
+            default_woow_all_users_level='edit').create(dict(under, name='Review context folder'))
+        self.assertEqual(context.woow_all_users_level, 'none')
+
+    # -- a document that 18.0.1 shared with many people keeps working -----------------------------
+    def test_a_document_over_the_limit_after_the_upgrade_can_still_be_changed_and_emptied(self):
+        rows = self._row(user=self.viewer) | self._row(user=self.editor) | self._row(user=self.target)
+        with patch.object(share_module, 'SHARE_ROWS_PER_DOCUMENT_MAX', 2):
+            end = fields.Date.today() + timedelta(days=4)
+            rows[0].with_user(self.owner).write({'expiry_date': end, 'role': 'editor'})
+            self.assertEqual(rows[0].expiry_date, end)
+            self.assertEqual(rows[0].role, 'editor')
+            self.document.with_user(self.owner).write({
+                'shared_user_ids': [Command.unlink(self.target.id)]})
+            self.assertFalse(rows[2].exists())
+            # two rows are at the limit: another person is refused, here as in the 18.0.2 dialog
+            with self.assertRaises(ValidationError), self.env.cr.savepoint():
+                self.shares.with_user(self.owner).create({
+                    'document_id': self.document.id, 'subject_type': 'user',
+                    'user_id': self.target.id})
+
+    # -- the lists are rebuilt from the rows, whatever the cache holds ----------------------------
+    def test_the_lists_are_rebuilt_from_the_rows_when_the_cache_holds_only_active_entries(self):
+        """After a write of a list core keeps only the active entries in its cache. The lists that the
+        rows build must not trust it: an archived person whose row is gone leaves the list."""
+        document = self.document.sudo()
+        rows = self._row(user=self.viewer) | self._row(user=self.target) | self._row(user=self.plain)
+        self.target.sudo().active = False
+        self.env.flush_all()
+        self.env.invalidate_all()
+        self.assertEqual(self._stored_users(), {self.viewer.id, self.target.id, self.plain.id})
+        # a write below the guards that changes nothing, as core caches it: the active entries only
+        super(WoowDocument, document).write({'shared_user_ids': [Command.link(self.viewer.id)]})
+        self.assertNotIn(self.target.id, document.with_context(active_test=False).shared_user_ids.ids)
+        self.env.cr.execute('DELETE FROM woow_document_share WHERE id = %s',
+                            (rows.filtered(lambda row: row.user_id == self.target).id,))
+        self.shares._woow_sync_lists(document)
+        self.assertEqual(self._stored_users(), {self.viewer.id, self.plain.id})
+
+    def _stored_users(self):
+        self.env.flush_all()
+        self.env.cr.execute('SELECT user_id FROM woow_document_shared_user_rel '
+                            'WHERE document_id = %s', (self.document.id,))
+        return {row[0] for row in self.env.cr.fetchall()}
