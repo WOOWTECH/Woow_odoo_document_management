@@ -5,12 +5,15 @@
 Allowlist (file, model, function -> count):
   S1  models/document_log.py   woow.document.log    _log_event              1  (# sudo-ok: S1)
   S3  models/settings.py       woow.document.settings _read_params          1  (# sudo-ok: S3)
+  S4  models/mailin.py         woow.document.mail.intake _woow_sender_documents 1 with_user (# sudo-ok: S4)
 
 Every other escalation in non-test code is a violation: any ``sudo`` attribute except the
 literal ``sudo(False)``, ``with_user(``, ``with_env(``, ``env(su=...|user=...)`` except
 ``env(su=False)``, any ``su=True`` keyword, ``api.Environment(``, ``SUPERUSER_ID``,
 ``request.update_env(user=...)``, ``_get_param(``, ``getattr(x, 'sudo')``, and explicit
-``compute_sudo=True`` / ``related_sudo=True``. ``with_user(`` is never allowed.
+``compute_sudo=True`` / ``related_sudo=True``. ``with_user(`` is never allowed, except the one
+call that S4 registers (the document model in the environment of the person who e-mailed a file
+to a folder: it lowers the rights of the mail gateway to the sender's own).
 
 The model of a class is its ``_name`` literal, else its single string ``_inherit`` (ER-44).
 Counts are "<=" by default and "==" with --g1. Also enforced: no ``<name>_sudo.env`` anywhere
@@ -30,6 +33,8 @@ ALLOW = {
            {'sudo': 1}),
     'S3': ('woow_document_management/models/settings.py', 'woow.document.settings',
            '_read_params', {'sudo': 1}),
+    'S4': ('woow_document_management/models/mailin.py', 'woow.document.mail.intake',
+           '_woow_sender_documents', {'with_user': 1}),
 }
 SU_CHECKED_PREFIXES = ('_cron_',)
 
@@ -98,7 +103,7 @@ def _is_su_check(stmt):
 
 def check(root, args):
     out = []
-    counts = {code: {'sudo': 0} for code in ALLOW}
+    counts = {code: {kind: 0 for kind in ALLOW[code][3]} for code in ALLOW}
     seen_files = set()
     for relpath, _abspath in A.iter_files(root, exts=('.py',)):
         test_file = A.is_test_path(relpath)
@@ -121,13 +126,13 @@ def check(root, args):
             for code, (afile, amodel, afunc, _kinds) in ALLOW.items():
                 if relpath == afile and model == amodel and fname == afunc:
                     matched = code
-            if matched and kind == 'sudo':
+            if matched and kind in ALLOW[matched][3]:
                 tag = 'sudo-ok: %s' % matched
                 if tag not in comment:
                     out.append(A.Violation(relpath, node.lineno, 'SUDO-UNTAGGED',
                                            '%s needs "# %s" on the same line' % (text, tag)))
                     continue
-                counts[matched]['sudo'] += 1
+                counts[matched][kind] += 1
                 seen_files.add(relpath)
                 continue
             if kind == 'with_user':

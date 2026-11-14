@@ -21,3 +21,4 @@ access_woow_document_add_attachment_wizard_user,woow.document.add.attachment.wiz
 access_woow_document_add_attachment_wizard_manager,woow.document.add.attachment.wizard.manager,model_woow_document_add_attachment_wizard,group_woow_document_manager,1,1,1,0
 access_woow_document_notify_wizard_user,woow.document.notify.wizard.user,model_woow_document_notify_wizard,group_woow_document_user,1,1,1,0
 access_woow_document_notify_wizard_manager,woow.document.notify.wizard.manager,model_woow_document_notify_wizard,group_woow_document_manager,1,1,1,0
+access_woow_document_mail_intake_manager,woow.document.mail.intake.manager,model_woow_document_mail_intake,group_woow_document_manager,1,1,1,1

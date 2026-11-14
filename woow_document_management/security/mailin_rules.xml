@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech; License LGPL-3.0 or later. -->
+<odoo>
+    <record id="rule_woow_document_mail_intake_company" model="ir.rule">
+        <field name="name">R-I0 rule_woow_document_mail_intake_company</field>
+        <field name="model_id" ref="model_woow_document_mail_intake" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <!-- R-I1, R-I2: core lets every internal user read the alias table and the follower table. The
+         address of a folder mailbox and the list of colleagues who may send to it are for document
+         administrators (and system administrators, whose gateway script reads the alias). Global
+         rules, in the style of R-M0; every other alias and follower row is untouched. -->
+    <record id="rule_woow_document_mail_intake_alias" model="ir.rule">
+        <field name="name">R-I1 rule_woow_document_mail_intake_alias</field>
+        <field name="model_id" ref="mail.model_mail_alias" />
+        <field name="domain_force">[(1, '=', 1)] if user.has_group('woow_document_management.group_woow_document_manager') or user.has_group('base.group_system') else [('alias_model_id.model', '!=', 'woow.document.mail.intake')]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_mail_intake_followers" model="ir.rule">
+        <field name="name">R-I2 rule_woow_document_mail_intake_followers</field>
+        <field name="model_id" ref="mail.model_mail_followers" />
+        <field name="domain_force">[(1, '=', 1)] if user.has_group('woow_document_management.group_woow_document_manager') or user.has_group('base.group_system') else [('res_model', '!=', 'woow.document.mail.intake')]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+</odoo>

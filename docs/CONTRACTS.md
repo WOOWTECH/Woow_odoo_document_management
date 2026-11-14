@@ -264,8 +264,9 @@
 |---|---|---|---|---|
 | S1 | `W/models/document_log.py` | `_name='woow.document.log'` | `_log_event` | 1：`self.sudo().create(vals)` |
 | S3 | `W/models/settings.py` | `_name='woow.document.settings'` | `_read_params` | 1：`self.env['ir.config_parameter'].sudo().get_param(k)` |
+| S4 | `W/models/mailin.py` | `_name='woow.document.mail.intake'` | `_woow_sender_documents` | 1：`self.env['woow.document'].with_user(user)`（`with_user`；來信者本人的環境，收信閘道是 superuser，檔案以寄件者自己的權限建立；release 18.0.2） |
 
-- 非測試程式裡，`with_user(` 是 0 次。
+- 非測試程式裡，`with_user(` 只有 S4 登記的那一次，其他是 0 次。
 - 整個 repo 不准出現 `<名稱以 _sudo 結尾>.env`（T-STAT-19）。
 - 每個 `_cron_*` 的第一個陳述句都必須檢查 `self.env.su`。
 

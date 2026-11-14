@@ -1,0 +1,8 @@
+from odoo import models
+
+
+class WoowDocumentMailIntake(models.Model):
+    _name = 'woow.document.mail.intake'
+
+    def _woow_sender_documents(self, user):
+        return self.env['woow.document'].with_user(user)  # sudo-ok: S4

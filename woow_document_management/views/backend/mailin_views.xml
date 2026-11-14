@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_mail_intake_list" model="ir.ui.view">
+    <field name="name">woow.document.mail.intake.list</field>
+    <field name="model">woow.document.mail.intake</field>
+    <field name="arch" type="xml">
+      <list string="Folder mailboxes">
+        <field name="folder_id"/>
+        <field name="alias_email"/>
+        <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color'}"/>
+        <field name="company_id" groups="base.group_multi_company" optional="show"/>
+        <field name="active" column_invisible="1"/>
+      </list>
+    </field>
+  </record>
+  <record id="view_woow_document_mail_intake_form" model="ir.ui.view">
+    <field name="name">woow.document.mail.intake.form</field>
+    <field name="model">woow.document.mail.intake</field>
+    <field name="arch" type="xml">
+      <form string="Folder mailbox">
+        <sheet>
+          <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+          <field name="active" invisible="1"/>
+          <div class="alert alert-info" role="alert">
+            Only the followers of this mailbox can send files to it. Add the colleagues who may send
+            as followers below. A file is stored only if its sender has at least upload access to the
+            folder when the mail arrives; the mail text is not kept.
+          </div>
+          <group>
+            <group>
+              <field name="folder_id" options="{'no_create': True}"/>
+              <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color', 'no_create': True}"/>
+            </group>
+            <group string="Address">
+              <label for="alias_name" string="Email Alias"/>
+              <div class="d-flex">
+                <field name="alias_name" class="oe_inline" required="1"/>
+                <span class="px-1">@</span>
+                <field name="alias_domain_id" class="oe_inline" options="{'no_create': True, 'no_open': True}"/>
+              </div>
+              <field name="alias_email" readonly="1"/>
+            </group>
+          </group>
+        </sheet>
+        <chatter/>
+      </form>
+    </field>
+  </record>
+  <record id="view_woow_document_mail_intake_search" model="ir.ui.view">
+    <field name="name">woow.document.mail.intake.search</field>
+    <field name="model">woow.document.mail.intake</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="folder_id"/>
+        <field name="alias_name"/>
+        <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
+      </search>
+    </field>
+  </record>
+  <record id="action_woow_document_mail_intake" model="ir.actions.act_window">
+    <field name="name">Folder mailboxes</field>
+    <field name="res_model">woow.document.mail.intake</field>
+    <field name="view_mode">list,form</field>
+  </record>
+</odoo>

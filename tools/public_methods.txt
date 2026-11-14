@@ -50,3 +50,6 @@ res.config.settings::default_get
 woow.document.*.wizard::default_get
 ir.attachment::generate_access_token
 ir.attachment::validate_access
+woow.document.mail.intake::message_post
+woow.document.mail.intake::message_new
+woow.document.mail.intake::message_update
