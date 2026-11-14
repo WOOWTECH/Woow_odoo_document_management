@@ -4,4 +4,5 @@ from . import (
     guard_mixin, settings, upload_policy, quota, document_tag, document_folder, folder_access,
     document, document_log, ir_attachment, ir_binary, mail_thread_guard,
     res_config_settings, trash_actions, cron_jobs, zip_actions, backend_actions,
+    shortcuts,
 )
