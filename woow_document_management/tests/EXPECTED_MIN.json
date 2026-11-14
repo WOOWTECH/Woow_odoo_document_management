@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 397,
+    "core": 444,
     "files": 126,
     "portal": 3
   },
@@ -24,7 +24,7 @@
     "test_internal_routes.py": 8,
     "test_locks.py": 7,
     "test_mail_thread_guard.py": 25,
-    "test_mailin.py": 39,
+    "test_mailin.py": 47,
     "test_multicompany.py": 4,
     "test_naming.py": 7,
     "test_native_routes.py": 5,

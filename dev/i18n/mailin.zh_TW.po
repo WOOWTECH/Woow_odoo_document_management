@@ -42,3 +42,6 @@ msgstr "以電子郵件收到：已存入 %(stored)s 個、拒收 %(refused)s �
 
 msgid "This folder already has a mailbox."
 msgstr "這個資料夾已經有信箱了。"
+
+msgid "A mailbox has an alias of its own."
+msgstr "每個信箱都有自己專屬的別名。"
