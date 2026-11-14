@@ -9,7 +9,7 @@ aliases:
   manager: group_woow_document_manager
   portal: base.group_portal
 groups:
-  group_woow_document_user: {category: module_category_woow_document, implied: [base.group_user]}
+  group_woow_document_user: {category: module_category_woow_document, implied: [base.group_user, group_woow_document_attachment_overview]}
   group_woow_document_manager: {category: module_category_woow_document, implied: [group_woow_document_user]}
   group_woow_document_attachment_overview: {category: null, implied: [base.group_user]}
 categories: [module_category_woow_document]
