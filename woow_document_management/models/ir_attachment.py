@@ -19,10 +19,11 @@ text). That holds for ``res_model``, the key that every guard starts from, as fo
 ``access_token``. For the superuser nothing but the model is judged: whenever a call names the flag
 or the token, whatever it holds, both are set to ``False`` on the rows of a module model.
 """
+import logging
 import re
 
-from odoo import _, api, models
-from odoo.exceptions import AccessError
+from odoo import _, api, fields, models
+from odoo.exceptions import AccessError, UserError
 
 from ..services.constants import WOOW_MODELS
 from .guard_mixin import own_default_values
@@ -39,6 +40,13 @@ FIELD_FILE_OWN_DEFAULTS = frozenset({
     'public', 'access_token', 'url', 'description', 'original_id', 'company_id'})
 # The database refuses a row of a module model that is open (see ``_sql_constraints``).
 OPEN_ROW_CONSTRAINT = 'woow_module_rows_closed'
+
+
+_logger = logging.getLogger(__name__)
+
+# The negative operators of a search on the source type, with the operator they negate.
+SOURCE_LABEL_NEGATED = {'not ilike': 'ilike', 'not like': 'like', '!=': '=', 'not in': 'in'}
+SOURCE_LABEL_OPERATORS = ('=', 'like', 'ilike', 'in')
 
 
 def stored_char(value):
@@ -89,6 +97,134 @@ class IrAttachment(models.Model):
         "(NOT COALESCE(public, FALSE) AND COALESCE(access_token, '') = ''))"
         % ', '.join("'%s'" % name for name in WOOW_MODELS),
         'Files of documents and folders cannot be public or carry an access token.')]
+
+    woow_source_model_label = fields.Char(
+        string='Source type', compute='_compute_woow_source_model_label',
+        search='_search_woow_source_model_label',
+        help='The name of the kind of record that the file is attached to.')
+    woow_source_record_label = fields.Char(
+        string='Source record', compute='_compute_woow_source_record_label',
+        help='The name of the record that the file is attached to, when you may read it.')
+
+    @api.model
+    def _woow_model_names(self, model_names):
+        """The names of the models in ``model_names`` that the registry holds, in the user's language.
+
+        One read for all of them. The model catalogue is not open to every internal user, so it is
+        read the way core reads it for its own lookups (``ir.model._get``); nothing of the
+        attachments or of their source records passes through it.
+        """
+        catalogue = self.env['ir.model']
+        known = {name: catalogue._get_id(name) for name in set(model_names)
+                 if name and name in self.env.registry}
+        ids = [model_id for model_id in known.values() if model_id]
+        if not ids:
+            return {}
+        return {record.model: record.name for record in catalogue._get('ir.model').browse(ids)}
+
+    @api.depends('res_model')
+    def _compute_woow_source_model_label(self):
+        names = self._woow_model_names({attachment.res_model for attachment in self})
+        for attachment in self:
+            model = attachment.res_model
+            attachment.woow_source_model_label = (names.get(model) or model) if model else False
+
+    @api.model
+    def _woow_record_labels(self, res_model, res_ids):
+        """``{id: display name}`` of the records of ``res_model`` that exist and that the user may read.
+
+        Never raises: a model that is not in the registry, an abstract or transient one, a record
+        that is gone, one that the user cannot read, or any failure of the lookup gives no label.
+        """
+        model = self.env.get(res_model)
+        if model is None or model._abstract or model._transient:
+            return {}
+        try:
+            with self.env.cr.savepoint(flush=False):
+                records = model.browse(sorted(res_ids)).exists()._filtered_access('read')
+                return {record.id: record.display_name or False for record in records}
+        except Exception:  # noqa: BLE001 - a label must never break the list
+            _logger.debug('No source labels for %s', res_model, exc_info=True)
+            return {}
+
+    @api.depends('res_model', 'res_id')
+    def _compute_woow_source_record_label(self):
+        wanted = {}
+        for attachment in self:
+            attachment.woow_source_record_label = False
+            if attachment.res_model and type(attachment.res_id) is int and attachment.res_id > 0:
+                wanted.setdefault(attachment.res_model, set()).add(attachment.res_id)
+        labels = {}
+        for res_model, res_ids in wanted.items():
+            for res_id, label in self._woow_record_labels(res_model, res_ids).items():
+                labels[res_model, res_id] = label
+        for attachment in self:
+            if (attachment.res_model, attachment.res_id) in labels:
+                attachment.woow_source_record_label = labels[attachment.res_model, attachment.res_id]
+
+    @api.model
+    def _search_woow_source_model_label(self, operator, value):
+        """Find the attachments whose source type matches a name, translated or technical.
+
+        The models whose name in the user's language, or whose technical name, matches are found
+        in the registry; a technical name that the registry does not hold is matched on the column.
+        """
+        negated = operator in SOURCE_LABEL_NEGATED
+        operator = SOURCE_LABEL_NEGATED.get(operator, operator)
+        if operator not in SOURCE_LABEL_OPERATORS:
+            raise UserError(_('This kind of search is not available for the source type.'))
+        if operator == '=' and not value:
+            domain = [('res_model', '=', False)]
+        else:
+            needles = [item for item in (value if operator == 'in' else [value])
+                       if isinstance(item, str)]
+            if not needles:
+                domain = [('res_model', '=', False)] if operator == 'in' and False in value \
+                    else [('id', '=', 0)]
+            else:
+                def matches(text):
+                    if operator == 'ilike':
+                        return needles[0].casefold() in text.casefold()
+                    if operator == 'like':
+                        return needles[0] in text
+                    return text in needles
+                names = self._woow_model_names(
+                    [name for name, model in self.env.registry.items() if not model._abstract])
+                matched = sorted(name for name, label in names.items()
+                                 if matches(label) or matches(name))
+                domain = ['|', ('res_model', 'in', matched), ('res_model', operator, value)]
+        return ['!'] + domain if negated else domain
+
+    def action_woow_open_source(self):
+        """Open the record that the attachment is attached to, when it is there and may be read."""
+        self.check_access('read')
+        self.check('read')
+        self.ensure_one()
+        model = self.env.get(self.res_model) if self.res_model else None
+        record = None
+        if model is not None and not model._abstract and not model._transient and self.res_id:
+            record = model.browse(self.res_id).exists()
+        if not record or not record.has_access('read'):
+            raise UserError(_('The source record is not available to you.'))
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': record._name,
+            'res_id': record.id,
+            'view_mode': 'form',
+            'views': [(False, 'form')],
+            'target': 'current',
+        }
+
+    def action_woow_download(self):
+        """Download the file through the content route, which checks the access of the user."""
+        self.check_access('read')
+        self.check('read')
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_url',
+            'url': '/web/content/%d?download=true' % self.id,
+            'target': 'self',
+        }
 
     @api.model
     def _index(self, bin_data, file_type, checksum=None):

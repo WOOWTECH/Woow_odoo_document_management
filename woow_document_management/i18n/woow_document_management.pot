@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Woow Document Management 18.0.1.0.0\n"
+"Project-Id-Version: Woow Document Management 18.0.1.1.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-11-08 00:59+0000\n"
 "PO-Revision-Date: 2026-11-08 01:03+0000\n"
@@ -235,15 +235,15 @@ msgid "Attachment Overview"
 msgstr ""
 
 #. module: woow_document_management
-#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_attachment_overview
-#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_attachment_overview
-msgid "Attachment overview"
-msgstr ""
-
-#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
 msgid "Attachments imported"
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_attachment_overview
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_attachment_overview
+msgid "Attachments in other apps"
 msgstr ""
 
 #. module: woow_document_management
@@ -274,6 +274,11 @@ msgstr ""
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_home_woow_docs
 msgid "Browse folders and files shared with you"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Business records"
 msgstr ""
 
 #. module: woow_document_management
@@ -902,6 +907,11 @@ msgid "Group"
 msgstr ""
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Group by"
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__has_message
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__has_message
 msgid "Has Message"
@@ -971,6 +981,11 @@ msgid "Image 128"
 msgstr ""
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Images"
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__folder_in_trash
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__in_trash
 msgid "In Trash"
@@ -1036,6 +1051,11 @@ msgstr ""
 #. odoo-python
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid "Larger than the %(limit)s MB limit."
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Last 30 days"
 msgstr ""
 
 #. module: woow_document_management
@@ -1160,6 +1180,11 @@ msgstr ""
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__my_activity_date_deadline
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__my_activity_date_deadline
 msgid "My Activity Deadline"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "My uploads"
 msgstr ""
 
 #. module: woow_document_management
@@ -1318,6 +1343,12 @@ msgid "Open link"
 msgstr ""
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_list
+msgid "Open the source record"
+msgstr ""
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Optional extensions"
 msgstr ""
@@ -1349,6 +1380,11 @@ msgstr ""
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__partner_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__partner_id
 msgid "Partner"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "PDF"
 msgstr ""
 
 #. module: woow_document_management
@@ -1605,6 +1641,11 @@ msgid "Source Display"
 msgstr ""
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_source_record_label
+msgid "Source record"
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_res_id
 msgid "Source Res"
 msgstr ""
@@ -1622,6 +1663,12 @@ msgid ""
 "Overdue: Due date is already passed\n"
 "Today: Activity date is today\n"
 "Planned: Future activities."
+msgstr ""
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_source_model_label
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Source type"
 msgstr ""
 
 #. module: woow_document_management
@@ -1700,9 +1747,20 @@ msgid "The link address must use HTTPS."
 msgstr ""
 
 #. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_ir_attachment__woow_source_model_label
+msgid "The name of the kind of record that the file is attached to."
+msgstr ""
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
 msgid "The source has no file content."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/ir_attachment.py:0
+msgid "The source record is not available to you."
 msgstr ""
 
 #. module: woow_document_management
@@ -1773,6 +1831,12 @@ msgid ""
 msgstr ""
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/ir_attachment.py:0
+msgid "This kind of search is not available for the source type."
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_trash
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_trash
 msgid "Trash"
@@ -1824,8 +1888,18 @@ msgid "Upload"
 msgstr ""
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Upload month"
+msgstr ""
+
+#. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__upload
 msgid "Uploaded"
+msgstr ""
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Uploaded by"
 msgstr ""
 
 #. module: woow_document_management

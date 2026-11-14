@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Woow Document Management 18.0.1.0.0\n"
+"Project-Id-Version: Woow Document Management 18.0.1.1.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-11-08 00:59+0000\n"
 "PO-Revision-Date: 2026-11-08 01:03+0000\n"
@@ -242,16 +242,16 @@ msgid "Attachment Overview"
 msgstr "附件總覽"
 
 #. module: woow_document_management
-#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_attachment_overview
-#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_attachment_overview
-msgid "Attachment overview"
-msgstr "附件總覽"
-
-#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
 msgid "Attachments imported"
 msgstr "已匯入附件"
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_attachment_overview
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_attachment_overview
+msgid "Attachments in other apps"
+msgstr "各模組附件"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -282,6 +282,11 @@ msgstr "後台"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_home_woow_docs
 msgid "Browse folders and files shared with you"
 msgstr "瀏覽與您分享的資料夾和檔案"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Business records"
+msgstr "業務單據"
 
 #. module: woow_document_management
 #: model:res.groups,comment:woow_document_management.group_woow_document_attachment_overview
@@ -909,6 +914,11 @@ msgid "Group"
 msgstr "群組"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Group by"
+msgstr "分組依據"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__has_message
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__has_message
 msgid "Has Message"
@@ -979,6 +989,11 @@ msgid "Image 128"
 msgstr "圖像 128"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Images"
+msgstr "圖片"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__folder_in_trash
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__in_trash
 msgid "In Trash"
@@ -1045,6 +1060,11 @@ msgstr "僅保留加密雜湊值"
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid "Larger than the %(limit)s MB limit."
 msgstr "超過 %(limit)s MB 上限。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Last 30 days"
+msgstr "最近 30 天"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__write_uid
@@ -1169,6 +1189,11 @@ msgstr "已移到回收桶"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__my_activity_date_deadline
 msgid "My Activity Deadline"
 msgstr "我的活動截止時間"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "My uploads"
+msgstr "我的上傳"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__name
@@ -1326,6 +1351,12 @@ msgid "Open link"
 msgstr "開啟連結"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_list
+msgid "Open the source record"
+msgstr "開啟來源紀錄"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Optional extensions"
 msgstr "可選副檔名"
@@ -1358,6 +1389,11 @@ msgstr "上層路徑"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__partner_id
 msgid "Partner"
 msgstr "聯絡人"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "PDF"
+msgstr "PDF"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__
@@ -1613,6 +1649,11 @@ msgid "Source Display"
 msgstr "來源顯示值"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_source_record_label
+msgid "Source record"
+msgstr "來源紀錄"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_res_id
 msgid "Source Res"
 msgstr "來源紀錄"
@@ -1635,6 +1676,12 @@ msgstr ""
 "逾期：已超過截止日期\n"
 "今日：活動日期是今天\n"
 "預定：活動日期在未來。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_source_model_label
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Source type"
+msgstr "來源類型"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -1712,10 +1759,21 @@ msgid "The link address must use HTTPS."
 msgstr "連結網址必須使用 HTTPS。"
 
 #. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_ir_attachment__woow_source_model_label
+msgid "The name of the kind of record that the file is attached to."
+msgstr "檔案所附屬的紀錄類型名稱。"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
 msgid "The source has no file content."
 msgstr "來源沒有檔案內容。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/ir_attachment.py:0
+msgid "The source record is not available to you."
+msgstr "來源紀錄已不存在，或你沒有權限查看。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1785,6 +1843,12 @@ msgid ""
 msgstr "本站仍有文件。請先下載需要的內容，然後在「文件」設定中輸入確認碼，再解除安裝。"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/ir_attachment.py:0
+msgid "This kind of search is not available for the source type."
+msgstr "來源類型不支援這種搜尋方式。"
+
+#. module: woow_document_management
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_trash
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_trash
 msgid "Trash"
@@ -1836,9 +1900,19 @@ msgid "Upload"
 msgstr "上傳"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Upload month"
+msgstr "上傳月份"
+
+#. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__upload
 msgid "Uploaded"
 msgstr "已上傳"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Uploaded by"
+msgstr "上傳者"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__uploaded_by_partner_id

@@ -25,6 +25,8 @@ woow.document.move.wizard::action_move
 woow.document.restore.wizard::action_restore_to
 woow.document.purge.wizard::action_confirm_purge
 woow.document.add.attachment.wizard::action_add
+ir.attachment::action_woow_open_source
+ir.attachment::action_woow_download
 woow.document.notify.wizard::action_send
 
 [override]
