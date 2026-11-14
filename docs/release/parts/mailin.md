@@ -12,9 +12,12 @@ administrator chose for the mailbox. The text of the mail is not kept.
 - At the moment the mail arrives the sender must also be an active internal user of the Document User
   group with upload level or more on the folder (a direct grant or through a group, or a document
   administrator). Lowering the right takes effect for the next mail. A folder in the trash accepts nothing.
-- At most 10 attachments of one mail are stored (`MAIL_IN_MAX_FILES`); the others are ignored. Images
-  that belong to the body of the mail are not files. A file that the upload policy or the quota refuses
-  is skipped and the other files of the mail are still stored.
+- At most 10 attachments of one mail are stored (`MAIL_IN_MAX_FILES`); the others are ignored. Only
+  images that the body of the mail points at (`cid:` references) are not files: an attachment that a mail
+  client gave a Content-ID header is a file, and so is a forwarded mail (`message/rfc822`; the upload
+  policy decides whether its type is accepted). A file that the upload policy or the quota refuses, or
+  that cannot be read, is counted as refused and skipped; the other files of the mail are still stored.
+  The files of one mail share one quota measurement, so together they cannot pass the block level.
 - A refused mail (the sender does not follow the mailbox, may not upload, is not an internal user, the
   mailbox is archived) stores nothing; the sender gets core's standard bounce message.
 - Each filed mail leaves one short internal note on the mailbox ("Received by email: n stored, n refused,
@@ -28,6 +31,9 @@ alias fields of the mixin (`alias_name`, `alias_domain_id`, `alias_email`). The 
 with contact policy "followers", routes to this model (`message_new`) and carries the id of its mailbox in
 its defaults. The routing fields of the alias (model, contact policy, defaults, forced thread, parent) are
 fixed: a write or create that names them is refused; only the name, the domain and the bounce text change.
+A caller never names an alias either: `alias_id` is refused in `create` and in `write` (except the row's own
+alias), so a mailbox can never take over, rewrite or delete the alias of another app; an alias belongs to one
+mailbox (SQL unique) and must route to the mailbox model (constraint).
 The model is in `WOOW_MODELS`: attachments of its rows are never public and never carry a token.
 A folder that is deleted for good (purge, uninstall) deletes its mailbox and the alias with it.
 
@@ -52,8 +58,11 @@ counts note and nothing of the mail). No new public method, route, cron or wizar
 - Nothing of the mail stays on the mailbox thread: core posts the whole mail on the record that `message_new`
   returns, so `message_new` returns the mailbox with an in-process marker (an instance of `MailInNote`;
   a JSON context from a client can never be one) and `message_post` then writes only the counts note and
-  returns an empty record, so that core does not add the recipients to it. The Message-Id header is kept on
-  the note because core's own duplicate check reads it: a mail seen twice is filed once.
+  returns an empty record, so that core does not add the recipients to it. The Message-Id header is not
+  kept: the note carries a one-way key made from it (a hash of the mailbox id and the header), and
+  `message_new` files nothing for a mail whose key is already on the mailbox, so a mail that is delivered
+  twice is filed once. A file that fails because the quota lock is busy is counted as refused, and does not
+  abort the mail (an aborted mail would make core mark the alias invalid and bounce a configuration error).
 - Global rules R-I1 and R-I2 hide the alias row and the follower rows of a mailbox from internal users
   who are neither document administrators nor system administrators (core would let every internal user
   read both tables). Every other alias and follower row is untouched. A side effect: an ordinary user who

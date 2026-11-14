@@ -11,6 +11,7 @@ import ast
 import base64
 import secrets
 from email.message import EmailMessage
+from unittest.mock import patch
 
 from psycopg2 import IntegrityError
 
@@ -20,7 +21,8 @@ from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 from odoo.tools import mute_logger
 
-from ..models.mailin import DEFAULTS_KEY, MailInNote
+from ..models.mailin import DEFAULTS_KEY, MailInNote, _mail_file, _mail_key
+from ..models.quota import LEDGER_KEY, QuotaLedger
 from ..services import locks
 from ..services.constants import MAIL_IN_MAX_FILES, MIB
 
@@ -31,7 +33,8 @@ _DOMAIN = 'mailin-test.example'
 _ADDRESS = 'folder-in@%s' % _DOMAIN
 
 
-def _raw(sender, files=(), inline=(), to=_ADDRESS, extra=(), body='Mail body %s'):
+def _raw(sender, files=(), inline=(), to=_ADDRESS, extra=(), body='Mail body %s', cid_files=(),
+         eml=()):
     """(Message-Id, bytes) of a mail from ``sender`` with ``files`` [(name, bytes)] attached."""
     mail = EmailMessage()
     message_id = '<%s@mailin.example.test>' % secrets.token_hex(12)
@@ -49,6 +52,11 @@ def _raw(sender, files=(), inline=(), to=_ADDRESS, extra=(), body='Mail body %s'
                 data, maintype='image', subtype='png', cid='<picture1>', filename=name)
     for name, data in files:
         mail.add_attachment(data, maintype='application', subtype='octet-stream', filename=name)
+    for name, data, cid in cid_files:        # ordinary attachments that also carry a Content-ID
+        mail.add_attachment(data, maintype='application', subtype='octet-stream', filename=name,
+                            cid=cid)
+    for name, inner in eml:                  # saved or forwarded mails (message/rfc822)
+        mail.add_attachment(inner, filename=name)
     return message_id, mail.as_bytes()
 
 
@@ -203,8 +211,12 @@ class TestMailinReceiving(_MailinFixture, TransactionCase):
             [('res_model', '=', self.box._name)]))
         note = self.env['mail.message'].sudo().search(
             [('model', '=', self.box._name), ('res_id', '=', self.box.id),
-             ('message_id', '=', message_id)])
+             ('message_id', '=', _mail_key(self.box.id, message_id))])
         self.assertEqual(len(note), 1)
+        # the Message-Id header of the mail is not kept, only a one-way key of it
+        self.assertFalse(self.env['mail.message'].sudo().search_count(
+            [('message_id', '=', message_id)]))
+        self.assertNotIn('mailin.example.test', note.message_id)
         self.assertEqual((note.message_type, note.is_internal), ('notification', True))
         self.assertFalse(note.attachment_ids)
         self.assertFalse(note.partner_ids)
@@ -371,9 +383,90 @@ class TestMailinReceiving(_MailinFixture, TransactionCase):
     def test_a_mail_that_was_received_is_not_filed_twice(self):
         message_id, raw = _raw(self.uploader.email, [('once.txt', b'only once')])
         self.gateway.message_process(False, raw)
-        count = self._state()['documents']
-        self.assertEqual(self.gateway.message_process(False, raw), False)
-        self.assertEqual(self._state()['documents'], count)
+        before = self._state()
+        self.gateway.message_process(False, raw)
+        self.assertEqual(self._state()['documents'], before['documents'])
+        self.assertEqual(self._state()['messages'], before['messages'])
+        self.assertEqual(self._mail_in_rows().mapped('detail'),
+                         [{'files': 1, 'refused': 0, 'ignored': 0}])
+
+    def test_an_attachment_with_a_content_id_that_the_body_does_not_use_is_a_file(self):
+        before = self._state()
+        self._send(self.uploader.email, [('plain.txt', b'no content id')],
+                   cid_files=[('report.txt', b'from a mail client', '<f_lm9abc>')])
+        self.assertEqual(sorted(self._documents().mapped('name')), ['plain.txt', 'report.txt'])
+        self.assertEqual(self._state()['documents'], before['documents'] + 2)
+        self.assertEqual(self._mail_in_rows().detail, {'files': 2, 'refused': 0, 'ignored': 0})
+
+    def test_only_an_image_that_the_body_points_at_is_inline(self):
+        self._send(self.uploader.email, [('real.txt', b'a file')],
+                   inline=[('picture.png', b'\x89PNG\r\n\x1a\nfake')],
+                   cid_files=[('other.txt', b'has a content id, not in the body', '<other1>')])
+        self.assertEqual(sorted(self._documents().mapped('name')), ['other.txt', 'real.txt'])
+
+    def test_a_forwarded_mail_is_read_as_a_file_and_judged_by_the_policy(self):
+        inner = EmailMessage()
+        inner['From'] = 'someone@elsewhere.example.test'
+        inner['Subject'] = 'forwarded'
+        inner.set_content('the forwarded text')
+        # the part is read as bytes (as core does) and handed to the upload policy, which does not
+        # list .eml: the file is counted as refused, it does not vanish
+        before = self._state()
+        self._send(self.uploader.email, [('kept.txt', b'next to it')], eml=[('fwd.eml', inner)])
+        self.assertEqual(self._documents().mapped('name'), ['kept.txt'])
+        self.assertEqual(self._state()['documents'], before['documents'] + 1)
+        self.assertEqual(self._mail_in_rows().detail, {'files': 1, 'refused': 1, 'ignored': 0})
+        name, data = _mail_file(('fwd.eml', inner, {}))
+        self.assertEqual(name, 'fwd.eml')
+        self.assertIn(b'the forwarded text', data)
+
+    def test_a_part_that_cannot_be_read_is_counted_as_refused(self):
+        box = self.box.sudo()
+        documents = box._woow_sender_documents({
+            'author_id': self.uploader.partner_id.id, 'email_from': self.uploader.email})
+        note = box._woow_store_mail_files(documents, {'attachments': [
+            ('weird.bin', object(), {}), 'not a part', ('ok.txt', b'fine', {})]})
+        self.assertEqual((note.stored, note.refused, note.ignored), (1, 2, 0))
+
+    def test_the_files_of_one_mail_share_one_quota_ledger(self):
+        """What the files of a mail have written is not committed: they must share one ledger."""
+        quota_model = type(self.env['woow.document.quota'])
+        real = quota_model._check_many
+        seen = []
+
+        def spy(quota, items, *args, **kwargs):
+            seen.append(quota.env.context.get(LEDGER_KEY))
+            return real(quota, items, *args, **kwargs)
+
+        self.env['ir.config_parameter'].sudo().set_param('woow_document_management.quota_mb', '5')
+        locks._reset_tracker(self.env.cr)
+        with patch.object(quota_model, '_check_many', spy):
+            self._send(self.uploader.email, [('led-%d.txt' % index, b'file %d' % index)
+                                             for index in range(3)])
+            self._send(self.uploader.email, [('next.txt', b'another mail')])
+        self.assertEqual(len(seen), 4)
+        self.assertTrue(all(isinstance(ledger, QuotaLedger) for ledger in seen))
+        self.assertTrue(seen[0] is seen[1] is seen[2])
+        self.assertIsNot(seen[2], seen[3])         # a new mail measures again
+        self.assertEqual(len(self._documents()), 4)
+
+    def test_a_busy_quota_lock_refuses_the_file_and_not_the_mail(self):
+        real = type(self.env['woow.document.quota'])._check_many
+        calls = []
+
+        def busy(quota, items, *args, **kwargs):
+            calls.append(items)
+            if len(calls) == 1:
+                raise locks.LockBusy('quota')
+            return real(quota, items, *args, **kwargs)
+
+        self.env['ir.config_parameter'].sudo().set_param('woow_document_management.quota_mb', '1')
+        locks._reset_tracker(self.env.cr)
+        with patch.object(type(self.env['woow.document.quota']), '_check_many', busy):
+            self._send(self.uploader.email, [('first.txt', b'busy'), ('second.txt', b'free')])
+        self.assertEqual(self._documents().mapped('name'), ['second.txt'])
+        self.assertEqual(self._mail_in_rows()[-1].detail, {'files': 1, 'refused': 1, 'ignored': 0})
+        self.assertEqual(self.box.alias_id.sudo().alias_status, 'valid')
 
     def test_a_tag_of_another_company_cannot_be_put_on_a_mailbox(self):
         other = self.env['res.company'].sudo().create({'name': 'Mailin company B'})
@@ -420,7 +513,8 @@ class TestMailinReceiving(_MailinFixture, TransactionCase):
 
     def test_a_reply_to_the_note_is_not_a_mail_for_the_mailbox(self):
         message_id, _result = self._send(self.uploader.email, [('note.txt', b'first')])
-        note = self.env['mail.message'].sudo().search([('message_id', '=', message_id)])
+        note = self.env['mail.message'].sudo().search(
+            [('message_id', '=', _mail_key(self.box.id, message_id))])
         self.assertEqual(len(note), 1)
         before = self._state()
         _id, raw = _raw(self.uploader.email, [('reply.txt', b'reply')],
@@ -592,6 +686,47 @@ class TestMailinAdministration(_MailinFixture, TransactionCase):
         box.write({'alias_name': 'renamed-in', 'tag_ids': [Command.clear()]})
         self.assertEqual(self.box.alias_email, 'renamed-in@%s' % _DOMAIN)
         self.assertFalse(self.box.tag_ids)
+
+    def test_a_mailbox_cannot_take_the_alias_of_another_record(self):
+        manager = self.env['woow.document.mail.intake'].with_user(self.manager)
+        foreign = self.env['mail.alias'].sudo().create({
+            'alias_name': 'poc-foreign', 'alias_model_id': self.env['ir.model']._get_id('res.partner'),
+            'alias_contact': 'everyone', 'alias_defaults': "{'name': 'orig'}"})
+        other_folder = self.env['woow.document.folder'].sudo().create({'name': 'Mailin alias folder'})
+        snapshot = (foreign.alias_model_id.model, foreign.alias_contact, foreign.alias_defaults)
+        for alias_id in (foreign.id, self.box.alias_id.id, 99999999, foreign):
+            with self.subTest(create=alias_id), self.assertRaises(UserError):
+                manager.create({'folder_id': other_folder.id, 'alias_id': alias_id})
+        own = manager.create({'folder_id': other_folder.id, 'alias_name': 'own-alias-in'})
+        for value in (foreign.id, self.box.alias_id.id, False, 99999999):
+            with self.subTest(write=value), self.assertRaises(UserError):
+                own.write({'alias_id': value})
+        own.write({'alias_id': own.alias_id.id, 'tag_ids': [Command.clear()]})   # its own: no change
+        own.unlink()
+        self.assertTrue(foreign.exists())
+        self.assertEqual((foreign.alias_model_id.model, foreign.alias_contact,
+                          foreign.alias_defaults), snapshot)
+        self.assertTrue(self.box.exists() and self.box.alias_id.exists())
+
+    def test_an_alias_belongs_to_one_mailbox_and_routes_to_the_mailboxes(self):
+        with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'):
+            with self.env.cr.savepoint():
+                other = self.env['woow.document.folder'].sudo().create({'name': 'Mailin dup alias'})
+                self.env['woow.document.mail.intake'].sudo().create({
+                    'folder_id': other.id, 'alias_name': 'dup-in'})
+                self.env.cr.execute(
+                    'UPDATE woow_document_mail_intake SET alias_id = %s WHERE folder_id = %s',
+                    [self.box.alias_id.id, other.id])
+        foreign = self.env['mail.alias'].sudo().create({
+            'alias_name': 'poc-foreign2', 'alias_model_id': self.env['ir.model']._get_id('res.partner')})
+        other = self.env['woow.document.folder'].sudo().create({'name': 'Mailin wrong model'})
+        box = self.env['woow.document.mail.intake'].sudo().create({
+            'folder_id': other.id, 'alias_name': 'wrong-in'})
+        self.env.cr.execute('UPDATE woow_document_mail_intake SET alias_id = %s WHERE id = %s',
+                            [foreign.id, box.id])
+        box.invalidate_recordset()
+        with self.assertRaises(ValidationError):
+            box._check_alias_is_ours()
 
     def test_copying_a_mailbox_is_not_offered(self):
         with self.assertRaises(UserError):
