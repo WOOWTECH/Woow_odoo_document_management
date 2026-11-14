@@ -5,7 +5,9 @@
 A lock is a courtesy of one editor to the others: while it is held, nobody but its holder changes
 the document. It is a plain pair of fields, written only by ``action_lock`` and ``action_unlock``
 (the guards of ``document.py`` refuse them to every caller that is not the superuser), and it is
-judged in ``write``, ``unlink`` and the trash actions of this file. It never widens access: a user
+judged in ``write`` and ``unlink`` here, and in the trash actions of ``docactions_trash.py``.
+This file is imported right after ``document.py`` and before ``trash_actions.py``, so that the
+overrides of ``write`` and ``unlink`` sit directly on the document class. It never widens access: a user
 who may not write a document cannot lock it, and a lock never lets anyone see or do more.
 """
 from odoo import Command, _, api, fields, models
@@ -85,18 +87,6 @@ class WoowDocumentLock(models.Model):
         self._require_manager()
         self._woow_refuse_foreign_lock('unlink')
         return super().unlink()
-
-    def action_trash(self):
-        """Move the documents to the trash, unless another user has locked one of them."""
-        self.check_access('write')
-        self._woow_refuse_foreign_lock('write')
-        return super().action_trash()
-
-    def action_restore(self):
-        """Restore the documents, unless another user has locked one of them."""
-        self.with_context(active_test=False).check_access('write')
-        self.with_context(active_test=False)._woow_refuse_foreign_lock('write')
-        return super().action_restore()
 
     # -- lock and unlock -----------------------------------------------------------------------
     def action_lock(self):
@@ -216,8 +206,3 @@ class WoowDocumentFolderRename(models.Model):
         return {'type': 'ir.actions.act_window', 'name': _('Rename'),
                 'res_model': 'woow.document.rename.wizard', 'view_mode': 'form',
                 'target': 'new', 'context': {'default_folder_id': self.id}}
-
-    def _woow_purge_tree(self, limit=None):
-        """Delete a trashed folder with its documents; a lock of a document does not hold it back."""
-        return super(WoowDocumentFolderRename, self.with_context(
-            **{_PURGE_KEY: _PURGE_MARK}))._woow_purge_tree(limit)

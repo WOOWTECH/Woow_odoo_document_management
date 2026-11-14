@@ -68,6 +68,15 @@ moves a document without going through `write`.
 - Audit: `lock`, `unlock` (`forced` is true when released by someone else) and `duplicate`; details
   hold ids and flags only.
 
+## Import order (for the integrator)
+
+`models/__init__.py` imports `docactions` right after `document` (before `trash_actions`) and
+`docactions_trash` at the end. This matters: `test_trash_lifecycle` captures `type(documents).unlink`
+and patches `unlink` on the trash class, which breaks (infinite recursion) when an `unlink` override
+sits above the trash class in the model's method order. The lock checks of `write` and `unlink` are
+therefore in the first file, and the overrides that must be asked before the trash actions
+(`action_trash`, `action_restore`, the folder purge marker) are in the second.
+
 ## Deployment notes
 
 - Upgrade is an in-place `-u`: two nullable columns are added to `woow_document`. Nothing to migrate;

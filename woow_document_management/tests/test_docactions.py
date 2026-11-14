@@ -169,17 +169,16 @@ class TestLockRights(DocActionsCase):
 
     def test_a_document_of_another_company_is_out_of_reach(self):
         company = self.env['res.company'].sudo().create({'name': 'Actions other company'})
-        folder = self.env['woow.document.folder'].sudo().create({
-            'name': 'Other company folder', 'owner_id': self.admin.id,
-            'company_id': company.id})
+        outsider = new_test_user(
+            self.env, login='act_outsider', groups=_USER, company_id=company.id,
+            company_ids=[Command.set([company.id])])
         self.env['woow.document.folder.access'].sudo().create({
-            'folder_id': folder.id, 'subject_type': 'user', 'user_id': self.alice.id,
+            'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': outsider.id,
             'level': 'manage'})
-        foreign = self._doc('foreign.txt', b'foreign content', folder=folder)
         for method in ('action_lock', 'action_unlock', 'action_duplicate'):
             with self.subTest(method=method), self.assertRaises(AccessError):
-                getattr(self._as(self.alice, foreign), method)()
-        self.assertFalse(foreign.lock_uid)
+                getattr(self._as(outsider), method)()
+        self.assertFalse(self.doc.lock_uid)
 
     def test_lock_batches_are_bounded(self):
         docs = self.doc | self._doc('two.txt', b'two') | self._doc('three.txt', b'three')
