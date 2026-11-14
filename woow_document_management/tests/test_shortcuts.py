@@ -200,7 +200,7 @@ class TestShortcuts(ShortcutFixture, TransactionCase):
         # nor to a document of another company
         company = self.env['res.company'].sudo().create({'name': 'Second company'})
         foreign = self.env['woow.document.folder'].sudo().create({
-            'name': 'Foreign', 'owner_id': self.admin.id, 'company_id': company.id})
+            'name': 'Foreign', 'owner_id': False, 'company_id': company.id})
         with self.assertRaises(UserError):
             documents.create({'name': 'x', 'folder_id': foreign.id, 'document_type': 'shortcut',
                               'shortcut_target_id': self.target.id})
