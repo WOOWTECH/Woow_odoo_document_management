@@ -115,21 +115,55 @@ class TestShortcuts(ShortcutFixture, TransactionCase):
             ('document_type', '=', 'shortcut')]))
 
     def test_a_caller_who_cannot_read_the_target_creates_nothing_and_learns_nothing(self):
+        wizards = self.env['woow.document.shortcut.wizard']
         with self.assertRaises(AccessError):
             self.target.with_user(self.bob).action_open_shortcut_wizard()
-        wizard = self.env['woow.document.shortcut.wizard'].with_user(self.bob).create({
-            'document_id': self.target.id, 'folder_id': self.dest.id})
+        # the wizard row itself is refused: a document that the rules hide and one that is missing
+        # get the same answer, so the row cannot be used to find out which ids exist
         with self.assertRaises(AccessError) as hidden:
-            wizard.action_create()
+            wizards.with_user(self.bob).create({
+                'document_id': self.target.id, 'folder_id': self.dest.id})
         self.assertFalse(self.env['woow.document'].sudo().search([
             ('document_type', '=', 'shortcut')]))
         # a document that is in the trash gets the same answer as one that the rules hide
         self.target.with_user(self.admin).action_trash()
-        wizard = self.env['woow.document.shortcut.wizard'].with_user(self.alice).create({
-            'document_id': self.target.id, 'folder_id': self.dest.id})
         with self.assertRaises(AccessError) as trashed:
-            wizard.action_create()
+            wizards.with_user(self.alice).create({
+                'document_id': self.target.id, 'folder_id': self.dest.id}).action_create()
         self.assertEqual(str(hidden.exception), str(trashed.exception))
+
+    def test_the_wizard_row_does_not_tell_which_ids_exist(self):
+        wizards = self.env['woow.document.shortcut.wizard']
+        missing_document = self.env['woow.document'].sudo().with_context(
+            active_test=False).search([], order='id desc', limit=1).id + 1000
+        missing_folder = self.env['woow.document.folder'].sudo().with_context(
+            active_test=False).search([], order='id desc', limit=1).id + 1000
+        hidden_folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Hidden', 'owner_id': self.admin.id})
+
+        def refusal(user, vals, **context):
+            with self.assertRaises(AccessError) as refused:
+                wizards.with_user(user).with_context(**context).create(vals)
+            return str(refused.exception)
+
+        # a document that the rules hide and one that does not exist get the same answer
+        self.assertEqual(
+            refusal(self.erin, {'document_id': self.target.id, 'folder_id': self.dest.id}),
+            refusal(self.erin, {'document_id': missing_document, 'folder_id': self.dest.id}))
+        # and so do a folder that the rules hide and one that does not exist
+        self.assertEqual(
+            refusal(self.alice, {'document_id': self.target.id, 'folder_id': hidden_folder.id}),
+            refusal(self.alice, {'document_id': self.target.id, 'folder_id': missing_folder}))
+        # the default of the context goes through the same check, and so does a later write
+        refusal(self.erin, {'folder_id': self.dest.id}, default_document_id=self.target.id)
+        own = wizards.with_user(self.alice).create({
+            'document_id': self.target.id, 'folder_id': self.dest.id})
+        for vals in ({'folder_id': missing_folder}, {'document_id': missing_document},
+                     {'folder_id': hidden_folder.id}):
+            with self.assertRaises(AccessError):
+                own.write(vals)
+        # a document that the caller reads is accepted
+        self.assertTrue(own.exists())
 
     def test_the_destination_must_be_a_live_folder_with_the_upload_level(self):
         wizards = self.env['woow.document.shortcut.wizard'].with_user(self.alice)
@@ -247,6 +281,23 @@ class TestShortcuts(ShortcutFixture, TransactionCase):
                         documents.search_count(domain)
                 with self.assertRaises(AccessError):
                     documents.search([], order='shortcut_target_id')
+                # core reads white space, a double quote and a ':func' suffix in an order string
+                for order in ('shortcut_target_id\tasc', 'shortcut_target_id\nasc',
+                              'shortcut_target_id   desc', ' shortcut_target_id', '"shortcut_target_id"',
+                              'shortcut_target_id:x asc', 'shortcut_target_id.id\tdesc',
+                              'name, shortcut_target_id\tasc', 'shortcut_target_id\tasc nulls last'):
+                    with self.subTest(order=order):
+                        with self.assertRaises(AccessError):
+                            documents.search([], order=order)
+                        with self.assertRaises(AccessError):
+                            documents.search_read([], ['name'], order=order)
+                        with self.assertRaises(AccessError):
+                            documents.web_search_read([], {'name': {}}, order=order)
+                # the same guard, where the core turns one order term into SQL
+                with self.assertRaises(AccessError):
+                    documents._order_to_sql('shortcut_target_id\tasc', documents._search([]))
+                # an order of an ordinary field is not touched, whatever the spelling
+                self.assertTrue(documents.search([], order='name\tasc'))
                 with self.assertRaises(AccessError):
                     documents.read_group([], ['shortcut_target_id'], ['shortcut_target_id'])
                 with self.assertRaises(AccessError):
@@ -311,6 +362,87 @@ class TestShortcuts(ShortcutFixture, TransactionCase):
         self.assertFalse(self.target.exists())
         self.assertFalse((shortcut | other).exists())
         self.assertTrue(self.plain.exists())
+
+    def _purge_rows(self, *folders):
+        """Purge audit rows of the folders (the log forgets the document id of a deleted document)."""
+        return self.env['woow.document.log'].sudo().search_count([
+            ('event', '=', 'purge'), ('folder_id', 'in', [folder.id for folder in folders])])
+
+    def test_a_purged_target_logs_and_cleans_up_the_shortcuts_it_takes_with_it(self):
+        shortcut = self._make_shortcut(self.alice, self.target, self.dest)
+        other = self._make_shortcut(self.alice, self.target, self.elsewhere)
+        other.with_user(self.admin).action_trash()           # a trashed shortcut goes as well
+        shortcut.sudo().message_post(body='a note on the pointer')
+        ids = (shortcut | other).ids
+        self.assertTrue(self.env['mail.message'].sudo().search_count([
+            ('model', '=', 'woow.document'), ('res_id', 'in', ids)]))
+        self.target.with_user(self.admin).action_trash()
+        self.assertEqual(self.target.with_user(self.admin)._woow_purge(), (1, 0))
+        self.env.invalidate_all()
+        self.assertFalse((shortcut | other).exists())
+        self.assertEqual(self._purge_rows(self.dest), 1)
+        self.assertEqual(self._purge_rows(self.elsewhere), 1)
+        self.assertFalse(self.env['mail.message'].sudo().search_count([
+            ('model', '=', 'woow.document'), ('res_id', 'in', ids)]))
+
+    def test_a_shortcut_on_legal_hold_stops_the_purge_of_its_target(self):
+        shortcut = self._make_shortcut(self.alice, self.target, self.dest)
+        free = self._make_shortcut(self.alice, self.target, self.elsewhere)
+        shortcut.with_user(self.admin).action_set_legal_hold(True)
+        self.target.with_user(self.admin).action_trash()
+        self.assertEqual(self.target.with_user(self.admin)._woow_purge(), (0, 1))
+        self.env.invalidate_all()
+        # nothing is deleted, not even the shortcut that was free: the purge is refused as a whole
+        self.assertTrue((self.target | shortcut | free).exists())
+        self.assertEqual(self._purge_rows(self.dest, self.elsewhere), 0)
+        with self.assertRaises(UserError):
+            self.target.with_user(self.admin).with_context(active_test=False).unlink()
+        # the folder purge reads the same rule
+        self.src.with_user(self.admin).action_trash()
+        with self.assertRaises(UserError):
+            self.src.with_user(self.admin).with_context(active_test=False)._woow_purge_tree()
+        self.assertTrue((self.target | shortcut | free).exists())
+        # released, the purge goes through and takes both
+        shortcut.with_user(self.admin).action_set_legal_hold(False)
+        self.assertEqual(self.target.with_user(self.admin)._woow_purge(), (1, 0))
+        self.env.invalidate_all()
+        self.assertFalse((shortcut | free).exists())
+
+    def test_a_refused_purge_leaves_the_shortcuts_where_they_are(self):
+        shortcut = self._make_shortcut(self.alice, self.target, self.dest)
+        # the target is still live: the base guard refuses, and the shortcut is not lost on the way
+        with self.assertRaises(UserError):
+            self.target.with_user(self.admin).unlink()
+        self.assertTrue(shortcut.exists())
+        self.assertEqual(self._purge_rows(self.dest), 0)
+        # someone who is not a document administrator never gets as far as the shortcuts
+        self.target.with_user(self.admin).action_trash()
+        with self.assertRaises(AccessError):
+            self.target.with_user(self.alice).with_context(active_test=False).unlink()
+        self.assertTrue(shortcut.exists())
+
+    def test_the_methods_that_take_one_document_answer_an_empty_selection_with_a_message(self):
+        documents = self.env['woow.document'].with_user(self.alice)
+        with self.assertRaises(UserError):
+            documents.browse().action_open_shortcut_wizard()
+        with self.assertRaises(UserError):
+            documents.browse().action_open_shortcut_target()
+
+    def test_a_user_of_two_companies_cannot_point_across_them(self):
+        """Deliberate: a shortcut belongs to the company of its folder, so its target must too."""
+        company = self.env['res.company'].sudo().create({'name': 'Second company'})
+        foreign = self.env['woow.document.folder'].sudo().create({
+            'name': 'Foreign', 'owner_id': False, 'company_id': company.id})
+        self.alice.sudo().company_ids |= company
+        self._grant(foreign, self.alice, 'upload')
+        self.env.flush_all()
+        wizard = self.env['woow.document.shortcut.wizard'].with_user(self.alice).with_context(
+            allowed_company_ids=[self.env.company.id, company.id]).create({
+                'document_id': self.target.id, 'folder_id': foreign.id})
+        with self.assertRaises(UserError):
+            wizard.action_create()
+        self.assertFalse(self.env['woow.document'].sudo().search([
+            ('document_type', '=', 'shortcut')]))
 
     def test_a_shortcut_is_trashed_restored_and_purged_on_its_own(self):
         shortcut = self._make_shortcut(self.alice, self.target, self.dest)

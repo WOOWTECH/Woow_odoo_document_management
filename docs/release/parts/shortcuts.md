@@ -25,7 +25,12 @@ A document user can put a pointer to a file or a link into another folder withou
 - `woow.document.shortcut_target_id` (many2one to `woow.document`, indexed, `ondelete='cascade'`):
   set once, when the shortcut is created, by the server. A table check keeps "a shortcut has a
   target, every other document has none"; a Python constraint keeps the target a file or a link.
-  Purging the target removes its shortcuts (database cascade).
+  Purging the target removes its shortcuts: the `unlink` of the extension first refuses the purge when
+  a shortcut of the target is on legal hold, otherwise it writes one `purge` audit row per shortcut
+  and deletes the shortcuts (and their chatter) in the same savepoint as the target. The database
+  cascade stays as the last net for any deletion that does not go through the ORM. Only the hold of the
+  shortcut itself counts, as for any document: the base release does not stop the purge of a trashed
+  document that sits in a folder on legal hold, and a shortcut is treated the same way.
 - `woow.document.shortcut_target_available` (boolean, computed for the current user, not stored).
 - `woow.document.shortcut.wizard` (transient): `document_id` (the target), `folder_id`.
 
@@ -41,14 +46,19 @@ A document user can put a pointer to a file or a link into another folder withou
 
 - Rights to create: the caller must be an internal user with the upload level on the destination folder
   (and read access to it) and must find the target with his own search (record rules), live, of the same
-  company as the destination. The wizard judges this again when it runs. The shortcut itself is created
+  company as the destination (a deliberate addition to the lane section: the shortcut takes the
+  company of its folder, so a pointer across two companies is refused even for a user who works in both;
+  drop the `company_id` comparison in `_woow_create_shortcuts` if the owner prefers otherwise). The wizard
+  judges this again when it runs, and a wizard row can only name a document and a folder that the
+  caller's own search finds (a hidden and a missing id get the same refusal). The shortcut itself is created
   only with an in-process marker (`SHORTCUT_CTX_KEY` holding a module-level object): a plain `create`
   of `document_type='shortcut'` over RPC is refused, and so is any `create` or `write` that names
   `shortcut_target_id` (superuser code aside).
 - A shortcut never gives access. The target is read in the caller's own environment only. The value of
   `shortcut_target_id` is formatted as empty in `_read_format` (so `read`, `search_read`, `web_read`,
   `web_search_read` and every view) and in `web_read` unless the caller's search finds the target.
-  Searching, ordering, grouping, aggregating or exporting by the target is refused for everyone who is
+  Searching, ordering (the check sits where the core resolves one order term, so any spelling of the
+  order string is covered), grouping, aggregating or exporting by the target is refused for everyone who is
   not a document administrator (an administrator reads every document anyway), so a search cannot be used
   to guess which document a shortcut points to.
 - Record rule `R-S1` (global, `security/shortcuts_rules.xml`): share users get `document_type != 'shortcut'`.
@@ -56,7 +66,8 @@ A document user can put a pointer to a file or a link into another folder withou
 - Every content path already answers "no file" for a document that is not of type `binary`
   (`_document`, `serve`, `_record_to_stream`, the ZIP loop, the quota that sums attachments); the tests
   pin this for shortcuts. The audit event of a created shortcut is `upload` with detail
-  `{'bytes': 0, 'shortcut': 1}`; trash, restore and purge are logged as for any document.
+  `{'bytes': 0, 'shortcut': 1}` (the event keys of the release are fixed by `constants.py`, which a lane may
+  not extend, so there is no dedicated event: the detail tells a shortcut from an empty upload); trash, restore and purge are logged as for any document.
 - The `create` of the extension handles a shortcut by itself (it does not call the file code of the base
   `create`, which has nothing to check for a document without content) and then calls the base class
   `create` that stores the row. It replicates the folder, rank and owner checks of the base `create`.

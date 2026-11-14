@@ -6,6 +6,8 @@ A shortcut has no content, no size and no access of its own over its target. Wha
 shortcut learns about the target is decided here, in the reader's own environment: the target is
 named, opened or even identified only when the reader's record rules find it (and it is live).
 """
+import re
+
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 
@@ -25,9 +27,23 @@ _CREATE_KEYS = frozenset({'name', 'folder_id', 'document_type', 'shortcut_target
 _FIELD = 'shortcut_target_id'
 
 
+# The field name at the start of one comma-separated part of an order string, read the way the core
+# order regex reads it: any white space, an optional double quote, then the name.
+_ORDER_FIELD = re.compile(r'\s*"?([a-z0-9_]+)', re.IGNORECASE)
+
+
 def _names_target(path):
-    """True when a field path (``shortcut_target_id`` or ``shortcut_target_id.name``) starts at the target."""
-    return isinstance(path, str) and path.split('.', 1)[0] == _FIELD
+    """True when a field path (``shortcut_target_id``, ``shortcut_target_id.name``, ``"shortcut_target_id"``,
+    ``shortcut_target_id:func``) starts at the target."""
+    if not isinstance(path, str):
+        return False
+    match = _ORDER_FIELD.match(path)
+    return bool(match) and match.group(1) == _FIELD
+
+
+def _order_names_target(order):
+    """True when any part of an order string starts at the target, whatever follows the field name."""
+    return any(_names_target(part) for part in (order or '').split(','))
 
 
 class WoowDocumentShortcut(models.Model):
@@ -130,10 +146,16 @@ class WoowDocumentShortcut(models.Model):
         if self._woow_shortcut_target_restricted():
             terms = [term[0] for term in (domain or [])
                      if isinstance(term, (list, tuple)) and term]
-            orders = [part.strip().split(' ', 1)[0] for part in (order or '').split(',')]
-            if any(_names_target(path) for path in terms + orders):
+            if any(_names_target(path) for path in terms) or _order_names_target(order):
                 raise AccessError(_('This field cannot be used in a search.'))
         return super()._search(domain, offset=offset, limit=limit, order=order)
+
+    def _order_field_to_sql(self, alias, field_name, direction, nulls, query):
+        """Where the core resolves one term of an order: search, search_read and the order of a
+        grouped read all pass here, whichever way the order string was spelled."""
+        if _names_target(field_name) and self._woow_shortcut_target_restricted():
+            raise AccessError(_('This field cannot be used in a search.'))
+        return super()._order_field_to_sql(alias, field_name, direction, nulls, query)
 
     @api.model
     def _read_group_groupby(self, groupby_spec, query):
@@ -233,6 +255,33 @@ class WoowDocumentShortcut(models.Model):
             self.env.flush_all()
         return created
 
+    def unlink(self):
+        """A purge of a target takes its shortcuts with it, through the same rules as any purge.
+
+        The database would delete them by itself (``ondelete='cascade'``) and skip both the legal
+        hold and the audit row. A shortcut on legal hold stops the purge of its target; the others
+        are logged as purged and removed first, in the same savepoint as the target, so a refusal
+        of the purge puts them back. Callers who are not administrators go straight to the base
+        guard, which refuses them.
+        """
+        if not self or not (self.env.su or self.env.user.has_group(_MANAGER)):
+            return super().unlink()
+        shortcuts = self.with_context(active_test=False).search(
+            [(_FIELD, 'in', self.ids)]) - self
+        if not shortcuts:
+            return super().unlink()
+        if any(shortcut.legal_hold for shortcut in shortcuts):
+            raise UserError(_('A document on legal hold cannot be deleted.'))
+        with self.env.cr.savepoint():
+            for shortcut in shortcuts:
+                self.env['woow.document.log']._log_event(
+                    'purge', channel=self._woow_log_channel(), document_id=shortcut.id,
+                    folder_id=shortcut.folder_id.id, company_id=shortcut.company_id.id)
+            # not the unlink of the base: that one wants a trashed document, and a shortcut whose
+            # target is purged is not trashed (the administrator rights were judged above)
+            super(WoowDocument, shortcuts).unlink()
+            return super().unlink()
+
     def write(self, vals):
         """The target of a shortcut is set when it is created and never changes."""
         if _FIELD in vals and not self.env.su:
@@ -250,7 +299,8 @@ class WoowDocumentShortcut(models.Model):
     def action_open_shortcut_wizard(self):
         """Open the wizard that makes a shortcut to this file or link in another folder."""
         self.check_access('read')
-        self.ensure_one()
+        if len(self) != 1:
+            raise UserError(_('Select one document.'))
         if not self.env.user._is_internal():
             raise AccessError(_('Only internal users can create shortcuts.'))
         if not self.active or self.folder_in_trash or self.document_type not in TARGET_TYPES:
@@ -264,7 +314,8 @@ class WoowDocumentShortcut(models.Model):
     def action_open_shortcut_target(self):
         """Open the target of this shortcut, if the caller may read it; otherwise a neutral message."""
         self.check_access('read')
-        self.ensure_one()
+        if len(self) != 1:
+            raise UserError(_('Select one document.'))
         if self.document_type != 'shortcut':
             raise UserError(_('This document is not a shortcut.'))
         if not self.shortcut_target_available:

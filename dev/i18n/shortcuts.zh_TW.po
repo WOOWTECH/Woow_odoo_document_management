@@ -98,3 +98,6 @@ msgstr "捷徑"
 
 msgid "The target of this shortcut is not available to you."
 msgstr "您無法使用此捷徑的目標。"
+
+msgid "Select one document."
+msgstr "請選擇一份文件。"
