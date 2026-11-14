@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<templates xml:space="preserve">
+
+    <t t-name="woow_document_management.SelectionBar">
+        <div t-if="items.length" class="woow-selection-bar d-flex flex-wrap align-items-center gap-1" role="toolbar" aria-label="Selection">
+            <span t-if="props.showCount" class="woow-selection-count badge text-bg-primary d-inline-flex align-items-center gap-2 fs-6 fw-normal">
+                <span class="o_woow_selected_count" t-out="countLabel"/>
+                <button type="button" class="btn-close btn-close-white woow-selection-clear" aria-label="Clear the selection" title="Clear the selection" t-on-click="clear"/>
+            </span>
+            <button t-if="items.length === 1" type="button" class="btn btn-secondary o_woow_open" title="Open" t-on-click="() => ws.openSelected()">
+                <i class="fa fa-folder-open-o"/><span class="d-none d-lg-inline ms-1">Open</span>
+            </button>
+            <button t-if="ws.download" type="button" class="btn btn-secondary o_woow_download" title="Download" t-on-click="() => ws.downloadSelection()">
+                <i class="fa fa-download"/><span class="d-none d-lg-inline ms-1">Download</span>
+            </button>
+            <button t-if="ws.canShare" type="button" class="btn btn-secondary o_woow_share" title="Share" t-on-click="() => ws.share()">
+                <i class="fa fa-share-alt"/><span class="d-none d-lg-inline ms-1">Share</span>
+            </button>
+            <Dropdown t-if="ws.actions.length" menuClass="'o_woow_actions_menu'">
+                <button type="button" class="btn btn-secondary o_woow_actions" title="Actions">
+                    <i class="fa fa-ellipsis-h"/><span class="d-none d-lg-inline ms-1">Actions</span>
+                </button>
+                <t t-set-slot="content">
+                    <t t-foreach="ws.actions" t-as="entry" t-key="entry.key">
+                        <DropdownItem class="'o_woow_action_' + entry.key" onSelected="() => ws.runAction(entry)">
+                            <i t-att-class="'fa fa-fw me-2 ' + entry.icon"/><t t-out="entry.label"/>
+                        </DropdownItem>
+                    </t>
+                </t>
+            </Dropdown>
+        </div>
+    </t>
+
+    <t t-name="woow_document_management.FolderStrip">
+        <div t-if="ws.folderSection" class="woow-strip w-100 px-3 pt-2">
+            <nav class="woow-breadcrumb d-flex flex-wrap align-items-center" aria-label="Folder path">
+                <t t-foreach="breadcrumb" t-as="part" t-key="part_index">
+                    <span t-if="!part_first" class="woow-crumb-sep text-muted px-1" aria-hidden="true">/</span>
+                    <button type="button" class="btn btn-link p-0 woow-crumb" t-att-class="{'fw-bold text-body': part_last}" t-att-aria-current="part_last ? 'page' : false" t-on-click="() => ws.chooseFolder(part.id)">
+                        <i t-if="part_first" class="fa fa-home me-1"/><t t-out="part.name"/>
+                    </button>
+                </t>
+            </nav>
+            <div t-if="state.cards.length" t-ref="cards" class="woow-folder-cards d-flex flex-wrap gap-2 mt-2">
+                <button t-foreach="state.cards" t-as="card" t-key="card.id" type="button" class="woow-folder-card" t-att-data-woow-folder-id="card.id" t-att-class="{'woow-drop-target': workspaceState.dropFolderId === card.id}" t-on-click="() => this.choose(card)" t-on-dragover="(ev) => this.onFolderDragOver(ev, card)" t-on-dragleave="() => this.onFolderDragLeave(card)" t-on-drop="(ev) => this.onFolderDrop(ev, card)">
+                    <i class="fa fa-folder fa-lg woow-folder-icon"/>
+                    <span class="woow-folder-name text-truncate" t-out="card.name"/>
+                    <span class="woow-folder-count text-muted small" t-out="countLabel(card)"/>
+                </button>
+            </div>
+            <div t-if="state.more" class="woow-folder-more text-muted small mt-1">More folders are in the left panel.</div>
+        </div>
+    </t>
+
+    <t t-name="woow_document_management.UploadStatus">
+        <div t-if="state.upload" class="woow-upload-status w-100 px-3 pt-2" role="status">
+            <div class="alert mb-0 py-2" t-att-class="state.upload.errors.length and state.upload.finished ? 'alert-warning' : 'alert-info'">
+                <div class="d-flex align-items-center gap-2">
+                    <i t-if="!state.upload.finished" class="fa fa-circle-o-notch fa-spin"/>
+                    <strong t-out="title"/>
+                    <span t-if="state.upload.folderName" class="woow-upload-folder text-muted text-truncate"><i class="fa fa-folder-o me-1"/><t t-out="state.upload.folderName"/></span>
+                    <span t-if="!state.upload.finished and state.upload.current" class="text-truncate text-muted" t-out="state.upload.current"/>
+                    <button t-if="state.upload.finished" type="button" class="btn-close ms-auto" aria-label="Close" t-on-click="dismiss"/>
+                </div>
+                <div t-if="!state.upload.finished" class="progress mt-1" style="height: 4px;">
+                    <div class="progress-bar" role="progressbar" t-att-style="'width: ' + percent + '%'"/>
+                </div>
+                <ul t-if="state.upload.errors.length" class="woow-upload-errors mb-0 mt-1 ps-3">
+                    <li t-foreach="state.upload.errors" t-as="error" t-key="error_index">
+                        <strong t-out="error.name"/>: <t t-out="error.message"/>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </t>
+
+    <t t-name="woow_document_management.InspectorPane">
+        <aside t-if="state.showInfo and ws.inspector" class="woow-inspector-pane" aria-label="Details">
+            <t t-component="ws.inspector" resModel="'woow.document'" resId="ws.inspectorResId" onClose.bind="close" onChanged.bind="onChanged"/>
+        </aside>
+    </t>
+
+</templates>

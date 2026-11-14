@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <!-- The browser classes of the workspace screen. These two records only name the JavaScript view
+       class; without them (and without the lane) the standard kanban and list still work. -->
+  <record id="view_woow_document_workspace_kanban_wsui_class" model="ir.ui.view">
+    <field name="name">woow.document.workspace.kanban.wsui.class</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_workspace_kanban"/>
+    <field name="arch" type="xml">
+      <kanban position="attributes">
+        <attribute name="js_class">woow_workspace_kanban</attribute>
+      </kanban>
+    </field>
+  </record>
+  <record id="view_woow_document_workspace_list_wsui_class" model="ir.ui.view">
+    <field name="name">woow.document.workspace.list.wsui.class</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_workspace_list"/>
+    <field name="arch" type="xml">
+      <list position="attributes">
+        <attribute name="js_class">woow_workspace_list</attribute>
+      </list>
+    </field>
+  </record>
+
+  <!-- The facts the screen reads from the records, and the card with a picture area on top. -->
+  <record id="view_woow_document_workspace_kanban_wsui" model="ir.ui.view">
+    <field name="name">woow.document.workspace.kanban.wsui</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_workspace_kanban"/>
+    <field name="priority">20</field>
+    <field name="arch" type="xml">
+      <kanban position="attributes">
+        <attribute name="class">woow-ws-kanban</attribute>
+      </kanban>
+      <xpath expr="//field[@name='mimetype']" position="after">
+        <field name="url"/>
+        <field name="is_locked"/>
+        <field name="woow_locked_by_other"/>
+        <field name="woow_user_can_write"/>
+        <field name="woow_user_can_share"/>
+        <field name="version_count"/>
+      </xpath>
+      <xpath expr="//t[@t-name='card']" position="replace">
+        <t t-name="card" class="woow-card flex-column p-0">
+          <div class="woow-card-preview">
+            <img t-if="woo.pictureUrl" t-att-src="woo.pictureUrl" loading="lazy" alt="" draggable="false"/>
+            <i t-else="" t-attf-class="fa #{woo.icon} woow-kind-icon"/>
+          </div>
+          <div class="woow-card-body">
+            <div class="d-flex align-items-start gap-2">
+              <field name="name" class="fw-bold text-truncate d-block flex-grow-1"/>
+              <span class="woow-marks d-flex align-items-center gap-1">
+                <i t-if="record.is_locked.raw_value" class="fa fa-lock text-danger" title="Locked"/>
+                <i t-if="record.version_count.raw_value &gt; 0" class="fa fa-history text-muted" title="Has earlier versions"/>
+                <button name="action_toggle_favorite" type="object" class="btn btn-link p-0 border-0" title="Star or remove the star">
+                  <i t-attf-class="fa #{record.is_favorite.raw_value ? 'fa-star text-warning' : 'fa-star-o text-muted'}"/>
+                </button>
+              </span>
+            </div>
+            <field name="folder_id" class="text-muted text-truncate d-block small"/>
+            <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color'}" class="mt-1"/>
+            <div class="woow-card-footer d-flex flex-wrap align-items-center gap-2 mt-1">
+              <field name="write_date" widget="date" class="text-muted small"/>
+              <field name="file_size" options="{'human_readable': true}" class="text-muted small" invisible="document_type != 'binary'"/>
+              <field name="activity_ids" widget="kanban_activity" class="ms-auto"/>
+              <field name="owner_id" widget="many2one_avatar_user"/>
+            </div>
+          </div>
+        </t>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="view_woow_document_workspace_list_wsui" model="ir.ui.view">
+    <field name="name">woow.document.workspace.list.wsui</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_workspace_list"/>
+    <field name="priority">20</field>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='is_favorite']" position="after">
+        <field name="url" column_invisible="1"/>
+        <field name="is_locked" column_invisible="1"/>
+        <field name="woow_locked_by_other" column_invisible="1"/>
+        <field name="woow_user_can_write" column_invisible="1"/>
+        <field name="woow_user_can_share" column_invisible="1"/>
+        <field name="version_count" column_invisible="1"/>
+      </xpath>
+    </field>
+  </record>
+
+  <!-- Every folder the user may open is in the folder tree, empty ones too, so that a folder card
+       or a drop can choose it. The core limit of the panel is 200 values and an expanded tree
+       refuses to show anything when it is reached, so it is raised well above the size of a site. -->
+  <record id="view_woow_document_workspace_search_wsui" model="ir.ui.view">
+    <field name="name">woow.document.workspace.search.wsui</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_workspace_search"/>
+    <field name="priority">20</field>
+    <field name="arch" type="xml">
+      <xpath expr="//searchpanel/field[@name='folder_id']" position="attributes">
+        <attribute name="expand">1</attribute>
+        <attribute name="limit">5000</attribute>
+        <attribute name="comodel_domain">[('in_trash', '=', False)]</attribute>
+      </xpath>
+    </field>
+  </record>
+</odoo>
