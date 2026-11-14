@@ -217,7 +217,7 @@ class TestCheckRoutes(ToolCase):
         _write(self.root, relpath, text.replace(old, new, 1))
 
     def test_check_routes_good_tree_and_g1(self):
-        """T-STAT-04: the 9 locked routes pass, also with --g1."""
+        """T-STAT-04: the 10 locked routes pass, also with --g1."""
         self.tree('routes_good')
         self.assertClean('routes')
         self.assertClean('routes', g1=True)
@@ -363,31 +363,31 @@ class TestCheckRoutes(ToolCase):
         self.assertRule('routes', 'R9')     # decorated, but replaces a core portal route
 
     def test_emit_entry_points_matches_routes(self):
-        """T-STAT-17: 10 entry points from the code, equal to the ones built from the lock file."""
+        """T-STAT-17: 11 entry points from the code, equal to the ones built from the lock file."""
         self.tree('routes_good')
         mod = TOOLS_MOD['routes']
         from_code = mod.entry_points([info for info in (
             mod._info(r, f, d)[0] for r, _s, f, d in mod.extract(self.root))])
         from_lock = mod.entry_points(mod.load_lock(REPO))
-        self.assertEqual(len(from_code), 10)
-        self.assertEqual(len(from_lock), 10)
+        self.assertEqual(len(from_code), 11)
+        self.assertEqual(len(from_lock), 11)
         key = lambda ep: (ep['route'], tuple(ep.get('methods') or ()), ep['auth'], ep['file'])  # noqa: E731
         self.assertEqual(sorted(map(key, from_code)), sorted(map(key, from_lock)))
         out = subprocess.run([sys.executable, '-I', os.path.join(TOOLS, 'check_routes.py'),
                               '--root', self.root, '--emit-entry-points'],
                              capture_output=True, text=True, check=False)
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(len(json.loads(out.stdout)), 10)
+        self.assertEqual(len(json.loads(out.stdout)), 11)
 
     def test_routes_lock_has_final_9_rows(self):
-        """interface_contracts 21 B5: the lock file holds the final 9 rows."""
+        """interface_contracts 21 B5: the lock file holds the 9 rows of 18.0.1 and one row per added route."""
         rows = TOOLS_MOD['routes'].load_lock(REPO)
-        self.assertEqual(len(rows), 9)
+        self.assertEqual(len(rows), 10)
         by_file = {}
         for row in rows:
             by_file.setdefault(row['file'].rsplit('/', 1)[1], []).append(row)
             self.assertEqual(set(row), {'file', 'func', 'routes', 'methods', 'auth', 'type', 'website'})
-        self.assertEqual({k: len(v) for k, v in by_file.items()}, {'main.py': 4, 'portal.py': 5})
+        self.assertEqual({k: len(v) for k, v in by_file.items()}, {'main.py': 4, 'portal.py': 5, 'versions.py': 1})
         self.assertTrue(all(r['auth'] == 'user' for r in rows))
 
 
@@ -979,12 +979,13 @@ class TestRepo(unittest.TestCase):
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         expected = sorted(os.path.basename(p)[:-3] for p in cfg['verify']['regression_tests']
                           if p.startswith(W)) + ['test_perf', 'test_core_assumptions_http',
-                                                  'test_core_assumptions_access']
+                                                  'test_core_assumptions_access',
+                                                  'test_versions']
         tree = ast.parse(_read(os.path.join(REPO, W + 'tests/__init__.py')))
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 35 + 19)   # the nineteen tests/test_reg_<slug>.py files
+        self.assertEqual(len(imported), 35 + 19 + 1)   # the nineteen tests/test_reg_<slug>.py files, test_versions
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""

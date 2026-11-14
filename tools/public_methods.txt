@@ -28,6 +28,11 @@ woow.document.add.attachment.wizard::action_add
 ir.attachment::action_woow_open_source
 ir.attachment::action_woow_download
 woow.document.notify.wizard::action_send
+woow.document::action_new_version
+woow.document.version::action_download
+woow.document.version::action_restore
+woow.document.version::action_delete
+woow.document.version.wizard::action_confirm
 
 [override]
 *::create

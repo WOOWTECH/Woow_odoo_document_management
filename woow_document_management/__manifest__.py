@@ -33,6 +33,9 @@
         'views/wizards/add_attachment_wizard_views.xml',
         'views/wizards/notify_wizard_views.xml',
         'views/portal_templates.xml',
+        'views/backend/versions_views.xml',
+        'views/wizards/versions_wizard_views.xml',
+        'security/versions_rules.xml',
         'views/menus.xml',
     ],
     'assets': {

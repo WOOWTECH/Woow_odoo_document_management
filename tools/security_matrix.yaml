@@ -13,7 +13,7 @@ groups:
   group_woow_document_manager: {category: module_category_woow_document, implied: [group_woow_document_user]}
   group_woow_document_attachment_overview: {category: null, implied: [base.group_user]}
 categories: [module_category_woow_document]
-company_models: [woow.document.folder, woow.document.folder.access, woow.document, woow.document.tag, woow.document.log]
+company_models: [woow.document.folder, woow.document.folder.access, woow.document, woow.document.tag, woow.document.log, woow.document.version]
 acl:
   woow.document.folder: {user: '1110', manager: '1111', portal: '1100'}
   woow.document.folder.access: {user: '1111', manager: '1111'}
@@ -25,6 +25,8 @@ acl:
   woow.document.purge.wizard: {user: '1110', manager: '1110'}
   woow.document.add.attachment.wizard: {user: '1110', manager: '1110'}
   woow.document.notify.wizard: {user: '1110', manager: '1110'}
+  woow.document.version: {user: '1011', manager: '1011'}
+  woow.document.version.wizard: {user: '1110', manager: '1110'}
 hd07: [woow.document.folder, portal]
 rules:
 - id: rule_woow_document_folder_company
@@ -204,3 +206,41 @@ rules:
   groups: []
   perms: '1111'
   domain: "[(1, '=', 1)] if not user.share else [('model', 'not in', ['woow.document', 'woow.document.folder'])]"
+# R-V0..R-V5: versions of a file (see security/versions_rules.xml). R-V4 is global: no version is
+# removed while its document is under legal hold.
+- id: rule_woow_document_version_company
+  ref: R-V0
+  model: woow.document.version
+  groups: []
+  perms: '1111'
+  domain: "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]"
+- id: rule_woow_document_version_user_read
+  ref: R-V1
+  model: woow.document.version
+  groups: [user]
+  perms: '1000'
+  domain: "[('document_id', 'any', ['&', ('active', 'in', [True, False]), '&', ('folder_in_trash', '=', False), '|', '&', ('active', '=', True), '|', '|', ('folder_id', 'any', ['|', ('eff_read_user_ids', 'in', [user.id]), ('eff_read_group_ids', 'in', user.groups_id.ids)]), ('shared_user_ids', 'in', [user.id]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)]), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])])]"
+- id: rule_woow_document_version_user_change
+  ref: R-V2
+  model: woow.document.version
+  groups: [user]
+  perms: '0011'
+  domain: "[('document_id', 'any', ['&', ('active', 'in', [True, False]), '&', ('folder_in_trash', '=', False), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])])]"
+- id: rule_woow_document_version_manager
+  ref: R-V3
+  model: woow.document.version
+  groups: [manager]
+  perms: '1011'
+  domain: "[(1, '=', 1)]"
+- id: rule_woow_document_version_hold
+  ref: R-V4
+  model: woow.document.version
+  groups: []
+  perms: '0001'
+  domain: "[('document_id', 'any', [('active', 'in', [True, False]), ('legal_hold', '=', False)])]"
+- id: rule_woow_document_version_wizard_owner
+  ref: R-V5
+  model: woow.document.version.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"

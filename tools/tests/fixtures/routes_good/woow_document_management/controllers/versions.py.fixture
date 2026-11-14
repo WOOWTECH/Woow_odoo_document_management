@@ -1,0 +1,10 @@
+from odoo import http
+
+from . import streaming
+
+
+class WoowDocumentVersionController(http.Controller):
+    @http.route('/woow_document/version/<int:version_id>/download', type='http', auth='user',
+                methods=['GET'])
+    def woow_version_download(self, version_id, **kw):
+        return streaming.uniform_404('page')
