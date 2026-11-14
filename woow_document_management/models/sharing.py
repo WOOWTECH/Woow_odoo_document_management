@@ -8,16 +8,20 @@ rules read (``shared_editor_user_ids``), the mirror of a direct change of the ol
 expiry date of folder members, the cron that ends expired access and the two "Share" dialogs.
 """
 import logging
+import time
 
 from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 from ..services.constants import ACCESS_EXPIRY_BATCH
+from .document import WoowDocument
 from .document_folder import _stored_flag
 
 _logger = logging.getLogger(__name__)
 
 _USER = 'woow_document_management.group_woow_document_user'
+# Time one run of the expiry cron may spend on removing rows (the cron comes back every 30 minutes).
+ACCESS_EXPIRY_SECONDS = 120
 _SERVER_DOCUMENT_FIELDS = frozenset({'shared_editor_user_ids', 'woow_user_can_share'})
 _LEVEL_RANK = {'read': 1, 'upload': 2, 'edit': 3, 'manage': 4}
 _SUBJECT_FIELD = {'user': 'user_id', 'group': 'group_id', 'partner': 'partner_id'}
@@ -48,6 +52,13 @@ class WoowDocumentFolderAccessExpiry(models.Model):
         today = fields.Date.today()
         if any(line.expiry_date and line.expiry_date < today for line in self):
             raise ValidationError(_('The end date cannot be in the past.'))
+
+    def unlink(self):
+        folders = self.folder_id
+        result = super().unlink()
+        # a member who lost the access to a folder does not keep a lock in it or below it
+        self.env['woow.document']._woow_release_lost_locks(folder_ids=folders.ids)
+        return result
 
 
 class WoowDocumentSharing(models.Model):
@@ -151,11 +162,52 @@ class WoowDocumentSharing(models.Model):
             for partner_id in sorted(partners - have_partners):
                 add.append({'document_id': doc.id, 'subject_type': 'partner',
                             'partner_id': partner_id, 'role': 'viewer', 'expiry_date': False})
+        changed = {}
         if drop:
+            by_row = {row[0]: row[1] for rows_of in rows.values() for row in rows_of}
+            for row_id in drop:
+                changed.setdefault(by_row[row_id], []).append(row_id)
             synced.browse(drop).unlink()
         if add:
-            synced.create(add)
+            for row in synced.create(add):
+                changed.setdefault(row.document_id.id, []).append(row.id)
         shares._woow_sync_lists(documents)
+        if changed:
+            # the rows are made as server work, which writes no audit row of its own: the change of
+            # who may read the document is recorded here, as a change of the rows themselves is
+            shares._woow_audit(changed)
+
+    # -- locks of people who lost their access -------------------------------------------------
+    @api.model
+    def _woow_release_lost_locks(self, document_ids=(), folder_ids=()):
+        """Release the locks of the given documents, and of the documents in the given folders and
+        below them, whose holder can no longer write the document.
+
+        Server work after access was taken away (a share row or a member row was removed, which
+        includes the expiry cron): the holder's own right is judged in the holder's environment, and
+        the lock is cleared without the holder's rights, with an ``unlock`` row marked as forced.
+        """
+        document_ids, folder_ids = sorted(set(document_ids)), sorted(set(folder_ids))
+        if not (document_ids or folder_ids):
+            return
+        self.env.flush_all()
+        scope = []
+        if document_ids:
+            scope.append(('id', 'in', document_ids))
+        if folder_ids:
+            scope.append(('folder_id', 'child_of', folder_ids))
+        domain = ['|'] * (len(scope) - 1) + scope + [('lock_uid', '!=', False)]
+        everything = self.sudo().with_context(active_test=False)  # sudo-ok: S5
+        locked = everything.search(domain)
+        for doc in locked:
+            if doc.with_user(doc.lock_uid).has_access('write'):  # sudo-ok: S5
+                continue
+            with self.env.cr.savepoint():
+                super(WoowDocument, doc).write({'lock_uid': False, 'lock_date': False})
+                self.env['woow.document.log']._log_event(
+                    'unlock', channel=self._woow_log_channel(), document_id=doc.id,
+                    folder_id=doc.folder_id.id, company_id=doc.company_id.id,
+                    detail={'forced': True})
 
     # -- the dialog -----------------------------------------------------------------------------
     def action_open_share_dialog(self):
@@ -174,44 +226,49 @@ class WoowDocumentSharing(models.Model):
         """Every 30 minutes: remove folder members and shares whose last day has passed.
 
         Rows go through the normal ``unlink`` so that the stored lists that the record rules read
-        are rebuilt. At most ``ACCESS_EXPIRY_BATCH`` rows of each kind per run; the cron is run again
-        at once while a kind is not finished. A row that cannot be removed is skipped and logged by
-        its id, so that it does not stop the others.
+        are rebuilt, and so that the locks of people who lost their access are released. Rows are
+        taken ``ACCESS_EXPIRY_BATCH`` at a time, batch after batch, until none is left or
+        ``ACCESS_EXPIRY_SECONDS`` are used up (a batch is always finished, and each kind gets at
+        least one); the cron is then run again at once. A row that cannot be removed is logged by its
+        id once, left out of the rest of the run, and does not stop the rows behind it.
         """
         if not self.env.su:
             raise AccessError(_('Scheduled actions only.'))
         today = fields.Date.today()
         log = self.env['woow.document.log']
-        members_model = self.env['woow.document.folder.access']
-        shares_model = self.env['woow.document.share']._woow_synced()
-        members = members_model.search([('expiry_date', '<', today)],
-                                       order='expiry_date, id', limit=ACCESS_EXPIRY_BATCH)
-        shares = shares_model.search([('expiry_date', '<', today)],
-                                     order='expiry_date, id', limit=ACCESS_EXPIRY_BATCH)
-        done = 0
-        for row in members:
-            try:
-                with self.env.cr.savepoint():
-                    values = {'folder_id': row.folder_id.id, 'company_id': row.company_id.id,
-                              'detail': {'member_id': row.id}}
-                    row.unlink()
-                    log._log_event('access_expire', channel='cron', **values)
-                    done += 1
-            except Exception as error:  # noqa: BLE001 - one row never stops the run
-                _logger.warning('Expired member %s was not removed (%s)', row.id,
-                                type(error).__name__)
-        for row in shares:
-            try:
-                with self.env.cr.savepoint():
-                    values = {'document_id': row.document_id.id, 'folder_id': row.folder_id.id,
-                              'company_id': row.company_id.id, 'detail': {'share_id': row.id}}
-                    row.unlink()
-                    log._log_event('access_expire', channel='cron', **values)
-                    done += 1
-            except Exception as error:  # noqa: BLE001 - one row never stops the run
-                _logger.warning('Expired share %s was not removed (%s)', row.id,
-                                type(error).__name__)
-        more = len(members) == ACCESS_EXPIRY_BATCH or len(shares) == ACCESS_EXPIRY_BATCH
+        deadline = time.monotonic() + ACCESS_EXPIRY_SECONDS
+        done, more = 0, False
+        for model, kind in ((self.env['woow.document.folder.access'], 'member'),
+                            (self.env['woow.document.share']._woow_synced(), 'share')):
+            skipped = set()
+            while True:
+                domain = [('expiry_date', '<', today), ('id', 'not in', sorted(skipped))]
+                rows = model.search(domain, order='expiry_date, id', limit=ACCESS_EXPIRY_BATCH)
+                if not rows:
+                    break
+                for row in rows:
+                    try:
+                        with self.env.cr.savepoint():
+                            if kind == 'member':
+                                values = {'folder_id': row.folder_id.id,
+                                          'company_id': row.company_id.id,
+                                          'detail': {'member_id': row.id}}
+                            else:
+                                values = {'document_id': row.document_id.id,
+                                          'folder_id': row.folder_id.id,
+                                          'company_id': row.company_id.id,
+                                          'detail': {'share_id': row.id}}
+                            row.unlink()
+                            log._log_event('access_expire', channel='cron', **values)
+                            done += 1
+                    except Exception as error:  # noqa: BLE001 - one row never stops the run
+                        skipped.add(row.id)
+                        _logger.warning('Expired %s %s was not removed (%s)', kind, row.id,
+                                        type(error).__name__)
+                if time.monotonic() >= deadline:
+                    more = more or bool(model.search_count(
+                        [('expiry_date', '<', today), ('id', 'not in', sorted(skipped))], limit=1))
+                    break
         self.env['ir.cron']._notify_progress(done=done, remaining=1 if more else 0)
 
 

@@ -266,8 +266,9 @@
 | S3 | `W/models/settings.py` | `_name='woow.document.settings'` | `_read_params` | 1：`self.env['ir.config_parameter'].sudo().get_param(k)` |
 | S4 | `W/models/mailin.py` | `_name='woow.document.mail.intake'` | `_woow_sender_documents` | 1：`self.env['woow.document'].with_user(user)`（`with_user`；來信者本人的環境，收信閘道是 superuser，檔案以寄件者自己的權限建立；release 18.0.2） |
 | A1 | `W/models/autofile.py` | `_name='woow.document.auto.rule'` | `_woow_elevated` | 1：`self.sudo().with_context(...)`（自動歸檔：建立規則的文件管理員就是授權；建立歸檔文件、讀取要補歸檔的附件、把原附件刪除後的歸檔文件丟進回收桶，都經過這一處） |
+| S5 | `W/models/sharing.py` | `_inherit='woow.document'` | `_woow_release_lost_locks` | 2：`self.sudo().with_context(active_test=False)`（找出鎖定中的文件、清除鎖，伺服器工作）與 `doc.with_user(doc.lock_uid)`（`with_user`；以鎖定者本人的環境判斷他是否還能寫入；分享列、成員列被移除或到期之後才呼叫；release 18.0.2 fix round 1） |
 
-- 非測試程式裡，`with_user(` 只有 S4 登記的那一次，其他是 0 次。
+- 非測試程式裡，`with_user(` 只有 S4、S5 各登記的那一次，其他是 0 次。
 - 整個 repo 不准出現 `<名稱以 _sudo 結尾>.env`（T-STAT-19）。
 - 每個 `_cron_*` 的第一個陳述句都必須檢查 `self.env.su`。
 

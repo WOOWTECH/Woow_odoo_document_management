@@ -717,7 +717,9 @@ class TestEndDates(_SharingCase):
             self.env['woow.document'].with_user(self.owner)._cron_expire_access()
         progress = []
         cron = type(self.env['ir.cron'])
+        # a spent time budget: one batch of each kind per run, and the cron is asked to run again
         with patch.object(sharing_module, 'ACCESS_EXPIRY_BATCH', 2), patch.object(
+                sharing_module, 'ACCESS_EXPIRY_SECONDS', 0), patch.object(
                 cron, '_notify_progress',
                 lambda _self, *, done, remaining: progress.append((done, remaining))):
             self.env['woow.document'].sudo()._cron_expire_access()

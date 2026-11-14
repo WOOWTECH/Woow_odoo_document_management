@@ -28,8 +28,16 @@ class WoowDocumentRestoreWizard(models.TransientModel):
         folders = self.with_context(active_test=False).folder_ids
         if not docs and not folders:
             raise UserError(_('Select items to restore.'))
+        # Only what is in the trash is restored here; a live item is moved by the guarded
+        # actions, which judge the caller (a share-only editor, for one, cannot move a document).
+        if any(doc.active and not doc.folder_in_trash for doc in docs) or any(
+                folder.active and not folder.in_trash for folder in folders):
+            raise AccessError(_('Only items in the trash can be restored.'))
         for doc in docs:
             doc.with_context(active_test=False).check_access('write')
+            if doc._woow_share_only_editors():
+                raise AccessError(_('A document that is only shared with you can be edited, '
+                                    'not moved or given to someone else.'))
             target._woow_require_rank(2)
             if doc.company_id != target.company_id:
                 raise AccessError(_('The target folder is unavailable.'))

@@ -52,6 +52,7 @@
     "test_reg_owner_within_ceiling.py": 20,
     "test_reg_portal_description_cap.py": 9,
     "test_reg_server_columns_ignore_defaults.py": 14,
+    "test_reg_sharing_round1.py": 21,
     "test_reg_typed_boolean_flags.py": 8,
     "test_reg_wizard_owner_scope.py": 2,
     "test_requests.py": 49,

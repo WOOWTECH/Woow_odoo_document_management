@@ -343,6 +343,8 @@ class WoowDocumentShare(models.Model):
         self._woow_sync_lists(documents)
         if not sync:
             self._woow_audit(changed)
+        # a holder of a lock who can no longer write the document does not keep it locked
+        self.env['woow.document']._woow_release_lost_locks(document_ids=documents.ids)
         return result
 
     # -- constraints ----------------------------------------------------------------------------

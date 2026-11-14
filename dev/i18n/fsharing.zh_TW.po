@@ -1,0 +1,14 @@
+# Copyright 2026 WoowTech; License LGPL-3.0 or later.
+# Traditional Chinese (zh_TW) for the strings of fix lane `fsharing` of release 18.0.2.0.0.
+# The integrator merges these entries into i18n/zh_TW.po. Terms follow docs/i18n-glossary.md.
+msgid ""
+msgstr ""
+"Project-Id-Version: woow_document_management 18.0.2.0.0\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Only items in the trash can be restored."
+msgstr "只有在垃圾桶中的項目才能還原。"
