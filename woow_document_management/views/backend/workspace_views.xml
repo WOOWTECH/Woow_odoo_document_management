@@ -54,18 +54,18 @@
           <button name="%(action_woow_document_trash_documents)d" type="action" string="Trash" display="always"/>
         </header>
         <field name="woow_icon"/>
-        <field name="is_favorite"/>
+        <field name="is_favorite" groups="base.group_user"/>
         <field name="document_type"/>
         <field name="mimetype"/>
         <templates>
           <t t-name="card">
             <div class="d-flex align-items-start gap-3">
-              <span t-attf-class="fa #{record.woow_icon.raw_value} fa-2x text-muted pt-1"/>
+              <span t-attf-class="fa #{record.woow_icon.raw_value} fa-2x text-muted pt-1" title="File kind"/>
               <div class="flex-grow-1 overflow-hidden">
                 <field name="name" class="fw-bold text-truncate d-block"/>
                 <field name="folder_id" class="text-muted text-truncate d-block"/>
               </div>
-              <button name="action_toggle_favorite" type="object" class="btn btn-link p-0 border-0" title="Star or remove the star">
+              <button name="action_toggle_favorite" type="object" class="btn btn-link p-0 border-0" title="Star or remove the star" groups="base.group_user">
                 <i t-attf-class="fa #{record.is_favorite.raw_value ? 'fa-star text-warning' : 'fa-star-o text-muted'}"/>
               </button>
             </div>
@@ -95,7 +95,7 @@
           <button name="%(action_woow_document_new_folder)d" type="action" string="New folder" display="always"/>
           <button name="%(action_woow_document_trash_documents)d" type="action" string="Trash" display="always"/>
         </header>
-        <field name="is_favorite" column_invisible="1"/>
+        <field name="is_favorite" column_invisible="1" groups="base.group_user"/>
         <field name="name"/>
         <field name="folder_id"/>
         <field name="owner_id" widget="many2one_avatar_user"/>
@@ -106,8 +106,8 @@
         <field name="document_type" optional="hide"/>
         <field name="mimetype" optional="hide"/>
         <field name="source_display" string="Source" optional="hide"/>
-        <button name="action_toggle_favorite" type="object" icon="fa-star" title="Remove the star" invisible="not is_favorite"/>
-        <button name="action_toggle_favorite" type="object" icon="fa-star-o" title="Star" invisible="is_favorite"/>
+        <button name="action_toggle_favorite" type="object" icon="fa-star" title="Remove the star" invisible="not is_favorite" groups="base.group_user"/>
+        <button name="action_toggle_favorite" type="object" icon="fa-star-o" title="Star" invisible="is_favorite" groups="base.group_user"/>
       </list>
     </field>
   </record>

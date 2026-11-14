@@ -4,6 +4,7 @@
 import base64
 import json
 from datetime import timedelta
+from unittest.mock import patch
 
 from lxml import etree
 
@@ -13,8 +14,10 @@ from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
 from .common import plant_default
+from ..models.quota import LEDGER_KEY
 from ..services import locks
 from ..services.constants import MIB, RECENT_DAYS
+from ..wizards.upload_wizard import WIZARDS_PER_USER
 
 _USER = 'woow_document_management.group_woow_document_user'
 _MANAGER = 'woow_document_management.group_woow_document_manager'
@@ -190,11 +193,47 @@ class TestFavorites(_WorkspaceCase):
         self.env['woow.document.folder.access'].sudo().create({
             'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': extra.id,
             'level': 'read'})
+        self.env.flush_all()
         self._star(extra)
         self.assertEqual(len(self.favorites.sudo().search([])), 2)
         extra.sudo().unlink()
         self.assertEqual(self.favorites.sudo().search([]).user_id, self.reader)
         self.document.sudo().with_context(active_test=False).unlink()
+        self.assertFalse(self.favorites.sudo().search([]))
+
+    def test_the_stars_of_another_user_cannot_be_found_with_a_domain_on_the_rows(self):
+        self._star(self.reader)
+        row_ids = self.favorites.sudo().search([('document_id', '=', self.document.id)]).ids
+        documents = self.documents.with_user(self.editor)
+        self.assertFalse(self.favorites.with_user(self.editor).search([]))
+        for domain in ([('favorite_ids', '!=', False)], [('favorite_ids', 'in', row_ids)],
+                       [('favorite_ids', '=', row_ids[0])], ['|', ('id', '=', 0),
+                                                              ('favorite_ids', '!=', False)],
+                       [('favorite_ids.user_id', '=', self.reader.id)]):
+            with self.subTest(domain=domain):
+                with self.assertRaises(UserError):
+                    documents.search(domain)
+                with self.assertRaises(UserError):
+                    documents.search_count(domain)
+                with self.assertRaises(UserError):
+                    documents.search_read(domain, ['name'])
+        # the same through a folder, which looks at the documents of its own
+        folders = self.env['woow.document.folder'].with_user(self.editor)
+        with self.assertRaises(UserError):
+            folders.search([('document_ids.favorite_ids', '!=', False)])
+        # what the user may ask is still answered for the user alone
+        self.assertEqual(documents.search([('is_favorite', '=', True)]), self.documents)
+        self.assertEqual(documents.search([('woow_section', '=', 'starred')]), self.documents)
+        self.assertEqual(self.documents.with_user(self.reader).search(
+            [('is_favorite', '=', True)]), self.document)
+
+    def test_a_hidden_and_a_missing_document_are_answered_alike_by_the_toggle(self):
+        with self.assertRaises(AccessError) as hidden:
+            self.document.with_user(self.outsider).action_toggle_favorite()
+        missing = self.documents.browse(999999999)
+        with self.assertRaises(AccessError) as gone:
+            missing.with_user(self.outsider).action_toggle_favorite()
+        self.assertEqual(str(hidden.exception), str(gone.exception))
         self.assertFalse(self.favorites.sudo().search([]))
 
     def test_the_search_of_is_favorite_refuses_odd_operators(self):
@@ -459,6 +498,14 @@ class TestWorkspaceViews(_WorkspaceCase):
         self.assertEqual(by_id[hidden.id]['parent_id'], top.id)
         self.assertEqual(by_id[alone.id]['parent_id'], hidden.id)
 
+    def test_a_portal_user_gets_no_star_in_the_form(self):
+        form = self.env.ref('woow_document_management.view_woow_document_document_form')
+        for user, expected in ((self.portal, False), (self.editor, True)):
+            with self.subTest(user=user.login):
+                views = self.documents.with_user(user).get_views([(form.id, 'form')])
+                self.assertEqual('action_toggle_favorite' in views['views']['form']['arch'],
+                                 expected)
+
     def test_the_form_hides_the_field_of_the_other_kind(self):
         arch = self.documents.with_user(self.reader).get_views([(False, 'form')])[
             'views']['form']['arch']
@@ -644,6 +691,101 @@ class TestUploadWizard(_WorkspaceCase):
         self.assertEqual(self.env['ir.attachment'].sudo().search_count([
             ('res_model', 'like', 'woow.document.upload')]), before)
         self.assertEqual(wizard.line_ids.datas, _b64(b'wait'))
+
+    def _line(self, user, wizard_id, name='x.txt', data=b'x'):
+        return self.env['woow.document.upload.wizard.line'].with_user(user).create({
+            'wizard_id': wizard_id, 'name': name, 'datas': _b64(data)})
+
+    def test_the_file_count_of_a_wizard_holds_for_every_kind_of_wizard_id(self):
+        self.params.set_param(_PARAMS + 'max_files_per_upload', '3')
+        wizard = self._wizard(self.uploader, [])
+        for _index in range(3):
+            self._line(self.uploader, wizard.id)
+        with self.assertRaises(UserError):
+            self._line(self.uploader, wizard.id)
+        # the ORM keeps no record for a text or a float in its cache while the column keeps the
+        # number: such a value is refused, so that the lines that are counted are the stored ones
+        for value in (str(wizard.id), float(wizard.id), 'x', 1.5, False, [], [1, 2], 0, -1,
+                      True):
+            with self.subTest(value=value), self.assertRaises(UserError):
+                self._line(self.uploader, value)
+        self.assertEqual(len(wizard.line_ids), 3)
+        self.assertEqual(self.env['woow.document.upload.wizard.line'].sudo().search_count(
+            [('create_uid', '=', self.uploader.id)]), 3)
+
+    def test_what_a_user_keeps_waiting_is_bounded_over_all_the_wizards(self):
+        self.params.set_param(_PARAMS + 'max_files_per_upload', '2')
+        self.params.set_param(_PARAMS + 'internal_max_upload_mb', '1')
+        piece = b'a' * int(0.9 * MIB)
+        first = self._wizard(self.uploader, [('a.txt', piece)])
+        second = self._wizard(self.uploader, [('b.txt', piece)])
+        with self.assertRaises(UserError):
+            self._wizard(self.uploader, [('c.txt', piece)])
+        self.assertTrue(first.line_ids and second.line_ids)
+        # the bound is the one of the user: someone else is not held back
+        self.assertTrue(self._wizard(self.editor, [('d.txt', piece)]).line_ids)
+        # taking a file away makes room again
+        first.line_ids.unlink()
+        self.assertTrue(self._wizard(self.uploader, [('c.txt', piece)]).line_ids)
+
+    def test_the_size_is_set_by_the_server_and_follows_the_content(self):
+        wizard = self._wizard(self.uploader, [('s.txt', b'a' * 3000)])
+        self.assertEqual(wizard.line_ids.file_size, 3000)
+        with self.assertRaises(AccessError):
+            self.env['woow.document.upload.wizard.line'].with_user(self.uploader).create({
+                'wizard_id': wizard.id, 'name': 'f.txt', 'datas': _b64(b'x' * 3000),
+                'file_size': 0})
+        with self.assertRaises(AccessError):
+            wizard.line_ids.with_user(self.uploader).write({'file_size': 0})
+        wizard.line_ids.with_user(self.uploader).write({'datas': _b64(b'a' * 30)})
+        self.assertEqual(wizard.line_ids.file_size, 30)
+
+    def test_a_file_name_is_bounded_and_cut_in_the_messages(self):
+        with self.assertRaises(UserError):
+            self._wizard(self.uploader, [('n' * 256 + '.txt', b'x')])
+        self.assertFalse(self.env['woow.document.upload.wizard.line'].sudo().search(
+            [('create_uid', '=', self.uploader.id)]))
+        name = 'n' * 196 + '.exe'
+        wizard = self._wizard(self.uploader, [(name, b'MZ bad')])
+        with self.assertRaises(UserError) as caught:
+            wizard.action_upload()
+        self.assertNotIn(name, str(caught.exception))
+        self.assertLess(len(str(caught.exception)), 400)
+        self.assertIn('n' * 80, str(caught.exception))
+
+    def test_the_files_of_abandoned_dialogs_are_removed_when_a_newer_one_is_made(self):
+        wizards = [self._wizard(self.uploader, [('w%d.txt' % index, b'w')])
+                   for index in range(WIZARDS_PER_USER + 2)]
+        lines = self.env['woow.document.upload.wizard.line'].sudo()
+        for index, wizard in enumerate(wizards):
+            with self.subTest(index=index):
+                kept = bool(lines.search([('wizard_id', '=', wizard.id)]))
+                self.assertEqual(kept, index >= 2)
+        with self.assertRaises(UserError):
+            self.env['woow.document.upload.wizard'].with_user(self.uploader).create(
+                [{'folder_id': self.folder.id}] * (WIZARDS_PER_USER + 1))
+
+    def test_a_line_that_fails_after_the_quota_made_the_next_one_measure_again(self):
+        self.params.set_param(_PARAMS + 'quota_mb', '100000')
+        quota = type(self.env['woow.document.quota'])
+        original = quota._check_many
+        bases = []
+
+        def late_refusal(model, items):
+            bases.append(model.env.context[LEDGER_KEY].base)
+            original(model, items)
+            if len(bases) == 1:
+                raise UserError('refused after it was accepted')
+
+        wizard = self._wizard(self.uploader, [('first.txt', b'first'), ('second.txt', b'second')])
+        locks._reset_tracker(self.env.cr)
+        with patch.object(quota, '_check_many', late_refusal):
+            result = wizard.action_upload()
+        self.assertEqual(len(bases), 2)
+        self.assertIsNone(bases[0])
+        self.assertIsNone(bases[1])
+        self.assertIn('first.txt', result['params']['message'])
+        self.assertTrue(self._made('second.txt'))
 
     def test_the_action_and_the_view_of_the_wizard_exist(self):
         action = self.env.ref('woow_document_management.action_woow_document_upload_wizard')

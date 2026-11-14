@@ -4,7 +4,7 @@
 from datetime import timedelta
 
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 
 from ..services import folding
 from ..services.constants import RECENT_DAYS
@@ -38,6 +38,9 @@ _SECTIONS = ('mine', 'shared', 'recent', 'starred')
 class WoowDocumentWorkspace(models.Model):
     _inherit = 'woow.document'
 
+    # Only the server and the caller's own search methods look at the rows; a client's domain on
+    # this field is refused in ``_search``: an ``in`` or ``!= False`` test on a one2many does not
+    # apply the record rule of the favourites and would show the stars of other users.
     favorite_ids = fields.One2many('woow.document.favorite', 'document_id', copy=False,
                                    groups='base.group_user')
     is_favorite = fields.Boolean(
@@ -49,7 +52,7 @@ class WoowDocumentWorkspace(models.Model):
          ('starred', 'Starred')], string='Section', compute='_compute_woow_section',
         search='_search_woow_section', groups='base.group_user',
         help='A quick filter of the workspace; it is only used to search.')
-    woow_icon = fields.Char(string='Icon', compute='_compute_woow_icon')
+    woow_icon = fields.Char(string='File kind icon', compute='_compute_woow_icon')
 
     @api.depends('favorite_ids')
     @api.depends_context('uid')
@@ -71,6 +74,18 @@ class WoowDocumentWorkspace(models.Model):
             raise UserError(_('This filter cannot be combined that way.'))
         starred = ('favorite_ids', 'any', [('user_id', '=', self.env.uid)])
         return [starred] if (operator == '=') == value else ['!', starred]
+
+    @api.model
+    def _search(self, domain, offset=0, limit=None, order=None):
+        """A client may not build a domain on the favourite rows (see ``favorite_ids``)."""
+        if not self.env.su and domain:
+            for term in domain:
+                if (isinstance(term, (list, tuple)) and term and isinstance(term[0], str)
+                        and term[0].split('.', 1)[0] == 'favorite_ids'):
+                    # the field groups first, so that a user without the right gets the usual answer
+                    self.check_field_access_rights('read', ['favorite_ids'])
+                    raise UserError(_('This filter cannot be combined that way.'))
+        return super()._search(domain, offset=offset, limit=limit, order=order)
 
     def _compute_woow_section(self):
         for doc in self:
@@ -118,6 +133,11 @@ class WoowDocumentWorkspace(models.Model):
 
     def action_toggle_favorite(self):
         """Star the document, or take the star away; it only ever touches the caller's own row."""
+        # A document that is hidden and one that does not exist are answered alike, as in the
+        # create of a favourite: the search runs under the caller's record rules.
+        if not self.env.user.has_group('base.group_user') or len(
+                self.env['woow.document'].search([('id', 'in', self.ids)])) != len(set(self.ids)):
+            raise AccessError(_('This document is unavailable.'))
         self.check_access('read')
         self.ensure_one()
         favorites = self.env['woow.document.favorite']
