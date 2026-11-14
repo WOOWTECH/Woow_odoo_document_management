@@ -10,8 +10,9 @@ from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
 from ..hooks import uninstall_hook
-from ..models import autofile
+from ..models import autofile, quota as quota_module
 from ..models.autofile import IrAttachmentAutoFile
+from ..models.document import SOURCE_CTX_KEY, _SOURCE_SENTINEL
 from ..models.upload_policy import WoowUploadRejected
 from ..services.constants import CTX_AUTO_FILE, WOOW_MODELS
 
@@ -229,12 +230,14 @@ class TestFilingOnCreate(_Fixture, TransactionCase):
         folder = self.env['woow.document.folder'].sudo().create({
             'name': 'Other company folder', 'owner_id': False, 'company_id': other.id})
         self._rule(user=self.env.ref('base.user_root'), folder_id=folder.id)
-        self._attach(name='mine.txt')                       # attached in the main company
-        self.assertFalse(self._documents())
+        mine = self.env['res.partner'].create({'name': 'Mine', 'company_id': self.env.company.id})
+        theirs = self.env['res.partner'].create({'name': 'Theirs', 'company_id': other.id})
+        self._attach(name='mine.txt', record=mine)
+        self.assertFalse(self.env['woow.document'].search([('name', '=', 'mine.txt')]))
         self.attachments.sudo().with_company(other).create({
             'name': 'theirs.txt', 'raw': b'theirs', 'type': 'binary',
-            'res_model': 'res.partner', 'res_id': self.partner.id})
-        self.assertEqual(self._documents().mapped('name'), ['theirs.txt'])
+            'res_model': 'res.partner', 'res_id': theirs.id})
+        self.assertEqual(self.env['woow.document'].search([]).mapped('name'), ['theirs.txt'])
 
     def test_one_call_files_no_more_than_one_batch(self):
         self._rule()
@@ -512,7 +515,7 @@ class TestBackfill(_Fixture, TransactionCase):
             self._wizard(rule).action_file()
 
     def test_the_backfill_reads_attachments_the_administrator_cannot_open(self):
-        # a record of a kind that only the system administrators may read
+        # the attachments of the kind are another person's: the administrator opens none of them
         self.attachments.create({'name': 'secret.txt', 'raw': b'secret', 'type': 'binary',
                                  'res_model': 'res.company', 'res_id': self.env.company.id})
         rule = self._rule(model_id=self.env['ir.model']._get('res.company').id)
@@ -709,3 +712,217 @@ class TestRuleValidation(_Fixture, TransactionCase):
         for row in rows:
             self.assertEqual(row.detail, {'rule': rule.id})
             self.assertEqual(row.folder_id, self.folder)
+
+
+@tagged('woow_docmgmt_autofile')
+class TestReviewFixes(_Fixture, TransactionCase):
+    """What the reviewers of the lane found: the company of the record, what the caller may read,
+    the quota lock, records that are gone, memory, files imported by hand and the kind picker."""
+
+    def setUp(self):
+        super().setUp()
+        self._fixture()
+        self.main = self.env.company
+        self.other = self._second_company('Autofile record company')
+        self.folder_main = self.env['woow.document.folder'].sudo().create({
+            'name': 'Main company folder', 'owner_id': False, 'company_id': self.main.id})
+        self.partner_other = self.env['res.partner'].create({
+            'name': 'Other company partner', 'company_id': self.other.id})
+        self.root = self.env.ref('base.user_root')
+
+    def _on(self, record, name, **extra):
+        values = dict({'name': name, 'raw': name.encode(), 'type': 'binary',
+                       'res_model': record._name, 'res_id': record.id}, **extra)
+        return self.attachments.sudo().create(values)
+
+    def _filed(self, record):
+        return self.env['woow.document'].with_context(active_test=False).search([
+            ('source_res_model', '=', record._name), ('source_res_id', '=', record.id)]).mapped('name')
+
+    # -- the company of the record -----------------------------------------------------------------
+    def test_the_company_of_the_record_decides_and_not_the_company_of_the_attachment(self):
+        self._rule(user=self.root, folder_id=self.folder_main.id)
+        # a file of a record of the other company never lands in a folder of the main company,
+        # whatever company the attachment says: the one of its maker, none, or a forged one
+        self._on(self.partner_other, 'default.txt')
+        self._on(self.partner_other, 'none.txt', company_id=False)
+        self._on(self.partner_other, 'forged.txt', company_id=self.main.id)
+        self.attachments.sudo().with_company(self.main).create({
+            'name': 'multi.txt', 'raw': b'multi', 'type': 'binary',
+            'res_model': 'res.partner', 'res_id': self.partner_other.id})
+        self.assertEqual(self._filed(self.partner_other), [])
+
+    def test_a_record_of_the_company_of_the_rule_is_filed_whatever_the_attachment_says(self):
+        folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Record company folder', 'owner_id': False, 'company_id': self.other.id})
+        self._rule(user=self.root, folder_id=folder.id)
+        self._on(self.partner_other, 'in-main.txt', company_id=self.main.id)
+        self._on(self.partner_other, 'in-none.txt', company_id=False)
+        self.assertEqual(sorted(self._filed(self.partner_other)), ['in-main.txt', 'in-none.txt'])
+        # a record of no company goes to the rule of any company
+        self._on(self.partner, 'shared.txt', company_id=self.other.id)
+        self.assertEqual(self._filed(self.partner), ['shared.txt'])
+
+    def test_the_backfill_judges_the_company_of_the_record_too(self):
+        self._on(self.partner_other, 'old-other.txt', company_id=self.main.id)
+        self._on(self.partner, 'old-shared.txt')
+        rule = self._rule(folder_id=self.folder_main.id)
+        wizard = self.env['woow.document.autofile.wizard'].with_user(self.manager).create({
+            'rule_id': rule.id})
+        wizard.action_file()
+        self.assertEqual((wizard.looked, wizard.filed, wizard.skipped), (2, 1, 1))
+        self.assertEqual(self._filed(self.partner_other), [])
+        self.assertEqual(self._filed(self.partner), ['old-shared.txt'])
+
+    # -- what the caller may read ----------------------------------------------------------------------
+    def test_a_rule_cannot_name_a_kind_that_its_maker_cannot_read(self):
+        kind = self.env['ir.model']._get('res.users.log')
+        self.assertFalse(self.env['res.users.log'].with_user(self.manager).has_access('read'))
+        with self.assertRaises(ValidationError):
+            self._rule(model_id=kind.id)
+        rule = self._rule()
+        with self.assertRaises(ValidationError):
+            rule.with_user(self.manager).write({'model_id': kind.id})
+
+    def test_the_backfill_refuses_a_kind_that_its_caller_cannot_read(self):
+        kind = self.env['ir.model']._get('res.users.log')
+        rule = self._rule(user=self.root, model_id=kind.id)
+        self.env['ir.attachment'].sudo().create({
+            'name': 'secret.txt', 'raw': b'top secret', 'type': 'binary',
+            'res_model': 'res.users.log', 'res_id': 1})
+        wizard = self.env['woow.document.autofile.wizard'].with_user(self.manager).create({
+            'rule_id': rule.id})
+        with self.assertRaises(AccessError):
+            wizard.action_file()
+        self.assertFalse(self.env['woow.document'].search([('name', '=', 'secret.txt')]))
+
+    def test_the_backfill_files_only_the_records_that_its_caller_may_read(self):
+        hidden = self.env['res.partner'].create({'name': 'Hidden partner'})
+        self._on(hidden, 'hidden.txt')
+        self._on(self.partner, 'visible.txt')
+        self.env['ir.rule'].sudo().create({
+            'name': 'Autofile test: no hidden partner', 'model_id': self.kind.id,
+            'domain_force': "[('id', '!=', %d)]" % hidden.id})
+        rule = self._rule()
+        wizard = self.env['woow.document.autofile.wizard'].with_user(self.manager).create({
+            'rule_id': rule.id})
+        wizard.action_file()
+        self.assertEqual((wizard.looked, wizard.filed, wizard.skipped), (2, 1, 1))
+        self.assertEqual(self._filed(hidden), [])
+        self.assertEqual(self._filed(self.partner), ['visible.txt'])
+
+    # -- records that do not exist -------------------------------------------------------------------------
+    def test_a_file_of_a_record_that_does_not_exist_is_not_filed(self):
+        self._rule()
+        ghost = self.attachments.sudo().create({
+            'name': 'ghost.txt', 'raw': b'ghost', 'type': 'binary',
+            'res_model': 'res.partner', 'res_id': 987654321})
+        self.assertTrue(ghost.exists())
+        self.assertFalse(self.env['woow.document'].search([('name', '=', 'ghost.txt')]))
+        # the same when an own free attachment is moved onto a record that is not there
+        free = self.attachments.sudo().create({'name': 'moved.txt', 'raw': b'moved', 'type': 'binary'})
+        free.write({'res_model': 'res.partner', 'res_id': 987654322})
+        self.assertFalse(self.env['woow.document'].search([('name', '=', 'moved.txt')]))
+        rule = self.rules.search([])
+        wizard = self.env['woow.document.autofile.wizard'].with_user(self.manager).create({
+            'rule_id': rule.id})
+        wizard.action_file()
+        self.assertEqual((wizard.filed, wizard.skipped), (0, 2))
+
+    # -- the quota lock --------------------------------------------------------------------------------------
+    def test_a_filing_does_not_hold_the_quota_lock_of_the_site(self):
+        self._rule()
+        self.env['ir.config_parameter'].set_param('woow_document_management.quota_mb', '100000')
+        with patch.object(quota_module, 'lock', wraps=quota_module.lock) as spy:
+            self._attach(name='quota-lock.txt')
+            self.assertEqual(self._documents().mapped('name'), ['quota-lock.txt'])
+            spy.assert_not_called()             # no lock of the quota, held to the end of the caller
+            # a document that is uploaded by hand does take it
+            self.env['woow.document'].with_user(self.manager).create({
+                'name': 'by-hand.txt', 'folder_id': self.folder.id,
+                'datas': base64.b64encode(b'by hand')})
+            self.assertTrue(spy.called)
+
+    def test_the_quota_marker_is_not_a_context_flag_of_a_client(self):
+        from ..models.quota import UNCHARGED_KEY
+        self.env['ir.config_parameter'].set_param('woow_document_management.quota_mb', '1')
+        quota = type(self.env['woow.document.quota'])
+        with patch.object(quota, '_usage_bytes', return_value=10 * 1024 * 1024):
+            for value in (True, 1, 'True', object()):
+                with self.subTest(value=value), self.assertRaises(WoowUploadRejected):
+                    self.env['woow.document'].with_user(self.manager).with_context(
+                        **{UNCHARGED_KEY: value}).create({
+                            'name': 'direct.txt', 'folder_id': self.folder.id,
+                            'datas': base64.b64encode(b'direct')})
+
+    # -- memory --------------------------------------------------------------------------------------------------
+    def test_the_backfill_does_not_keep_the_content_of_the_files_in_the_cache(self):
+        files = [self._on(self.partner, 'cache-%d.txt' % number) for number in range(3)]
+        rule = self._rule()
+        rule.with_user(self.manager)._woow_backfill()
+        for attachment in files:
+            self.assertFalse(self.env.cache.contains(attachment, attachment._fields['raw']))
+        self.assertEqual(len(self._filed(self.partner)), 3)
+
+    def test_a_backfill_run_stops_at_the_byte_limit_and_the_next_run_goes_on(self):
+        for number in range(4):
+            self._on(self.partner, 'size-%d.txt' % number, raw=b'x' * 100 + b'%d' % number)
+        rule = self._rule()
+        with patch.object(autofile, '_BACKFILL_MAX_BYTES', 250):
+            first = rule.with_user(self.manager)._woow_backfill()
+            second = rule.with_user(self.manager)._woow_backfill()
+            third = rule.with_user(self.manager)._woow_backfill()
+        self.assertEqual((first['looked'], first['filed'], first['left']), (2, 2, 2))
+        self.assertEqual((second['looked'], second['filed'], second['left']), (2, 2, 0))
+        self.assertEqual((third['looked'], third['filed']), (0, 0))
+        self.assertEqual(len(self._filed(self.partner)), 4)
+
+    # -- files that the attachment wizard of 18.0.1 imported ------------------------------------------
+    def test_a_file_imported_by_hand_before_is_not_filed_a_second_time(self):
+        old = self._on(self.partner, 'imported.txt')
+        self._on(self.partner, 'fresh.txt')
+        self.env['woow.document'].sudo().with_context(**{SOURCE_CTX_KEY: _SOURCE_SENTINEL}).create({
+            'name': 'imported.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(old.raw),
+            'source_res_model': 'res.partner', 'source_res_id': self.partner.id})
+        rule = self._rule()
+        wizard = self.env['woow.document.autofile.wizard'].with_user(self.manager).create({
+            'rule_id': rule.id})
+        wizard.action_file()
+        self.assertEqual((wizard.looked, wizard.filed, wizard.skipped), (2, 1, 1))
+        self.assertEqual(sorted(self._filed(self.partner)), ['fresh.txt', 'imported.txt'])
+        # a file that lands on the record later is judged the same way
+        again = self.attachments.sudo().create({'name': 'imported.txt', 'raw': old.raw, 'type': 'binary'})
+        again.write({'res_model': 'res.partner', 'res_id': self.partner.id})
+        self.assertEqual(sorted(self._filed(self.partner)), ['fresh.txt', 'imported.txt'])
+
+    # -- the kind picker ---------------------------------------------------------------------------------------
+    def test_a_document_administrator_without_technical_rights_picks_the_kind_by_name(self):
+        self.assertFalse(self.manager.has_group('base.group_system'))
+        with self.assertRaises(AccessError):
+            self.env['ir.model'].with_user(self.manager).name_search('partner')
+        choices = dict(self.rules.with_user(self.manager)._woow_kind_choices())
+        self.assertIn('res.partner', choices)
+        self.assertNotIn('res.users.log', choices)          # the manager cannot read it
+        for name in ('ir.attachment', 'mail.message', 'woow.document', 'woow.document.auto.rule'):
+            self.assertNotIn(name, choices)
+        rule = self.rules.with_user(self.manager).create({
+            'name': 'By name', 'kind_model': 'res.partner', 'folder_id': self.folder.id})
+        self.assertEqual(rule.res_model, 'res.partner')
+        self.assertEqual(rule.kind_model, 'res.partner')
+        self.assertEqual(rule.model_id, self.kind)
+        rule.write({'kind_model': 'res.company'})
+        self.assertEqual(rule.res_model, 'res.company')
+        for name in ('ir.attachment', 'no.such.model', 'woow.document'):
+            with self.subTest(kind=name), self.assertRaises(ValidationError):
+                self.rules.with_user(self.manager).create({
+                    'name': 'Refused', 'kind_model': name, 'folder_id': self.folder.id})
+
+    def test_the_rule_form_does_not_search_the_model_catalogue(self):
+        view = self.env.ref('woow_document_management.view_woow_document_auto_rule_form')
+        form = self.env['woow.document.auto.rule'].with_user(self.manager).get_view(view.id)
+        self.assertIn('kind_model', form['arch'])
+        search = self.env['woow.document.auto.rule'].with_user(self.manager).get_view(
+            self.env.ref('woow_document_management.view_woow_document_auto_rule_search').id,
+            'search')
+        self.assertNotIn('name="model_id"', search['arch'])

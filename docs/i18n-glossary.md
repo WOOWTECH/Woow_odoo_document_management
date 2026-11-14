@@ -44,6 +44,7 @@
 | Follower | 追蹤者 |
 | Filing rule | 歸檔規則 |
 | Filed documents | 歸檔的文件 |
+| Left out (filing run) | 已略過 |
 | Source Attachment | 來源附件 |
 | Split (a PDF) | 分割 |
 | Merge (PDF files) | 合併 |

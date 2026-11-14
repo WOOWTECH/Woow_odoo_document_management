@@ -109,5 +109,11 @@ msgstr "檔案未被接受。"
 msgid "Everyone who can open the target folder will see the filed files, even if they cannot open the record that a file came from."
 msgstr "所有能開啟目標資料夾的人都看得到歸檔的檔案，即使他們不能開啟檔案原本所在的紀錄。"
 
-msgid "This looks at the next batch of attachments of the kind of record named by the rule that are not filed yet, and files them in the target folder. You can run it again until nothing is left to look at."
-msgstr "這會檢查規則所指紀錄種類中、尚未歸檔的下一批附件，並歸檔到目標資料夾。可以重複執行，直到沒有待檢查的附件為止。"
+msgid "This looks at the next batch of attachments of the kind of record named by the rule that are not filed yet, and files them in the target folder. You can run it again until nothing is left to look at. A file whose record is of another company, is gone, or cannot be read by you is left out, and so is a file that was imported by hand before. A document that was deleted for good is filed again by a later pass."
+msgstr "這會檢查規則所指紀錄種類中、尚未歸檔的下一批附件，並歸檔到目標資料夾。可以重複執行，直到沒有待檢查的附件為止。紀錄屬於其他公司、已不存在、或您無法讀取的檔案會被略過；先前已手動匯入的檔案也會略過。已永久刪除的文件，會在之後的一輪中再次歸檔。"
+
+msgid "Left out"
+msgstr "已略過"
+
+msgid "Choose a kind of record that you may read."
+msgstr "請選擇您有權讀取的紀錄種類。"

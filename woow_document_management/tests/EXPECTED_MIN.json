@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 822,
+    "core": 836,
     "files": 126,
     "portal": 3
   },
@@ -9,7 +9,7 @@
     "test_attachment_guard.py": 13,
     "test_attachment_overview.py": 12,
     "test_audit_log.py": 13,
-    "test_autofile.py": 48,
+    "test_autofile.py": 62,
     "test_backend_views.py": 2,
     "test_backend_wizards.py": 5,
     "test_ca21_tour.py": 1,

@@ -10,7 +10,9 @@
         <p>
           This looks at the next batch of attachments of the kind of record named by the rule that
           are not filed yet, and files them in the target folder. You can run it again until
-          nothing is left to look at.
+          nothing is left to look at. A file whose record is of another company, is gone, or cannot be
+          read by you is left out, and so is a file that was imported by hand before. A document that
+          was deleted for good is filed again by a later pass.
         </p>
         <field name="ran" invisible="1"/>
         <group>
@@ -20,6 +22,7 @@
           <field name="looked"/>
           <field name="filed"/>
           <field name="refused"/>
+          <field name="skipped"/>
           <field name="left"/>
         </group>
         <footer>

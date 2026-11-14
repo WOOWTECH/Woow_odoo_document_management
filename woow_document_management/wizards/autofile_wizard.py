@@ -14,6 +14,7 @@ class WoowDocumentAutofileWizard(models.TransientModel):
     looked = fields.Integer(string='Looked at', readonly=True)
     filed = fields.Integer(string='Filed', readonly=True)
     refused = fields.Integer(string='Not accepted', readonly=True)
+    skipped = fields.Integer(string='Left out', readonly=True)
     left = fields.Integer(string='Still to look at', readonly=True)
     ran = fields.Boolean(readonly=True)
 

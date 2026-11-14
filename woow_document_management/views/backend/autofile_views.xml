@@ -38,7 +38,8 @@
           <group>
             <group>
               <field name="name"/>
-              <field name="model_id" options="{'no_create': True, 'no_open': True}"/>
+              <field name="kind_model" required="1"/>
+              <field name="model_id" invisible="1"/>
               <field name="folder_id" options="{'no_create': True}"/>
               <field name="tag_ids" widget="many2many_tags" options="{'no_create': True}"/>
             </group>
@@ -61,7 +62,7 @@
     <field name="arch" type="xml">
       <search string="Filing rules">
         <field name="name"/>
-        <field name="model_id"/>
+        <field name="res_model"/>
         <field name="folder_id"/>
         <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
       </search>
