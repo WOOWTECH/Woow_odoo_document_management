@@ -151,8 +151,12 @@ class WoowDocumentWorkspace(models.Model):
         missing = [value for value in flat['values'] if value['id'] not in shown]
         if not missing:
             return result
-        folders = self.env['woow.document.folder'].browse([value['id'] for value in missing])
+        # Only the folders that the caller may read: a document that is shared with the caller
+        # can sit in a folder that they may not open, and that folder is not added to the tree.
+        folders = self.env['woow.document.folder'].search([
+            ('id', 'in', [value['id'] for value in missing])])
         paths = {folder.id: folding.parse_parent_path(folder.parent_path) for folder in folders}
+        missing = [value for value in missing if value['id'] in paths]
         counters = any('__count' in value for value in missing)
         # The shallow ones first, so that a folder finds the ones above it already placed.
         for value in sorted(missing, key=lambda item: len(paths.get(item['id'], ()))):

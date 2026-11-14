@@ -431,6 +431,25 @@ class TestWorkspaceViews(_WorkspaceCase):
                 self.assertNotIn(hidden.id, ids | parents)
                 self.assertTrue({top.id, alone.id, below.id} <= ids)
 
+    def test_a_document_shared_from_a_closed_folder_does_not_break_or_name_the_tree(self):
+        top, hidden, alone, below = self._restricted_tree()
+        closed = self.env['woow.document.folder'].sudo().create({
+            'name': 'Closed folder name', 'owner_id': self.admin.id, 'inherit_access': False})
+        shared = self.env['woow.document'].sudo().create({
+            'name': 'shared-out.txt', 'folder_id': closed.id, 'owner_id': self.admin.id,
+            'datas': _b64(b'shared out of a closed folder')})
+        shared.write({'shared_user_ids': [Command.set([self.outsider.id])]})
+        self.env.flush_all()
+        documents = self.documents.with_user(self.outsider)
+        self.assertIn(shared, documents.search([]))
+        self.assertFalse(closed.with_user(self.outsider).has_access('read'))
+        result = documents.search_panel_select_range(
+            'folder_id', enable_counters=True, hierarchize=True)
+        ids = {value['id'] for value in result['values']}
+        self.assertNotIn(closed.id, ids)
+        self.assertNotIn('Closed folder name', json.dumps(result, ensure_ascii=False))
+        self.assertTrue({top.id, alone.id, below.id} <= ids)
+
     def test_the_tree_of_a_manager_is_the_plain_tree(self):
         top, hidden, alone, below = self._restricted_tree()
         result = self.documents.with_user(self.manager).search_panel_select_range(
