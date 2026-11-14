@@ -44,14 +44,26 @@ PDF_MAX_OBJSTM = 4096          # "/Type /ObjStm" object streams (a big file has 
 # Seconds of work the library may spend on one file (reading it, walking the page tree, counting
 # the pages). It is checked at every call of Python code, so a loop in the library is cut off.
 PDF_PARSE_SECONDS = 10.0
+# Most "/Prev" keys of any kind that are looked at; a file with more is refused as damaged (a long
+# outline has thousands of them, the cost of each one is a constant).
+PDF_MAX_PREV_KEYS = 100000
 # Flate streams are inflated here, in bounded steps, before the library sees the file. One stream
-# may decode to at most ``PDF_STREAM_MAX_BYTES``, all streams of a file to at most
-# ``PDF_DECODED_MAX_BYTES``, and neither more than ``PDF_INFLATE_RATIO`` times the size of the
-# file (a floor of ``PDF_INFLATE_FLOOR`` keeps tiny files usable).
-PDF_STREAM_MAX_BYTES = 64 * 1024 * 1024
-PDF_DECODED_MAX_BYTES = 256 * 1024 * 1024
+# may decode to at most ``PDF_STREAM_MAX_BYTES``; all streams of a file to at most the smallest of
+# ``PDF_DECODED_MAX_BYTES``, ``PDF_INFLATE_RATIO`` times the size of the file (a floor of
+# ``PDF_INFLATE_FLOOR`` keeps tiny files usable) and ``PDF_DECODED_BASE`` plus
+# ``PDF_DECODED_PER_PAGE`` for every page the file claims (a scan of large flate images has few
+# bytes per page and many decoded ones; a bomb is small and claims few pages). A file that holds
+# more than ``PDF_MAX_FLATE_STREAMS`` flate streams, or whose streams make the check read more than
+# ``PDF_INFLATE_INPUT_RATIO`` times the size of the file, is refused too: the check itself is
+# bounded work.
+PDF_STREAM_MAX_BYTES = 128 * 1024 * 1024
+PDF_DECODED_MAX_BYTES = 2048 * 1024 * 1024
+PDF_DECODED_BASE = 64 * 1024 * 1024
+PDF_DECODED_PER_PAGE = 48 * 1024 * 1024
 PDF_INFLATE_RATIO = 250
 PDF_INFLATE_FLOOR = 1024 * 1024
+PDF_MAX_FLATE_STREAMS = 50000
+PDF_INFLATE_INPUT_RATIO = 4
 _INFLATE_STEP = 64 * 1024
 
 _PREV = re.compile(rb'/Prev\s+([0-9]+)')
@@ -59,6 +71,8 @@ _XREF_TYPE = re.compile(rb'/Type\s*/XRef(?![A-Za-z])')
 _OBJSTM_TYPE = re.compile(rb'/Type\s*/ObjStm(?![A-Za-z])')
 _BOUNDARY = re.compile(rb'(?<![A-Za-z])(?:obj|trailer)(?![A-Za-z])')
 _PREV_LOOKBACK = 4096
+_LAST_BOUNDARY = re.compile(rb'.*(?<![A-Za-z])(obj|trailer)(?![A-Za-z])', re.DOTALL)
+_PAGE_TYPE = re.compile(rb'/Type\s*/Page(?![A-Za-z])')
 _STREAM = re.compile(rb'(?<![A-Za-z])stream\r?\n')
 
 # One part of the text: a page number, or two joined by a dash. ASCII digits only, at most six.
@@ -176,6 +190,16 @@ def _check_page_tree(reader):
             raise PdfToolError('damaged')
 
 
+def _count_up_to(pattern, data, limit):
+    """How many matches of ``pattern`` there are in ``data``, counting no further than ``limit + 1``."""
+    count = 0
+    for _found in pattern.finditer(data):
+        count += 1
+        if count > limit:
+            break
+    return count
+
+
 def _chain_links(data):
     """The values of "/Prev" keys that continue the chain of cross-reference sections.
 
@@ -185,23 +209,40 @@ def _chain_links(data):
     normal document has hundreds of them, so those are not counted. A key counts when the closest
     "trailer" or "obj" keyword before it is "trailer", or when the object it sits in (up to its
     "endobj" or "stream") has "/Type /XRef". A key that cannot be placed is counted.
+
+    The work is linear in the size of the file: the keys are found in one pass, and the keyword
+    before a key is looked for only between the previous key and this one (at most the last
+    ``_PREV_LOOKBACK`` bytes of that stretch), so no byte is read twice. More than
+    ``PDF_MAX_PREV_KEYS`` keys is refused as damaged.
     """
     links = []
+    keys = 0
+    last_end = 0           # where the previous key ends: the stretch of this key starts here
+    last_counted = True    # what was decided for the previous key
     for found in _PREV.finditer(data):
+        keys += 1
+        if keys > PDF_MAX_PREV_KEYS:
+            raise PdfToolError('damaged')
         pos = found.start()
-        before = data[max(0, pos - _PREV_LOOKBACK):pos]
-        marker = None
-        for marker in _BOUNDARY.finditer(before):
-            pass
-        counted = True
-        if marker is not None and marker.group() == b'obj':
-            region = before[marker.end():] + data[pos:pos + 512]
-            skip = len(before) - marker.end()
-            for stop in (b'endobj', b'stream'):
-                cut = region.find(stop, skip)
-                if cut >= 0:
-                    region = region[:cut]
-            counted = bool(_XREF_TYPE.search(region))
+        window_start = max(last_end, pos - _PREV_LOOKBACK)
+        before = data[window_start:pos]
+        marker = _LAST_BOUNDARY.match(before)
+        if marker is not None:
+            counted = True
+            if marker.group(1) == b'obj':
+                region = before[marker.end(1):] + data[pos:pos + 512]
+                skip = len(before) - marker.end(1)
+                for stop in (b'endobj', b'stream'):
+                    cut = region.find(stop, skip)
+                    if cut >= 0:
+                        region = region[:cut]
+                counted = bool(_XREF_TYPE.search(region))
+        elif last_end and window_start == last_end:
+            counted = last_counted     # no keyword since the previous key: the same object
+        else:
+            counted = True
+        last_end = found.end()
+        last_counted = counted
         if counted:
             links.append(found.group(1))
     return links
@@ -212,11 +253,12 @@ def _check_markers(data):
 
     Every marker is counted in its structural form ("/Type /XRef", "/Type /ObjStm", "/Prev" in a
     trailer or cross-reference stream dictionary) so that ordinary content, such as the hundreds of
-    "/Prev" keys of a document outline, is never taken for a parsing hazard.
+    "/Prev" keys of a document outline, is never taken for a parsing hazard. The counting stops at
+    the limit, so the work does not depend on how many markers an attacker writes.
     """
     if (data.count(b'startxref') > PDF_MAX_STARTXREF
-            or len(_XREF_TYPE.findall(data)) > PDF_MAX_XREF_STREAMS
-            or len(_OBJSTM_TYPE.findall(data)) > PDF_MAX_OBJSTM):
+            or _count_up_to(_XREF_TYPE, data, PDF_MAX_XREF_STREAMS) > PDF_MAX_XREF_STREAMS
+            or _count_up_to(_OBJSTM_TYPE, data, PDF_MAX_OBJSTM) > PDF_MAX_OBJSTM):
         raise PdfToolError('damaged')
     links = _chain_links(data) if b'/Prev' in data else []
     if len(links) > PDF_MAX_PREV or len(set(links)) != len(links):
@@ -229,21 +271,34 @@ def _check_inflated_size(data):
     Every stream that starts with a zlib header is inflated in steps of ``_INFLATE_STEP`` bytes
     and the output is only counted, never kept. The inflater itself finds the end of the stream,
     so a stream that hides its end marker is counted all the same. Anything that is not valid
-    flate data is left to the library.
+    flate data is left to the library. The check is bounded work: it looks at no more than
+    ``PDF_MAX_FLATE_STREAMS`` streams and reads no more than ``PDF_INFLATE_INPUT_RATIO`` times the
+    size of the file, whatever the file holds (beyond that the file is refused as damaged).
     """
-    one_max = min(PDF_STREAM_MAX_BYTES, max(PDF_INFLATE_FLOOR, PDF_INFLATE_RATIO * len(data)))
-    all_max = min(PDF_DECODED_MAX_BYTES, max(PDF_INFLATE_FLOOR, PDF_INFLATE_RATIO * len(data)))
+    size_of_file = len(data)
+    one_max = min(PDF_STREAM_MAX_BYTES, max(PDF_INFLATE_FLOOR, PDF_INFLATE_RATIO * size_of_file))
+    pages = max(1, min(_count_up_to(_PAGE_TYPE, data, PDF_MAX_PAGES), PDF_MAX_PAGES))
+    all_max = min(PDF_DECODED_MAX_BYTES,
+                  max(PDF_INFLATE_FLOOR, PDF_INFLATE_RATIO * size_of_file),
+                  PDF_DECODED_BASE + PDF_DECODED_PER_PAGE * pages)
+    read_max = PDF_INFLATE_INPUT_RATIO * size_of_file
     view = memoryview(data)
     total = 0
+    read = 0
+    streams = 0
     for found in _STREAM.finditer(data):
         start = found.end()
-        if start + 2 > len(data) or data[start] & 0x0f != 8 or (data[start] * 256 + data[start + 1]) % 31:
+        if start + 2 > size_of_file or data[start] & 0x0f != 8 or (data[start] * 256 + data[start + 1]) % 31:
             continue
+        streams += 1
+        if streams > PDF_MAX_FLATE_STREAMS:
+            raise PdfToolError('damaged')
         inflater = zlib.decompressobj()
         size = 0
         position = start
+        used = 0       # input the inflater took without an error (a chunk that fails is not charged)
         try:
-            while position < len(data) and not inflater.eof:
+            while position < size_of_file and not inflater.eof:
                 chunk = view[position:position + _INFLATE_STEP]
                 position += len(chunk)
                 piece = inflater.decompress(chunk, _INFLATE_STEP)
@@ -255,8 +310,12 @@ def _check_inflated_size(data):
                     if inflater.eof or (len(piece) < _INFLATE_STEP and not tail):
                         break
                     piece = inflater.decompress(tail, _INFLATE_STEP)
+                used = position - start - (len(inflater.unused_data) if inflater.eof else 0)
+                if read + used > read_max:
+                    raise PdfToolError('damaged')
         except zlib.error:
             pass    # not flate data after all: the library decides what to do with it
+        read += used
         total += size
 
 
@@ -277,10 +336,11 @@ class _Deadline:
         self.limit = time.monotonic() + seconds
         self.previous = None
         self.expired = False
+        self._own = (self.__enter__.__code__, self.__exit__.__code__)
 
     def _hook(self, frame, event, arg):
-        if frame.f_code is self.__enter__.__code__:
-            return      # the hook is installed in here: the first event is the end of this method
+        if frame.f_code in self._own:
+            return      # the hook is installed in here, and removed in ``__exit__``: leave both alone
         if time.monotonic() > self.limit:
             self.expired = True
             raise _Timeout()
@@ -291,7 +351,11 @@ class _Deadline:
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        sys.setprofile(self.previous)
+        try:
+            sys.setprofile(self.previous)
+        finally:
+            if exc_type is not None and issubclass(exc_type, _Timeout):
+                self.expired = True
         if self.expired:
             raise PdfToolError('damaged') from None
         return False
@@ -306,10 +370,10 @@ def open_pdf(data):
     """
     if not isinstance(data, bytes) or not data:
         raise PdfToolError('damaged')
-    _check_markers(data)
-    _check_inflated_size(data)
     try:
         with _Deadline(PDF_PARSE_SECONDS):
+            _check_markers(data)
+            _check_inflated_size(data)
             reader = odoo_pdf.PdfReader(io.BytesIO(data), strict=False)
             if _encrypted(reader):
                 raise PdfToolError('encrypted')
@@ -317,6 +381,8 @@ def open_pdf(data):
             count = len(reader.pages)
     except PdfToolError:
         raise
+    except _Timeout as exc:    # the deadline's own signal, in case it ever got past ``__exit__``
+        raise PdfToolError('damaged') from exc
     except Exception as exc:  # noqa: BLE001 - a damaged file can fail in any way the library has
         raise PdfToolError('damaged') from exc
     if count < 1:
