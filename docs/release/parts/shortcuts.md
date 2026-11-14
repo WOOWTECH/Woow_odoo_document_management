@@ -25,9 +25,9 @@ A document user can put a pointer to a file or a link into another folder withou
 - `woow.document.shortcut_target_id` (many2one to `woow.document`, indexed, `ondelete='cascade'`):
   set once, when the shortcut is created, by the server. A table check keeps "a shortcut has a
   target, every other document has none"; a Python constraint keeps the target a file or a link.
-  Purging the target removes its shortcuts: the `unlink` of the extension first refuses the purge when
-  a shortcut of the target is on legal hold, otherwise it writes one `purge` audit row per shortcut
-  and deletes the shortcuts (and their chatter) in the same savepoint as the target. The database
+  Purging the target removes its shortcuts: an `api.ondelete` hook of the extension (it runs after the guards of `unlink`)
+  refuses the purge when a shortcut of the target is on legal hold, otherwise it writes one `purge`
+  audit row per shortcut and deletes the shortcuts (and their chatter) before the target. The database
   cascade stays as the last net for any deletion that does not go through the ORM. Only the hold of the
   shortcut itself counts, as for any document: the base release does not stop the purge of a trashed
   document that sits in a folder on legal hold, and a shortcut is treated the same way.

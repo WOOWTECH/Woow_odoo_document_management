@@ -255,32 +255,27 @@ class WoowDocumentShortcut(models.Model):
             self.env.flush_all()
         return created
 
-    def unlink(self):
+    @api.ondelete(at_uninstall=False)
+    def _woow_unlink_shortcuts_of_targets(self):
         """A purge of a target takes its shortcuts with it, through the same rules as any purge.
 
         The database would delete them by itself (``ondelete='cascade'``) and skip both the legal
-        hold and the audit row. A shortcut on legal hold stops the purge of its target; the others
-        are logged as purged and removed first, in the same savepoint as the target, so a refusal
-        of the purge puts them back. Callers who are not administrators go straight to the base
-        guard, which refuses them.
+        hold and the audit row. This runs after the guards of ``unlink`` (administrator, trashed
+        first, the target's own hold): a shortcut on legal hold stops the purge, the others are
+        logged as purged and removed with their chatter before the target goes.
         """
-        if not self or not (self.env.su or self.env.user.has_group(_MANAGER)):
-            return super().unlink()
-        shortcuts = self.with_context(active_test=False).search(
-            [(_FIELD, 'in', self.ids)]) - self
+        shortcuts = self.with_context(active_test=False).search([(_FIELD, 'in', self.ids)]) - self
         if not shortcuts:
-            return super().unlink()
+            return
         if any(shortcut.legal_hold for shortcut in shortcuts):
             raise UserError(_('A document on legal hold cannot be deleted.'))
-        with self.env.cr.savepoint():
-            for shortcut in shortcuts:
-                self.env['woow.document.log']._log_event(
-                    'purge', channel=self._woow_log_channel(), document_id=shortcut.id,
-                    folder_id=shortcut.folder_id.id, company_id=shortcut.company_id.id)
-            # not the unlink of the base: that one wants a trashed document, and a shortcut whose
-            # target is purged is not trashed (the administrator rights were judged above)
-            super(WoowDocument, shortcuts).unlink()
-            return super().unlink()
+        for shortcut in shortcuts:
+            self.env['woow.document.log']._log_event(
+                'purge', channel=self._woow_log_channel(), document_id=shortcut.id,
+                folder_id=shortcut.folder_id.id, company_id=shortcut.company_id.id)
+        # not the unlink of the base: that one wants a trashed document, and a shortcut whose
+        # target is purged is not trashed (the administrator rights were judged by the caller)
+        super(WoowDocument, shortcuts).unlink()
 
     def write(self, vals):
         """The target of a shortcut is set when it is created and never changes."""
