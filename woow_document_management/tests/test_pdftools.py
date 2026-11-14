@@ -853,6 +853,18 @@ def revisions_pdf(extra):
     return out.getvalue()
 
 
+def outline_pdf(entries):
+    """A PDF written by the PDF helpers of Odoo, with ``entries`` bookmarks (each links back with /Prev)."""
+    writer = odoo_pdf.PdfFileWriter()
+    for index in range(3):
+        writer.add_blank_page(width=100 + index, height=100)
+    for index in range(entries):
+        writer.add_outline_item('Bookmark %d' % index, index % 3)
+    stream = io.BytesIO()
+    writer.write(stream)
+    return stream.getvalue()
+
+
 def flate_bomb_pdf(size):
     """A small file whose content stream inflates to ``size`` bytes of zeros."""
     packed = zlib.compress(b'\0' * size, 9)
@@ -877,6 +889,15 @@ class TestParsingLimits(PdfToolsCase):
     def test_a_file_with_few_revisions_still_opens(self):
         reader, count = pdf_tools.open_pdf(revisions_pdf(2))
         self.assertEqual(count, 1)
+
+    def test_a_document_with_many_bookmarks_opens_and_splits(self):
+        data = outline_pdf(150)
+        self.assertGreater(data.count(b'/Prev'), 100)
+        reader, count = pdf_tools.open_pdf(data)
+        self.assertEqual(count, 3)
+        doc = self._doc('outline.pdf', data, self.folder)
+        made = self._made(self._split(self.member, doc, ranges='1, 2-3').action_split())
+        self.assertEqual(len(made), 2)
 
     def test_a_long_chain_of_revisions_is_refused(self):
         data = revisions_pdf(20)

@@ -37,10 +37,10 @@ MERGE_MAX_PAGES = 5 * PDF_MAX_PAGES
 # work the library does while it builds the reader (it follows the chain of earlier cross-reference
 # sections, opens object streams, and searches the whole file when the table is broken). A file
 # that carries more of them than any real file is refused as damaged.
-PDF_MAX_STARTXREF = 4          # "startxref" keywords (one per saved revision of the file)
-PDF_MAX_PREV = 16              # "/Prev" links to an earlier cross-reference section
-PDF_MAX_XREF_STREAMS = 32      # "/XRef" cross-reference streams
-PDF_MAX_OBJSTM = 512           # "/ObjStm" object streams
+PDF_MAX_STARTXREF = 32         # "startxref" keywords (one per saved revision of the file)
+PDF_MAX_PREV = 16              # "/Prev" links inside trailers / cross-reference stream dictionaries
+PDF_MAX_XREF_STREAMS = 32      # "/Type /XRef" cross-reference streams
+PDF_MAX_OBJSTM = 4096          # "/Type /ObjStm" object streams (a big file has one per ~100 objects)
 # Seconds of work the library may spend on one file (reading it, walking the page tree, counting
 # the pages). It is checked at every call of Python code, so a loop in the library is cut off.
 PDF_PARSE_SECONDS = 10.0
@@ -55,6 +55,10 @@ PDF_INFLATE_FLOOR = 1024 * 1024
 _INFLATE_STEP = 64 * 1024
 
 _PREV = re.compile(rb'/Prev\s+([0-9]+)')
+_XREF_TYPE = re.compile(rb'/Type\s*/XRef(?![A-Za-z])')
+_OBJSTM_TYPE = re.compile(rb'/Type\s*/ObjStm(?![A-Za-z])')
+_BOUNDARY = re.compile(rb'(?<![A-Za-z])(?:obj|trailer)(?![A-Za-z])')
+_PREV_LOOKBACK = 4096
 _STREAM = re.compile(rb'(?<![A-Za-z])stream\r?\n')
 
 # One part of the text: a page number, or two joined by a dash. ASCII digits only, at most six.
@@ -172,14 +176,50 @@ def _check_page_tree(reader):
             raise PdfToolError('damaged')
 
 
+def _chain_links(data):
+    """The values of "/Prev" keys that continue the chain of cross-reference sections.
+
+    Only a "/Prev" in a trailer dictionary or in the dictionary of a cross-reference stream
+    ("/Type /XRef") makes the library walk to an earlier section. The same key is also used, with
+    an object reference, by outline (bookmark) entries, structure elements and the like, and a
+    normal document has hundreds of them, so those are not counted. A key counts when the closest
+    "trailer" or "obj" keyword before it is "trailer", or when the object it sits in (up to its
+    "endobj" or "stream") has "/Type /XRef". A key that cannot be placed is counted.
+    """
+    links = []
+    for found in _PREV.finditer(data):
+        pos = found.start()
+        before = data[max(0, pos - _PREV_LOOKBACK):pos]
+        marker = None
+        for marker in _BOUNDARY.finditer(before):
+            pass
+        counted = True
+        if marker is not None and marker.group() == b'obj':
+            region = before[marker.end():] + data[pos:pos + 512]
+            skip = len(before) - marker.end()
+            for stop in (b'endobj', b'stream'):
+                cut = region.find(stop, skip)
+                if cut >= 0:
+                    region = region[:cut]
+            counted = bool(_XREF_TYPE.search(region))
+        if counted:
+            links.append(found.group(1))
+    return links
+
+
 def _check_markers(data):
-    """Refuse a file with more revisions, links or object streams than a real file has."""
-    if (data.count(b'startxref') > PDF_MAX_STARTXREF or data.count(b'/Prev') > PDF_MAX_PREV
-            or data.count(b'/XRef') > PDF_MAX_XREF_STREAMS
-            or data.count(b'/ObjStm') > PDF_MAX_OBJSTM):
+    """Refuse a file with more revisions, links or object streams than a real file has.
+
+    Every marker is counted in its structural form ("/Type /XRef", "/Type /ObjStm", "/Prev" in a
+    trailer or cross-reference stream dictionary) so that ordinary content, such as the hundreds of
+    "/Prev" keys of a document outline, is never taken for a parsing hazard.
+    """
+    if (data.count(b'startxref') > PDF_MAX_STARTXREF
+            or len(_XREF_TYPE.findall(data)) > PDF_MAX_XREF_STREAMS
+            or len(_OBJSTM_TYPE.findall(data)) > PDF_MAX_OBJSTM):
         raise PdfToolError('damaged')
-    links = _PREV.findall(data)
-    if len(set(links)) != len(links):
+    links = _chain_links(data) if b'/Prev' in data else []
+    if len(links) > PDF_MAX_PREV or len(set(links)) != len(links):
         raise PdfToolError('damaged')
 
 
