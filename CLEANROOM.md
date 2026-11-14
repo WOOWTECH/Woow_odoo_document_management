@@ -65,3 +65,23 @@ None so far.
 | PR / branch | Lane | Declaration |
 |---|---|---|
 | lane/ci-sweep (day-0 skeleton, static tools, CI, sweep config, contracts) | ci-sweep | Written only from the design pack, Odoo 18 core source and public Odoo documentation; no other document module opened. |
+| release/18.0.2.0.0 (base: default attachment overview, audit event keys, limits, manifest version) | release base | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/workspace | workspace | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/docactions | docactions | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/versions | versions | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/shortcuts | shortcuts | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/requests | requests | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/sharing | sharing | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/mailin | mailin | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/autofile | autofile | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/pdftools | pdftools | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/wsui | wsui (wave 2) | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/inspector | inspector (wave 2) | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| lane2/carryover | carryover (test portability and one guard fix) | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| fix1/fsharing | fsharing (fix round 1) | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| fix1/fautofile | fautofile (fix round 1) | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| fix1/fwizards | fwizards (fix round 1) | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| fix1/fversions | fversions (fix round 1) | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| fix1/fpdf | fpdf (fix round 1) | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| integ/18.0.2.0.0 (merges of the branches above, resolution of shared lists, cross-feature tests, release documents) | integration | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
+| translation fragment of the coordinator (Traditional Chinese catalog of release 18.0.2) | translation | Written only from WoowTech's specification, this module's code, Odoo 18 Community core and public Odoo developer documentation; no other document module opened. |
