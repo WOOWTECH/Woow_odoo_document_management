@@ -5,6 +5,8 @@ import base64
 import io
 import json
 import random
+import time
+import zlib
 from unittest.mock import patch
 
 from odoo.exceptions import AccessError, UserError
@@ -833,6 +835,166 @@ class TestPageTreeLimits(PdfToolsCase):
         with self.assertRaises(UserError):
             self._merge(self.member, [bomb, self._pdf('ok.pdf')]).action_merge()
         self.assertEqual(self._count(self.folder), before)
+        self.assertEqual(self._count(self.target), 0)
+
+
+def revisions_pdf(extra):
+    """A valid PDF saved ``extra`` more times: every save appends a section that links back with /Prev."""
+    data = raw_pdf([101])
+    previous = int(data.rsplit(b'startxref\n', 1)[1].split()[0])
+    out = io.BytesIO(data)
+    out.seek(0, io.SEEK_END)
+    for _index in range(extra):
+        offset = out.tell()
+        out.write(b'xref\n0 1\n0000000000 65535 f \n'
+                  b'trailer\n<< /Size 5 /Root 1 0 R /Prev %d >>\nstartxref\n%d\n%%%%EOF\n'
+                  % (previous, offset))
+        previous = offset
+    return out.getvalue()
+
+
+def flate_bomb_pdf(size):
+    """A small file whose content stream inflates to ``size`` bytes of zeros."""
+    packed = zlib.compress(b'\0' * size, 9)
+    return pdf_of_objects([
+        b'<< /Type /Catalog /Pages 2 0 R >>',
+        b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Contents 4 0 R >>',
+        b'<< /Length %d /Filter /FlateDecode >>\nstream\n' % len(packed) + packed + b'\nendstream'])
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestParsingLimits(PdfToolsCase):
+    """The raw bytes and the time of the library are bounded before and while a file is parsed."""
+
+    def _refused_fast(self, data):
+        started = time.monotonic()
+        with self.assertRaises(PdfToolError) as caught:
+            pdf_tools.open_pdf(data)
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertEqual(caught.exception.code, 'damaged')
+
+    def test_a_file_with_few_revisions_still_opens(self):
+        reader, count = pdf_tools.open_pdf(revisions_pdf(2))
+        self.assertEqual(count, 1)
+
+    def test_a_long_chain_of_revisions_is_refused(self):
+        data = revisions_pdf(20)
+        self.assertLess(len(data), 4000)
+        self._refused_fast(data)
+
+    def test_a_section_that_links_to_itself_is_refused(self):
+        data = raw_pdf([101])
+        offset = len(data)
+        data += (b'xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 5 /Root 1 0 R /Prev %d >>\n'
+                 b'startxref\n%d\n%%%%EOF\n' % (offset, offset))
+        with patch.object(pdf_tools, 'PDF_PARSE_SECONDS', 1):
+            started = time.monotonic()
+            try:
+                pdf_tools.open_pdf(data)
+            except PdfToolError as exc:
+                self.assertEqual(exc.code, 'damaged')
+            self.assertLess(time.monotonic() - started, 2)
+
+    def test_two_cross_reference_streams_that_link_to_each_other_are_refused(self):
+        first = b'%PDF-1.5\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
+        one = len(first)
+        body = (b'<< /Type /XRef /Size 6 /W [1 2 1] /Root 1 0 R /Prev %07d /Length 0 >>'
+                b'\nstream\n\nendstream')
+        size = len(b'3 0 obj\n' + body % 0 + b'\nendobj\n')
+        two = one + size
+        data = (first + b'3 0 obj\n' + body % two + b'\nendobj\n'
+                + b'4 0 obj\n' + body % one + b'\nendobj\n'
+                + b'startxref\n%d\n%%%%EOF\n' % one)
+        started = time.monotonic()
+        with patch.object(pdf_tools, 'PDF_PARSE_SECONDS', 1):
+            with self.assertRaises(PdfToolError) as caught:
+                pdf_tools.open_pdf(data)
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertEqual(caught.exception.code, 'damaged')
+
+    def test_many_object_streams_are_refused(self):
+        stream = b'<< /Type /ObjStm /N 0 /First 0 /Length 0 >>\nstream\n\nendstream'
+        bodies = [b'<< /Type /Catalog /Pages 2 0 R >>',
+                  b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+                  b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>']
+        bodies += [stream] * (pdf_tools.PDF_MAX_OBJSTM + 1)
+        self._refused_fast(pdf_of_objects(bodies))
+
+    def test_object_streams_that_extend_each_other_in_a_ring_are_refused(self):
+        stream = (b'<< /Type /ObjStm /N 1 /First 4 /Extends %d 0 R /Length 8 >>'
+                  b'\nstream\n5 0 << >>\nendstream')
+        bodies = [b'<< /Type /Catalog /Pages 2 0 R >>',
+                  b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+                  b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>']
+        bodies += [stream % (4 + (index + 1) % 40) for index in range(40)]
+        started = time.monotonic()
+        with patch.object(pdf_tools, 'PDF_PARSE_SECONDS', 1):
+            try:
+                pdf_tools.open_pdf(pdf_of_objects(bodies))
+            except PdfToolError as exc:
+                self.assertEqual(exc.code, 'damaged')
+        self.assertLess(time.monotonic() - started, 2)
+
+    def test_the_time_budget_cuts_off_the_parsing(self):
+        data = raw_pdf(list(range(101, 131)))
+        reader, count = pdf_tools.open_pdf(data)
+        self.assertEqual(count, 30)
+        with patch.object(pdf_tools, 'PDF_PARSE_SECONDS', 0):
+            self._refused_fast(data)
+
+    def test_the_time_budget_is_not_swallowed_by_the_library(self):
+        class Lenient:
+            def __init__(self, *args, **kwargs):
+                try:
+                    self.step()
+                except Exception:  # noqa: BLE001 - what a lenient library may do
+                    pass
+                self.is_encrypted = False
+                self.trailer = {}
+
+            def step(self):
+                return 1
+
+        with patch.object(pdf_tools.odoo_pdf, 'PdfReader', Lenient), \
+                patch.object(pdf_tools, 'PDF_PARSE_SECONDS', 0):
+            self._refused_fast(raw_pdf([101, 102]))
+
+    def test_a_stream_that_inflates_far_beyond_its_size_is_refused(self):
+        data = flate_bomb_pdf(8 * 1024 * 1024)
+        self.assertLess(len(data), 20000)
+        self._refused_fast(data)
+
+    def test_the_size_limits_of_one_stream_and_of_all_streams(self):
+        data = flate_bomb_pdf(3 * 1024 * 1024)
+        with patch.object(pdf_tools, 'PDF_INFLATE_RATIO', 100000), \
+                patch.object(pdf_tools, 'PDF_STREAM_MAX_BYTES', 2 * 1024 * 1024):
+            self._refused_fast(data)
+        with patch.object(pdf_tools, 'PDF_INFLATE_RATIO', 100000), \
+                patch.object(pdf_tools, 'PDF_DECODED_MAX_BYTES', 2 * 1024 * 1024):
+            self._refused_fast(data)
+        with patch.object(pdf_tools, 'PDF_INFLATE_RATIO', 100000):
+            reader, count = pdf_tools.open_pdf(data)
+        self.assertEqual(count, 1)
+
+    def test_an_ordinary_compressed_file_still_opens(self):
+        packed = zlib.compress(b'q Q\n' * 2000)
+        data = pdf_of_objects([
+            b'<< /Type /Catalog /Pages 2 0 R >>',
+            b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+            b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Contents 4 0 R >>',
+            b'<< /Length %d /Filter /FlateDecode >>\nstream\n' % len(packed) + packed
+            + b'\nendstream'])
+        self.assertEqual(pdf_tools.open_pdf(data)[1], 1)
+
+    def test_the_wizards_answer_such_files_with_a_message(self):
+        bomb = self._doc('bomb.pdf', flate_bomb_pdf(8 * 1024 * 1024))
+        chain = self._doc('chain.pdf', revisions_pdf(20))
+        for doc in (bomb, chain):
+            with self.assertRaises(UserError):
+                self._split(self.member, doc).action_split()
+            with self.assertRaises(UserError):
+                self._merge(self.member, [doc, self._pdf('ok.pdf')]).action_merge()
         self.assertEqual(self._count(self.target), 0)
 
 
