@@ -1,0 +1,238 @@
+# Traditional Chinese terms written by the release coordinator for 18.0.2.0.0: audit events, help texts,
+# field labels of the folder mailbox, the request mail template, and release 18.0.1 messages that the
+# earlier catalog had missed. Read first by ops tooling (00- prefix): it wins over the lane fragments.
+msgid ""
+msgstr ""
+"Language: zh_TW\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "A folder under legal hold cannot be deleted."
+msgstr "受法律保留的資料夾不能刪除。"
+
+msgid "Fields that only the server sets"
+msgstr "只能由伺服器設定的欄位"
+
+msgid "Move a document to the trash before deleting it permanently."
+msgstr "請先把文件移到回收桶，才能永久刪除。"
+
+msgid "Move a folder to the trash before deleting it permanently."
+msgstr "請先把資料夾移到回收桶，才能永久刪除。"
+
+msgid "Use the document trash actions to change folder state."
+msgstr "請使用回收桶的動作變更資料夾狀態。"
+
+msgid ""
+"The name of the record that the file is attached to, when you may read it."
+msgstr "檔案所附加的紀錄名稱（您有權讀取該紀錄時才會顯示）。"
+
+msgid "Locked"
+msgstr "已鎖定"
+
+msgid "Unlocked"
+msgstr "已解除鎖定"
+
+msgid "Duplicated"
+msgstr "已建立副本"
+
+msgid "Version added"
+msgstr "已新增版本"
+
+msgid "Version restored"
+msgstr "已還原版本"
+
+msgid "Version deleted"
+msgstr "已刪除版本"
+
+msgid "File requested"
+msgstr "已索取檔案"
+
+msgid "Request fulfilled"
+msgstr "已完成索取"
+
+msgid "Access expired"
+msgstr "存取權已到期"
+
+msgid "Filed automatically"
+msgstr "已自動歸檔"
+
+msgid "Received by email"
+msgstr "已由電子郵件收到"
+
+msgid "PDF split"
+msgstr "已分割 PDF"
+
+msgid "PDF merged"
+msgstr "已合併 PDF"
+
+msgid "1-3, 4, 5-8"
+msgstr "1-3, 4, 5-8"
+
+msgid ""
+"<div>\n"
+"          <p>A file is requested from you: <strong><t t-out=\"object.name\"/></strong></p>\n"
+"          <p t-if=\"object.request_deadline\">Due date: <t t-out=\"format_date(object.request_deadline)\"/></p>\n"
+"          <p t-if=\"object.request_note\"><t t-out=\"object.request_note\"/></p>\n"
+"          <p>Sign in to send the file:</p>\n"
+"          <p><a t-att-href=\"ctx.get('woow_notice_url')\"><t t-out=\"ctx.get('woow_notice_url')\"/></a></p>\n"
+"        </div>\n"
+"      "
+msgstr ""
+"<div>\n"
+"          <p>有人向您索取檔案：<strong><t t-out=\"object.name\"/></strong></p>\n"
+"          <p t-if=\"object.request_deadline\">期限：<t t-out=\"format_date(object.request_deadline)\"/></p>\n"
+"          <p t-if=\"object.request_note\"><t t-out=\"object.request_note\"/></p>\n"
+"          <p>請登入後上傳檔案：</p>\n"
+"          <p><a t-att-href=\"ctx.get('woow_notice_url')\"><t t-out=\"ctx.get('woow_notice_url')\"/></a></p>\n"
+"        </div>\n"
+"      "
+
+msgid "<span class=\"px-1\">@</span>"
+msgstr "<span class=\"px-1\">@</span>"
+
+msgid ""
+"A Python dictionary that will be evaluated to provide default values when "
+"creating new records for this alias."
+msgstr "一個 Python 字典，用這個收信地址建立新紀錄時，會計算它來提供預設值。"
+
+msgid "Alias"
+msgstr "收信地址"
+
+msgid "Alias Contact Security"
+msgstr "收信地址的寄件人限制"
+
+msgid "Alias Domain"
+msgstr "收信網域"
+
+msgid "Alias Domain Name"
+msgstr "收信網域名稱"
+
+msgid "Alias Email"
+msgstr "收信電子郵件地址"
+
+msgid "Alias Name"
+msgstr "收信地址名稱"
+
+msgid "Alias Status"
+msgstr "收信地址狀態"
+
+msgid "Alias status assessed on the last message received."
+msgstr "依最後一封收到的郵件判斷的收信地址狀態。"
+
+msgid "Aliased Model"
+msgstr "收信對應的模型"
+
+msgid "Custom Bounced Message"
+msgstr "自訂退信訊息"
+
+msgid "Default Values"
+msgstr "預設值"
+
+msgid "Email domain e.g. 'example.com' in 'odoo@example.com'"
+msgstr "電子郵件網域，例如 'odoo@example.com' 中的 'example.com'"
+
+msgid ""
+"Everyone who can open the target folder will see the filed files, even if they cannot\n"
+"            open the record that a file came from."
+msgstr ""
+"凡是能開啟目標資料夾的人，都會看到歸檔的檔案，\n"
+"            即使他們無法開啟檔案原本所在的紀錄。"
+
+msgid "Favorite"
+msgstr "我的最愛"
+
+msgid ""
+"ID of the parent record holding the alias (example: project holding the task"
+" creation alias)"
+msgstr "持有這個收信地址的上層紀錄 ID（例如：持有「建立任務」收信地址的專案）"
+
+msgid ""
+"If set, this content will automatically be sent out to unauthorized users "
+"instead of the default message."
+msgstr "設定後，會改用這段內容自動回覆未獲授權的寄件人，取代預設訊息。"
+
+msgid "Local-part based incoming detection"
+msgstr "依地址本地部分判斷來信"
+
+msgid "Model"
+msgstr "模型"
+
+msgid "Model of the kind of record"
+msgstr "紀錄類型的模型"
+
+msgid ""
+"Only the followers of this mailbox can send files to it. Add the colleagues who may send\n"
+"            as followers below. A file is stored only if its sender has at least upload access to the\n"
+"            folder when the mail arrives; the mail text is not kept."
+msgstr ""
+"只有這個信箱的追蹤者可以寄檔案進來。請把可以寄送的同事\n"
+"            加為下方的追蹤者。郵件到達時，寄件人必須至少有該資料夾的上傳權限，\n"
+"            檔案才會存入；郵件內文不會保存。"
+
+msgid ""
+"Optional ID of a thread (record) to which all incoming messages will be "
+"attached, even if they did not reply to it. If set, this will disable the "
+"creation of new records completely."
+msgstr "選填。所有來信都會附加到這個討論串（紀錄）的 ID，即使來信不是回覆它。設定後就完全不會建立新紀錄。"
+
+msgid "Parent Model"
+msgstr "上層模型"
+
+msgid "Parent Record Thread ID"
+msgstr "上層紀錄討論串 ID"
+
+msgid ""
+"Parent model holding the alias. The model holding the alias reference is not"
+" necessarily the model given by alias_model_id (example: project "
+"(parent_model) and task (model))"
+msgstr ""
+"持有這個收信地址的上層模型。持有收信地址參照的模型，不一定是 alias_model_id "
+"指定的模型（例如：專案（parent_model）與任務（model））"
+
+msgid ""
+"Policy to post a message on the document using the mailgateway.\n"
+"- everyone: everyone can post\n"
+"- partners: only authenticated partners\n"
+"- followers: only followers of the related document or members of following channels\n"
+msgstr ""
+"透過郵件閘道在紀錄上張貼訊息的規則：\n"
+"- everyone：任何人都可以張貼\n"
+"- partners：只有通過驗證的聯絡人\n"
+"- followers：只有相關紀錄的追蹤者，或追蹤中頻道的成員\n"
+
+msgid "Record Thread ID"
+msgstr "紀錄討論串 ID"
+
+msgid ""
+"The model (Odoo Document Kind) to which this alias corresponds. Any incoming"
+" email that does not reply to an existing record will cause the creation of "
+"a new record of this model (e.g. a Project Task)"
+msgstr "這個收信地址對應的模型（Odoo 文件類型）。凡是不是回覆既有紀錄的來信，都會建立一筆這個模型的新紀錄（例如專案任務）"
+
+msgid ""
+"The name of the email alias, e.g. 'jobs' if you want to catch emails for "
+"<jobs@example.odoo.com>"
+msgstr "收信地址的名稱，例如要接收寄給 <jobs@example.odoo.com> 的郵件時填 'jobs'"
+
+msgid ""
+"This looks at the next batch of attachments of the kind of record named by the rule that\n"
+"          are not filed yet, and files them in the target folder. You can run it again until\n"
+"          nothing is left to look at. A file whose record is of another company, is gone, or cannot be\n"
+"          read by you is left out, and so is a file that was imported by hand before. A document that\n"
+"          was deleted for good is filed again by a later pass."
+msgstr ""
+"這會檢查規則所指紀錄類型中，下一批尚未歸檔的附件，\n"
+"          並把它們歸檔到目標資料夾。可以重複執行，直到沒有剩下可檢查的附件。\n"
+"          紀錄屬於其他公司、已不存在或您無法讀取的檔案會被略過，\n"
+"          之前手動匯入過的檔案也會略過。被永久刪除的文件，之後的執行會再次歸檔。"
+
+msgid "Wizard"
+msgstr "精靈"
+
+msgid "Woow Locked By Other"
+msgstr "由他人鎖定"
+
+msgid "merged.pdf"
+msgstr "merged.pdf"
+
+msgid "Wizard rows that name records of the module"
+msgstr "指向本模組紀錄的精靈資料列"

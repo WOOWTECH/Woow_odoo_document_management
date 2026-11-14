@@ -4,10 +4,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Woow Document Management 18.0.1.1.0\n"
+"Project-Id-Version: Woow Document Management 18.0.2.0.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-08 00:59+0000\n"
-"PO-Revision-Date: 2026-11-08 01:03+0000\n"
+"POT-Creation-Date: 2026-11-14 18:46+0000\n"
+"PO-Revision-Date: 2026-11-14 18:46+0000\n"
 "Last-Translator: \n"
 "Language-Team: WoowTech\n"
 "Language: zh_TW\n"
@@ -18,21 +18,102 @@ msgstr ""
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "%(added)s added."
+msgstr "已加入 %(added)s 個。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "%(added)s added; %(refused)s refused. %(names)s"
+msgstr "已加入 %(added)s 個；拒絕 %(refused)s 個。%(names)s"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
 msgid "%(added)s added; %(rejected)s rejected. %(reasons)s"
 msgstr "已加入 %(added)s 個；拒絕 %(rejected)s 個。%(reasons)s"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_split_wizard.py:0
+msgid "%(count)s documents were made from the PDF file."
+msgstr "已從 PDF 檔案產生 %(count)s 份文件。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/cron_jobs.py:0
-msgid "%(count)s items have stayed in the trash for more than %(days)s days after their retention period and could not be deleted. Check the trash for items under legal hold or with an error."
-msgstr "有 %(count)s 個項目在保留期間結束後已在回收桶超過 %(days)s 天，仍無法刪除。請檢查回收桶中是否有受法律保留或發生錯誤的項目。"
+msgid ""
+"%(count)s items have stayed in the trash for more than %(days)s days after "
+"their retention period and could not be deleted. Check the trash for items "
+"under legal hold or with an error."
+msgstr ""
+"有 %(count)s 個項目在保留期間結束後已在回收桶超過 %(days)s 天，仍無法刪除。請檢查回收桶中是否有受法律保留或發生錯誤的項目。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_merge_wizard.py:0
+msgid "%(count)s of the originals were moved to the trash."
+msgstr "已有 %(count)s 個原檔移到回收桶。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.js:0
+msgid "%(ok)s of %(total)s files uploaded"
+msgstr "已上傳 %(ok)s／%(total)s 個檔案"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.js:0
+msgid "%s files here"
+msgstr "此處 %s 個檔案"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.js:0
+msgid "%s files uploaded"
+msgstr "已上傳 %s 個檔案"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.js:0
+msgid "%s selected"
+msgstr "已選取 %s 項"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "(copy)"
+msgstr "(複本)"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "(unnamed file)"
+msgstr "（未命名的檔案）"
 
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid ".%(ext)s files aren't accepted here."
 msgstr "此處不接受 .%(ext)s 檔案。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.js:0
+msgid "1 file here"
+msgstr "此處 1 個檔案"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_split_wizard_form
+msgid "1-3, 4, 5-8"
+msgstr "1-3, 4, 5-8"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "; and %(count)s more"
+msgstr "；另有 %(count)s 個"
 
 #. module: woow_document_management
 #: model:mail.template,body_html:woow_document_management.mail_template_woow_document_member_notice
@@ -52,15 +133,70 @@ msgstr ""
 "      "
 
 #. module: woow_document_management
+#: model:mail.template,body_html:woow_document_management.mail_template_woow_document_request_reminder
+msgid ""
+"<div>\n"
+"          <p>A file is requested from you: <strong><t t-out=\"object.name\"/></strong></p>\n"
+"          <p t-if=\"object.request_deadline\">Due date: <t t-out=\"format_date(object.request_deadline)\"/></p>\n"
+"          <p t-if=\"object.request_note\"><t t-out=\"object.request_note\"/></p>\n"
+"          <p>Sign in to send the file:</p>\n"
+"          <p><a t-att-href=\"ctx.get('woow_notice_url')\"><t t-out=\"ctx.get('woow_notice_url')\"/></a></p>\n"
+"        </div>\n"
+"      "
+msgstr ""
+"<div>\n"
+"          <p>有人向您索取檔案：<strong><t t-out=\"object.name\"/></strong></p>\n"
+"          <p t-if=\"object.request_deadline\">期限：<t t-out=\"format_date(object.request_deadline)\"/></p>\n"
+"          <p t-if=\"object.request_note\"><t t-out=\"object.request_note\"/></p>\n"
+"          <p>請登入後上傳檔案：</p>\n"
+"          <p><a t-att-href=\"ctx.get('woow_notice_url')\"><t t-out=\"ctx.get('woow_notice_url')\"/></a></p>\n"
+"        </div>\n"
+"      "
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_mail_intake_form
+msgid "<span class=\"px-1\">@</span>"
+msgstr "<span class=\"px-1\">@</span>"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
 msgid "<span> / </span>"
 msgstr "<span> / </span>"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_pdf_merge_line
+msgid "A PDF document in the order of a merge"
+msgstr "合併順序中的 PDF 文件"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "A PDF file with more than %(limit)s pages cannot be used."
+msgstr "無法使用超過 %(limit)s 頁的 PDF 檔案。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_defaults
+msgid ""
+"A Python dictionary that will be evaluated to provide default values when "
+"creating new records for this alias."
+msgstr "一個 Python 字典，用這個收信地址建立新紀錄時，會計算它來提供預設值。"
 
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/trash_actions.py:0
 msgid "A document administrator must trash this folder."
 msgstr "只有文件管理員可以將此資料夾移到回收桶。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+msgid "A document cannot be shared with more than %(count)s people."
+msgstr "一份文件最多只能分享給 %(count)s 人。"
+
+#. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_version_woow_document_version_number_uniq
+msgid "A document cannot have two versions with the same number."
+msgstr "同一份文件不能有兩個編號相同的版本。"
 
 #. module: woow_document_management
 #: model:mail.template,subject:woow_document_management.mail_template_woow_document_member_notice
@@ -70,14 +206,34 @@ msgstr "有人與您分享了一個文件資料夾"
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
+#: code:addons/woow_document_management/models/shortcuts.py:0
 msgid "A document on legal hold cannot be deleted."
 msgstr "設有法律保留的文件無法刪除。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/sharing.py:0
+#: code:addons/woow_document_management/wizards/restore_wizard.py:0
+msgid ""
+"A document that is only shared with you can be edited, not moved or given to"
+" someone else."
+msgstr "只分享給您的文件可以編輯，但不能移動或轉給他人。"
 
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "A file cannot also be a link."
 msgstr "檔案不能同時是連結。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_requests
+msgid "A file is requested here. Asked of:"
+msgstr "此處正在索取檔案。對象："
+
+#. module: woow_document_management
+#: model:mail.template,subject:woow_document_management.mail_template_woow_document_request_reminder
+msgid "A file is still requested from you"
+msgstr "仍有檔案在向您索取"
 
 #. module: woow_document_management
 #. odoo-python
@@ -99,9 +255,20 @@ msgstr "請輸入資料夾名稱。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "A folder under legal hold cannot be deleted."
+msgstr "受法律保留的資料夾不能刪除。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "A link cannot also contain a file."
 msgstr "連結不能同時包含檔案。"
+
+#. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_mail_intake_alias_unique
+msgid "A mailbox has an alias of its own."
+msgstr "每個信箱都有自己專屬的別名。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -112,9 +279,79 @@ msgstr "成員的權限不能高於其在上層資料夾的權限。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/wizards/docactions_wizard.py:0
+msgid "A name is required."
+msgstr "請輸入名稱。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "A page is outside the file, which has %(pages)s pages."
+msgstr "有頁碼超出檔案範圍，此檔案共有 %(pages)s 頁。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "A password protected PDF file cannot be used."
+msgstr "無法使用有密碼保護的 PDF 檔案。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__woow_section
+msgid "A quick filter of the workspace; it is only used to search."
+msgstr "工作區的快速篩選，只用於搜尋。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "A reminder was sent recently. Try again later."
+msgstr "不久前已寄出提醒，請稍後再試。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/wizards/notify_wizard.py:0
 msgid "A selected member is no longer authorized."
 msgstr "選取的成員已無存取權限。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "A shortcut can only point to a file or a link."
+msgstr "捷徑只能指向檔案或連結。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "A shortcut cannot be duplicated."
+msgstr "捷徑無法複製。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "A shortcut has no content of its own."
+msgstr "捷徑本身沒有內容。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "A shortcut is created with the shortcut wizard."
+msgstr "捷徑須透過建立捷徑精靈建立。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "A shortcut must be in the same company as its target."
+msgstr "捷徑必須與其目標屬於同一間公司。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "A shortcut points to a file or a link."
+msgstr "捷徑必須指向一個檔案或連結。"
+
+#. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_shortcut_target_consistent
+msgid "A shortcut points to one document, and only a shortcut has a target."
+msgstr "捷徑只指向一份文件，而且只有捷徑才有目標。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -123,9 +360,27 @@ msgid "A source can only be set by the attachment wizard."
 msgstr "來源只能由附件精靈設定。"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/autofile.py:0
+#: code:addons/woow_document_management/models/mailin.py:0
+msgid "A tag of another company cannot be used here."
+msgstr "這裡不能使用其他公司的標籤。"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__access_ids
 msgid "Access"
 msgstr "存取權限"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__expiry_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__expiry_date
+msgid "Access ends"
+msgstr "存取結束日"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__access_expire
+msgid "Access expired"
+msgstr "存取權已到期"
 
 #. module: woow_document_management
 #: model:ir.module.category,description:woow_document_management.module_category_woow_document
@@ -140,12 +395,27 @@ msgstr "存取權限、稽核與保留期限"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_needaction
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_needaction
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_needaction
 msgid "Action Needed"
 msgstr "需要處理"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
+msgid "Actions"
+msgstr "動作"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/autofile_wizard.py:0
+msgid "Activate the filing rule first."
+msgstr "請先啟用這條歸檔規則。"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__active
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__active
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__active
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__active
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__active
 msgid "Active"
 msgstr "使用中"
@@ -185,6 +455,18 @@ msgid "Add"
 msgstr "加入"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Add a tag"
+msgstr "新增標籤"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "Add at least one file."
+msgstr "請至少加入一個檔案。"
+
+#. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_add_attachment_wizard
 msgid "Add attachments to a folder"
 msgstr "將附件加入資料夾"
@@ -196,14 +478,76 @@ msgid "Add to Documents"
 msgstr "加入文件管理"
 
 #. module: woow_document_management
+#: model_terms:ir.actions.act_window,help:woow_document_management.action_woow_document_workspace
+msgid "Add your first document"
+msgstr "加入您的第一份文件"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_mail_intake_form
+msgid "Address"
+msgstr "位址"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_id
+msgid "Alias"
+msgstr "收信地址"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_contact
+msgid "Alias Contact Security"
+msgstr "收信地址的寄件人限制"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_domain_id
+msgid "Alias Domain"
+msgstr "收信網域"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_domain
+msgid "Alias Domain Name"
+msgstr "收信網域名稱"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_full_name
+msgid "Alias Email"
+msgstr "收信電子郵件地址"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_name
+msgid "Alias Name"
+msgstr "收信地址名稱"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_status
+msgid "Alias Status"
+msgstr "收信地址狀態"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_status
+msgid "Alias status assessed on the last message received."
+msgstr "依最後一封收到的郵件判斷的收信地址狀態。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_model_id
+msgid "Aliased Model"
+msgstr "收信對應的模型"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__all_members
 msgid "All Members"
 msgstr "所有成員"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__woow_all_users_level
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_tag_create_policy__users
 msgid "All document users"
 msgstr "所有文件使用者"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.js:0
+msgid "All folders"
+msgstr "所有資料夾"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -217,11 +561,81 @@ msgstr "允許文件使用者建立最上層資料夾"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+msgid "Another change to this document is in progress. Try again."
+msgstr "這份文件正在進行另一項變更，請稍後再試。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/document_folder.py:0
 msgid ""
 "Another folder in this location already uses this name. Pick a different "
 "name."
 msgstr "這一層已經有同名的資料夾，請換一個名稱。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "Another user has locked this file."
+msgstr "其他使用者已鎖定此檔案。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_auto_rule_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_auto_rule_search
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_mail_intake_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_mail_intake_search
+msgid "Archived"
+msgstr "已封存"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__request_user_id
+msgid "Ask"
+msgstr "索取對象"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "Ask a colleague, not yourself."
+msgstr "請向同事索取，不能向自己索取。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_request_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form_requests
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_request_wizard_form
+msgid "Ask for a file"
+msgstr "索取檔案"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_request_wizard
+msgid "Ask someone for a file"
+msgstr "向他人索取檔案"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__request_user_id
+msgid "Asked of"
+msgstr "索取對象"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_search_requests
+msgid "Asked of me"
+msgstr "向我索取"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "At most %(limit)s documents can be made at once."
+msgstr "一次最多可產生 %(limit)s 份文件。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/pdftools.py:0
+#: code:addons/woow_document_management/wizards/pdftools_merge_wizard.py:0
+msgid "At most %(most)s PDF files can be merged at once."
+msgstr "一次最多只能合併 %(most)s 個 PDF 檔案。"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_ir_attachment
@@ -233,6 +647,7 @@ msgstr "附件"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_attachment_count
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_attachment_count
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_attachment_count
 msgid "Attachment Count"
 msgstr "附件數量"
 
@@ -279,6 +694,11 @@ msgid "Backend"
 msgstr "後台"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__backfill_cursor
+msgid "Backfill Cursor"
+msgstr "補歸檔位置"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_home_woow_docs
 msgid "Browse folders and files shared with you"
 msgstr "瀏覽與您分享的資料夾和檔案"
@@ -289,18 +709,47 @@ msgid "Business records"
 msgstr "業務單據"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Came from"
+msgstr "來源"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__woow_can_manage
+msgid "Can change the document"
+msgstr "可修改文件"
+
+#. module: woow_document_management
 #: model:res.groups,comment:woow_document_management.group_woow_document_attachment_overview
 msgid "Can open the overview of attachments stored on other records."
 msgstr "可以檢視其他紀錄上的附件總覽。"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__can_trash
+msgid "Can trash the original"
+msgstr "可將原檔移到回收桶"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_add_attachment_wizard
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_move_wizard_form
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_notify_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_merge_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_split_wizard_form
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_purge_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_rename_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_request_fulfil_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_request_wizard_form
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_restore_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_shortcut_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_upload_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_wizard_form
 msgid "Cancel"
 msgstr "取消"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_requests
+msgid "Cancel request"
+msgstr "取消索取"
 
 #. module: woow_document_management
 #. odoo-python
@@ -338,6 +787,11 @@ msgid "Channel"
 msgstr "管道"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__checksum
+msgid "Checksum"
+msgstr "檢核碼"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__checksum
 msgid "Checksum/SHA1"
 msgstr "檢查碼／SHA1"
@@ -350,15 +804,48 @@ msgstr "子項目"
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/folder_access.py:0
+#: code:addons/woow_document_management/models/share.py:0
 msgid "Choose a contact with an active portal account."
 msgstr "請選擇具有有效入口網站帳號的聯絡人。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/autofile.py:0
+msgid "Choose a document user who may upload to the target folder."
+msgstr "請選擇可以上傳到目標資料夾的文件使用者。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
 #: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/folder_access.py:0
+#: code:addons/woow_document_management/models/share.py:0
 msgid "Choose a document user."
 msgstr "請選擇文件使用者。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/requests_wizard.py:0
+msgid "Choose a file."
+msgstr "請選擇檔案。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
+msgid "Choose a folder in the left panel, then drop the files again."
+msgstr "請先在左側面板選擇資料夾，再拖放檔案。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/autofile.py:0
+msgid "Choose a kind of record from another app."
+msgstr "請選擇其他模組的紀錄種類。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/autofile.py:0
+msgid "Choose a kind of record that you may read."
+msgstr "請選擇您有權讀取的紀錄種類。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -368,10 +855,23 @@ msgstr "請選擇可用的公司。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+msgid "Choose an available document."
+msgstr "請選擇可用的文件。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/folder_access.py:0
 #: code:addons/woow_document_management/wizards/restore_wizard.py:0
 msgid "Choose an available folder."
 msgstr "請選擇可用的資料夾。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+msgid "Choose an available person."
+msgstr "請選擇可用的對象。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -380,9 +880,61 @@ msgid "Choose an internal group."
 msgstr "請選擇內部群組。"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_merge_wizard.py:0
+msgid "Choose between %(least)s and %(most)s PDF files to merge."
+msgstr "請選擇 %(least)s 到 %(most)s 個要合併的 PDF 檔案。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "Choose between 1 and %(max)s days."
+msgstr "請選擇 1 到 %(max)s 天。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_split_wizard.py:0
+msgid "Choose how to split the file."
+msgstr "請選擇檔案的分割方式。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/sharing.py:0
+msgid "Choose no access, view, upload or edit."
+msgstr "請選擇無存取權限、檢視、上傳或編輯。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/docactions_wizard.py:0
+msgid "Choose one document or one folder to rename."
+msgstr "請選擇一份文件或一個資料夾來重新命名。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "Choose the person who is asked."
+msgstr "請選擇索取對象。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
+msgid "Clear the selection"
+msgstr "取消選取"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Client IP header"
 msgstr "用戶端 IP 標頭"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_autofile_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_dialog
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_folder_share_dialog
+msgid "Close"
+msgstr "關閉"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__cf-connecting-ip
@@ -396,11 +948,18 @@ msgid "Color"
 msgstr "顏色"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__company_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__company_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__company_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__company_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__company_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__company_id
 msgid "Company"
 msgstr "公司"
 
@@ -442,30 +1001,92 @@ msgid "Confirm permanent deletion of the selected items."
 msgstr "確認永久刪除所選項目。"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
+msgid "Contact"
+msgstr "聯絡人"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "Copies"
+msgstr "複本"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+#: model:ir.model,name:woow_document_management.model_woow_document_shortcut_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_shortcut_wizard_form
+msgid "Create a shortcut"
+msgstr "建立捷徑"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_shortcut
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_shortcut_wizard_form
+msgid "Create shortcut"
+msgstr "建立捷徑"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_shortcut_wizard__create_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__create_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__create_uid
 msgid "Created by"
 msgstr "建立者"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_shortcut_wizard__create_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__create_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__create_date
 msgid "Created on"
 msgstr "建立時間"
 
@@ -475,9 +1096,30 @@ msgid "Cron"
 msgstr "排程"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_bounced_content
+msgid "Custom Bounced Message"
+msgstr "自訂退信訊息"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__datas
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__datas
 msgid "Datas"
 msgstr "檔案資料"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__days
+msgid "Days until due"
+msgstr "幾天內到期"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_defaults
+msgid "Default Values"
+msgstr "預設值"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_list
+msgid "Delete"
+msgstr "刪除"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_purge_wizard
@@ -485,6 +1127,11 @@ msgstr "檔案資料"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_trash_document_list
 msgid "Delete permanently"
 msgstr "永久刪除"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_list
+msgid "Delete this version? Its file is removed for good."
+msgstr "要刪除此版本嗎？它的檔案會被永久移除。"
 
 #. module: woow_document_management
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_trash_documents
@@ -504,21 +1151,54 @@ msgid "Description"
 msgstr "說明"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_shortcut_wizard__folder_id
+msgid "Destination folder"
+msgstr "目的資料夾"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__detail
 msgid "Detail"
 msgstr "詳細資訊"
 
 #. module: woow_document_management
+#. odoo-javascript
+#. odoo-python
+#: code:addons/woow_document_management/models/inspector.py:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_kanban.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_list.xml:0
+#: model:ir.actions.client,name:woow_document_management.action_woow_document_inspector
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_inspector
+msgid "Details"
+msgstr "詳細資料"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_shortcut_wizard__display_name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__display_name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__display_name
 msgid "Display Name"
 msgstr "顯示名稱"
 
@@ -526,11 +1206,19 @@ msgstr "顯示名稱"
 #. odoo-python
 #: code:addons/woow_document_management/controllers/streaming.py:0
 #: model:ir.model,name:woow_document_management.model_woow_document
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__document_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__document_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__document_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__document_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__document_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__document_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__document_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_shortcut_wizard__document_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__document_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__document_id
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form
 msgid "Document"
 msgstr "文件"
@@ -583,6 +1271,11 @@ msgid "Document audit log"
 msgstr "文件稽核紀錄"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_favorite
+msgid "Document favourite"
+msgstr "文件我的最愛"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/ir_attachment.py:0
 msgid "Document field attachments cannot be reassigned."
@@ -593,6 +1286,11 @@ msgstr "不能重新指定文件欄位附件。"
 #: code:addons/woow_document_management/models/ir_attachment.py:0
 msgid "Document file attachments cannot be changed directly."
 msgstr "不能直接變更文件檔案附件。"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_auto_rule
+msgid "Document filing rule"
+msgstr "文件歸檔規則"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_folder
@@ -625,6 +1323,11 @@ msgid "Document settings"
 msgstr "文件設定"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_share
+msgid "Document share"
+msgstr "文件分享"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/quota.py:0
 msgid "Document storage capacity warning"
@@ -648,8 +1351,8 @@ msgstr "本站文件儲存空間已使用 %(pct)s%%，因此無法新增檔案�
 #. odoo-python
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid ""
-"Document storage on this site is full, so new files can't be added. Ask "
-"your administrator to free up space or raise the limit."
+"Document storage on this site is full, so new files can't be added. Ask your"
+" administrator to free up space or raise the limit."
 msgstr "本站文件儲存空間已滿，因此無法新增檔案。請管理員釋放空間或提高配額。"
 
 #. module: woow_document_management
@@ -673,13 +1376,28 @@ msgid "Document upload policy"
 msgstr "文件上傳政策"
 
 #. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__subject_type__user
+msgid "Document user"
+msgstr "文件使用者"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_version
+msgid "Document version"
+msgstr "文件版本"
+
+#. module: woow_document_management
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_document
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_workspace
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_document
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_root
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_home_woow_docs
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_activity
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
 msgid "Documents"
 msgstr "文件"
 
@@ -705,12 +1423,21 @@ msgid "Documents: Clear expired audit logs"
 msgstr "文件：清除過期稽核紀錄"
 
 #. module: woow_document_management
+#: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_expire_access_ir_actions_server
+msgid "Documents: End expired access"
+msgstr "文件：結束已到期的存取"
+
+#. module: woow_document_management
 #: model:ir.actions.server,name:woow_document_management.ir_cron_woow_document_purge_trash_ir_actions_server
 msgid "Documents: Purge old trash"
 msgstr "文件：清理舊回收桶項目"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_file
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_list
 msgid "Download"
 msgstr "下載"
 
@@ -730,15 +1457,62 @@ msgid "Downloaded as ZIP"
 msgstr "以 ZIP 下載"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
+msgid "Drop at most %s files at a time."
+msgstr "一次最多只能拖放 %s 個檔案。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_kanban.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_list.xml:0
+msgid "Drop the files to upload them to this folder"
+msgstr "放開滑鼠，即可把檔案上傳到此資料夾"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Due"
+msgstr "到期日："
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__request_deadline
+msgid "Due date"
+msgstr "到期日"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_requests
+msgid "Due:"
+msgstr "到期："
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_lock
+msgid "Duplicate"
+msgstr "建立複本"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__duplicate
+msgid "Duplicated"
+msgstr "已建立副本"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/guard_mixin.py:0
 msgid "Duplicating this record is not supported."
 msgstr "不支援複製此紀錄。"
 
 #. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder__woow_all_users_level__edit
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__edit
 msgid "Edit"
 msgstr "編輯"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__role__editor
+msgid "Editor"
+msgstr "編輯者"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__eff_edit_group_ids
@@ -796,14 +1570,38 @@ msgid "Effective Access Lines"
 msgstr "有效存取權限明細"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_email
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_mail_intake_form
+msgid "Email Alias"
+msgstr "電子郵件別名"
+
+#. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_mail_thread
 msgid "Email Thread"
 msgstr "電子郵件討論串"
 
 #. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_domain
+msgid "Email domain e.g. 'example.com' in 'odoo@example.com'"
+msgstr "電子郵件網域，例如 'odoo@example.com' 中的 'example.com'"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "Enter what you need."
+msgstr "請輸入需要的檔案名稱。"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__event
 msgid "Event"
 msgstr "事件"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_split_wizard_form
+msgid ""
+"Every part becomes a new document in the same folder, with the tags of the "
+"original. The original is kept unless you choose to move it to the trash."
+msgstr "每個部分都會成為同一資料夾中的新文件，並帶有原檔的標籤。除非您選擇移到回收桶，否則原檔會保留。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -812,20 +1610,88 @@ msgid "Every selected member needs an email address."
 msgstr "每位選取的成員都必須有電子郵件地址。"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_auto_rule_form
+msgid ""
+"Everyone who can open the target folder will see the filed files, even if they cannot\n"
+"            open the record that a file came from."
+msgstr ""
+"凡是能開啟目標資料夾的人，都會看到歸檔的檔案，\n"
+"            即使他們無法開啟檔案原本所在的紀錄。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_list.js:0
+msgid "Export"
+msgstr "匯出"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__favorite_ids
+msgid "Favorite"
+msgstr "我的最愛"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/favorite.py:0
+msgid "Favourites cannot be edited."
+msgstr "我的最愛不能編輯。"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_server_fields_mixin
+msgid "Fields that only the server sets"
+msgstr "只能由伺服器設定的欄位"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__file
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__datas
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__document_type__binary
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_upload_wizard
 msgid "File"
 msgstr "檔案"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__file_size
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__file_size
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__file_size
 msgid "File Size"
 msgstr "檔案大小"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_autofile_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_auto_rule_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_autofile_wizard_form
+msgid "File existing attachments"
+msgstr "歸檔現有附件"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban
+msgid "File kind"
+msgstr "檔案種類"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__woow_icon
+msgid "File kind icon"
+msgstr "檔案種類圖示"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
+#: code:addons/woow_document_management/models/requests.py:0
+#: code:addons/woow_document_management/models/shortcuts.py:0
 msgid "File metadata is set by the server."
 msgstr "檔案中繼資料由伺服器設定。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__filename
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__name
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_upload_wizard
+msgid "File name"
+msgstr "檔案名稱"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_upload_wizard_line
+msgid "File of an upload"
+msgstr "上傳的檔案"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__replace
@@ -833,13 +1699,53 @@ msgid "File replaced"
 msgstr "已取代檔案"
 
 #. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__request_create
+msgid "File requested"
+msgstr "已索取檔案"
+
+#. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_ir_binary
 msgid "File streaming helper model for controllers"
 msgstr "控制器檔案串流輔助模型"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__filed
+msgid "Filed"
+msgstr "已歸檔"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__auto_file
+msgid "Filed automatically"
+msgstr "已自動歸檔"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_filed_document_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__filed_count
+msgid "Filed documents"
+msgstr "歸檔的文件"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__filename
+msgid "Filename"
+msgstr "檔名"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__line_ids
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_upload_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
+msgid "Files"
+msgstr "檔案"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_auto_rule__kind_model
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_auto_rule__model_id
+msgid "Files attached to records of this kind are also filed as documents."
+msgstr "附加在這種紀錄上的檔案，也會歸檔成文件。"
+
+#. module: woow_document_management
 #: model:ir.model.constraint,message:woow_document_management.constraint_ir_attachment_woow_module_rows_closed
-msgid "Files of documents and folders cannot be public or carry an access token."
+msgid ""
+"Files of documents and folders cannot be public or carry an access token."
 msgstr "文件與資料夾的檔案不能公開，也不能帶有存取權杖。"
 
 #. module: woow_document_management
@@ -853,21 +1759,60 @@ msgid "Files shared with me"
 msgstr "與我分享的檔案"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__auto_rule_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__rule_id
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_auto_rule_form
+msgid "Filing rule"
+msgstr "歸檔規則"
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_auto_rule
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_auto_rule
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_auto_rule_list
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_auto_rule_search
+msgid "Filing rules"
+msgstr "歸檔規則"
+
+#. module: woow_document_management
+#. odoo-javascript
 #. odoo-python
 #: code:addons/woow_document_management/controllers/streaming.py:0
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__folder_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__folder_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__folder_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__folder_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__folder_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__folder_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__folder_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__folder_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__folder_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__folder_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__folder_id
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
 msgid "Folder"
 msgstr "資料夾"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_mail_intake
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_mail_intake_form
+msgid "Folder mailbox"
+msgstr "資料夾信箱"
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_mail_intake
+#: model:ir.ui.menu,name:woow_document_management.menu_woow_document_mail_intake
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_mail_intake_list
+msgid "Folder mailboxes"
+msgstr "資料夾信箱"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
 msgid "Folder path"
 msgstr "資料夾路徑"
@@ -879,20 +1824,31 @@ msgid "Folder unavailable."
 msgstr "資料夾無法使用。"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_folder
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_folder
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
 msgid "Folders"
 msgstr "資料夾"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
+msgid "Folders cannot be dropped; drop the files they hold."
+msgstr "無法拖放資料夾；請改為拖放其中的檔案。"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_follower_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_follower_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_follower_ids
 msgid "Followers"
 msgstr "追蹤者"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_partner_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_partner_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_partner_ids
 msgid "Followers (Partners)"
 msgstr "追蹤者（聯絡人）"
 
@@ -903,9 +1859,20 @@ msgid "Font awesome icon e.g. fa-tasks"
 msgstr "Font Awesome 圖示，例如 fa-tasks"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_request_wizard_form
+msgid "For example: signed contract"
+msgstr "例如：簽署後的合約"
+
+#. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__x-forwarded-for
 msgid "Forwarded chain"
 msgstr "轉送鏈"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_merge_wizard.py:0
+msgid "Give the merged file a name."
+msgstr "請為合併後的檔案命名。"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__group_id
@@ -915,12 +1882,14 @@ msgstr "群組"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
 msgid "Group by"
 msgstr "分組依據"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__has_message
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__has_message
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__has_message
 msgid "Has Message"
 msgstr "有訊息"
 
@@ -930,13 +1899,17 @@ msgid "Has Restricted Descendant"
 msgstr "有受限制的下層項目"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban_wsui
+msgid "Has earlier versions"
+msgstr "有較早的版本"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid ""
 "Header in which the trusted proxy names the client address. The proxy must "
 "set it on every request and drop any value the client sent; the address "
 "appears in the audit log."
-msgstr ""
-"受信任的代理伺服器用來標示用戶端位址的標頭。代理伺服器必須在每個請求都設定它，並丟棄用戶端自行送來的值；這個位址會記在稽核紀錄中。"
+msgstr "受信任的代理伺服器用來標示用戶端位址的標頭。代理伺服器必須在每個請求都設定它，並丟棄用戶端自行送來的值；這個位址會記在稽核紀錄中。"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -946,16 +1919,39 @@ msgstr "支援的最高值為 95 MB。"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_shortcut_wizard__id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__id
 msgid "ID"
 msgstr "編號"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_parent_thread_id
+msgid ""
+"ID of the parent record holding the alias (example: project holding the task"
+" creation alias)"
+msgstr "持有這個收信地址的上層紀錄 ID（例如：持有「建立任務」收信地址的專案）"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_exception_icon
@@ -972,6 +1968,7 @@ msgstr "用於指示異常活動的圖示。"
 #. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__message_needaction
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_needaction
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__message_needaction
 msgid "If checked, new messages require your attention."
 msgstr "勾選代表有新訊息需要您留意。"
 
@@ -980,8 +1977,17 @@ msgstr "勾選代表有新訊息需要您留意。"
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__message_has_sms_error
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_has_error
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_has_sms_error
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__message_has_error
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__message_has_sms_error
 msgid "If checked, some messages have a delivery error."
 msgstr "勾選代表有訊息發生傳送錯誤。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_bounced_content
+msgid ""
+"If set, this content will automatically be sent out to unauthorized users "
+"instead of the default message."
+msgstr "設定後，會改用這段內容自動回覆未獲授權的寄件人，取代預設訊息。"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__image_128
@@ -997,6 +2003,12 @@ msgstr "圖片"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__folder_in_trash
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__in_trash
 msgid "In Trash"
+msgstr "在回收桶中"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "In the trash"
 msgstr "在回收桶中"
 
 #. module: woow_document_management
@@ -1025,6 +2037,8 @@ msgstr "文件設定無效：%s"
 #. odoo-python
 #: code:addons/woow_document_management/controllers/streaming.py:0
 #: code:addons/woow_document_management/models/document.py:0
+#: code:addons/woow_document_management/models/shortcuts.py:0
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
 msgid "Invalid number of files."
 msgstr "檔案數量無效。"
 
@@ -1041,6 +2055,7 @@ msgstr "IP 雜湊值"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_is_follower
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_is_follower
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_is_follower
 msgid "Is Follower"
 msgstr "是關注人"
 
@@ -1056,6 +2071,12 @@ msgid "Keyed hash only"
 msgstr "僅保留加密雜湊值"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__kind_model
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_auto_rule_list
+msgid "Kind of record"
+msgstr "紀錄種類"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid "Larger than the %(limit)s MB limit."
@@ -1069,30 +2090,88 @@ msgstr "最近 30 天"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_shortcut_wizard__write_uid
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__write_uid
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__write_uid
 msgid "Last Updated by"
 msgstr "最後更新者"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_add_attachment_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_move_wizard__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_purge_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_restore_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_shortcut_wizard__write_date
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__write_date
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__write_date
 msgid "Last Updated on"
 msgstr "最後更新於"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
+msgid "Last change"
+msgstr "最後變更"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Last change:"
+msgstr "最後變更："
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__request_last_reminder
+msgid "Last reminder"
+msgstr "上次提醒"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__version_last_number
+msgid "Last version number"
+msgstr "最後的版本編號"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__skipped
+msgid "Left out"
+msgstr "已略過"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__legal_hold
@@ -1111,9 +2190,61 @@ msgid "Level"
 msgstr "權限等級"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__document_type__url
 msgid "Link"
 msgstr "連結"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
+msgid "Links"
+msgstr "連結"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_incoming_local
+msgid "Local-part based incoming detection"
+msgstr "依地址本地部分判斷來信"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_lock
+msgid "Lock"
+msgstr "鎖定"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__is_locked
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__lock
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_list_lock
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_search_lock
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban_wsui
+msgid "Locked"
+msgstr "已鎖定"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__lock_uid
+msgid "Locked by"
+msgstr "鎖定者"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_search_lock
+msgid "Locked by me"
+msgstr "我鎖定的"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Locked by you"
+msgstr "已由你鎖定"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__lock_date
+msgid "Locked on"
+msgstr "鎖定時間"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_log_form
@@ -1126,6 +2257,17 @@ msgid "Logs"
 msgstr "紀錄"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__looked
+msgid "Looked at"
+msgstr "已檢查"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_list
+msgid "Make current"
+msgstr "設為目前版本"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder__woow_all_users_level__manage
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__manage
 msgid "Manage"
 msgstr "管理"
@@ -1136,6 +2278,28 @@ msgid "Members changed"
 msgstr "成員已變更"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__wizard_id
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_merge_wizard_form
+msgid "Merge"
+msgstr "合併"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_pdf_merge_wizard
+msgid "Merge PDF documents"
+msgstr "合併 PDF 文件"
+
+#. module: woow_document_management
+#. odoo-javascript
+#. odoo-python
+#: code:addons/woow_document_management/models/pdftools.py:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_pdf_merge_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_pdftools
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_merge_wizard_form
+msgid "Merge PDF files"
+msgstr "合併 PDF 檔案"
+
+#. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_mail_message
 msgid "Message"
 msgstr "訊息"
@@ -1143,26 +2307,64 @@ msgstr "訊息"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_error
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_has_error
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_has_error
 msgid "Message Delivery error"
 msgstr "訊息遞送錯誤"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_ids
 msgid "Messages"
 msgstr "訊息"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__mimetype
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__mimetype
 msgid "Mimetype"
 msgstr "媒體類型"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__res_model
+msgid "Model"
+msgstr "模型"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__model_id
+msgid "Model of the kind of record"
+msgstr "紀錄類型的模型"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
+msgid "Month"
+msgstr "月份"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
+msgid "More folders are in the left panel."
+msgstr "更多資料夾請從左側面板選取。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_move_wizard_form
 msgid "Move"
 msgstr "移動"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document.py:0
+msgid "Move a document to the trash before deleting it permanently."
+msgstr "請先把文件移到回收桶，才能永久刪除。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Move a folder to the trash before deleting it permanently."
+msgstr "請先把資料夾移到回收桶，才能永久刪除。"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_move_wizard
@@ -1175,6 +2377,29 @@ msgid "Move items"
 msgstr "移動項目"
 
 #. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_auto_rule__trash_on_delete
+msgid ""
+"Move the filed document to the trash when the attachment it came from is "
+"deleted."
+msgstr "原本的附件被刪除時，把歸檔的文件移到回收桶。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__trash_original
+msgid "Move the original to the trash"
+msgstr "將原檔移到回收桶"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__trash_originals
+msgid "Move the originals to the trash"
+msgstr "將原檔移到回收桶"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+msgid "Move to trash"
+msgstr "移到回收桶"
+
+#. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__move
 msgid "Moved"
 msgstr "已移動"
@@ -1185,20 +2410,36 @@ msgid "Moved to trash"
 msgstr "已移到回收桶"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
+msgid "Moved."
+msgstr "已移動。"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__my_activity_date_deadline
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__my_activity_date_deadline
 msgid "My Activity Deadline"
 msgstr "我的活動截止時間"
 
 #. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__woow_section__mine
+msgid "My files"
+msgstr "我的檔案"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
 msgid "My uploads"
 msgstr "我的上傳"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__name
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_tag__name
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__name
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
 msgid "Name"
 msgstr "名稱"
 
@@ -1209,6 +2450,46 @@ msgid ""
 "directly from one of them may name the client address in the header below. "
 "Leave empty to use the connecting address."
 msgstr "連線到 Odoo 的反向代理所在的網段。只有直接來自這些網段的請求，才能用下方的標頭指定用戶端位址。留空則使用連線端位址。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "New documents"
+msgstr "新文件"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version_wizard__datas
+msgid "New file"
+msgstr "新檔案"
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_new_folder
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
+msgid "New folder"
+msgstr "新增資料夾"
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_new_link
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
+msgid "New link"
+msgstr "新增連結"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_rename_wizard__name
+msgid "New name"
+msgstr "新名稱"
+
+#. module: woow_document_management
+#. odoo-javascript
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_versions
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_wizard_form
+msgid "New version"
+msgstr "新版本"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
@@ -1237,6 +2518,7 @@ msgstr "下個活動類型"
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder__woow_all_users_level__none
 msgid "No access"
 msgstr "無存取權限"
 
@@ -1247,9 +2529,32 @@ msgid "No attachments were imported: %(reasons)s"
 msgstr "沒有附件匯入：%(reasons)s"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "No files were uploaded: %(reasons)s"
+msgstr "沒有上傳任何檔案：%(reasons)s"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
 msgid "No folders are available."
 msgstr "沒有可用的資料夾。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "None"
+msgstr "無"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__refused
+msgid "Not accepted"
+msgstr "未接受"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Not shared with anyone"
+msgstr "尚未分享給任何人"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_log_ip_mode__none
@@ -1258,8 +2563,15 @@ msgstr "不顯示"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__note
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__note
 msgid "Note"
 msgstr "備註"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Nothing selected"
+msgstr "尚未選取任何項目"
 
 #. module: woow_document_management
 #: model:ir.model,name:woow_document_management.model_woow_document_notify_wizard
@@ -1275,28 +2587,42 @@ msgid "Notify members"
 msgstr "通知成員"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__number
+msgid "Number"
+msgstr "編號"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_needaction_counter
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_needaction_counter
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_needaction_counter
 msgid "Number of Actions"
 msgstr "動作數量"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_error_counter
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_has_error_counter
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_has_error_counter
 msgid "Number of errors"
 msgstr "錯誤數量"
 
 #. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__message_needaction_counter
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_needaction_counter
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__message_needaction_counter
 msgid "Number of messages requiring action"
 msgstr "需要採取行動的訊息數目"
 
 #. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__message_has_error_counter
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__message_has_error_counter
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__message_has_error_counter
 msgid "Number of messages with delivery error"
 msgstr "有發送錯誤的郵件數量"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__version_count
+msgid "Number of versions"
+msgstr "版本數量"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__result__ok
@@ -1304,13 +2630,52 @@ msgid "Ok"
 msgstr "確定"
 
 #. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_pdf_split_wizard__mode__pages
+msgid "One document per page"
+msgstr "每頁一份文件"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/move_wizard.py:0
+#: code:addons/woow_document_management/wizards/purge_wizard.py:0
+#: code:addons/woow_document_management/wizards/restore_wizard.py:0
 msgid "One or more selected items are unavailable."
 msgstr "一個或多個所選項目無法使用。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/wizards/requests_wizard.py:0
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "One or more selected tags are unavailable."
+msgstr "所選標籤中有無法使用的項目。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "One or more tags are unavailable."
+msgstr "有一個或多個標籤無法使用。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "Only PDF files can be split or merged."
+msgstr "只有 PDF 檔案可以分割或合併。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "Only a file has versions."
+msgstr "只有檔案才有版本。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "Only a shortcut has a target."
+msgstr "只有捷徑才有目標。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
 #: code:addons/woow_document_management/models/guard_mixin.py:0
 msgid "Only document administrators can do this."
 msgstr "只有文件管理員可以執行此操作。"
@@ -1329,9 +2694,23 @@ msgstr "只有文件管理員可以建立標籤。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+#: code:addons/woow_document_management/wizards/shortcut_wizard.py:0
+msgid "Only internal users can create shortcuts."
+msgstr "只有內部使用者可以建立捷徑。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/mail_thread_guard.py:0
 msgid "Only internal users can do this."
 msgstr "只有內部使用者可以執行此操作。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/pdftools.py:0
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "Only internal users can split or merge PDF files."
+msgstr "只有內部使用者可以分割或合併 PDF 檔案。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1341,14 +2720,50 @@ msgstr "只有內部使用者可以移動文件。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/wizards/restore_wizard.py:0
+msgid "Only items in the trash can be restored."
+msgstr "只有在垃圾桶中的項目才能還原。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/res_config_settings.py:0
 msgid "Only system administrators can change these settings."
 msgstr "只有系統管理員可以修改這些設定。"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_mail_intake_form
+msgid ""
+"Only the followers of this mailbox can send files to it. Add the colleagues who may send\n"
+"            as followers below. A file is stored only if its sender has at least upload access to the\n"
+"            folder when the mail arrives; the mail text is not kept."
+msgstr ""
+"只有這個信箱的追蹤者可以寄檔案進來。請把可以寄送的同事\n"
+"            加為下方的追蹤者。郵件到達時，寄件人必須至少有該資料夾的上傳權限，\n"
+"            檔案才會存入；郵件內文不會保存。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "Only the requester or a folder manager can send a reminder."
+msgstr "只有索取者或資料夾管理者可以寄出提醒。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
+msgid "Open"
+msgstr "開啟"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_file
 msgid "Open link"
 msgstr "開啟連結"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_shortcut
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_list_shortcut
+msgid "Open target"
+msgstr "開啟目標"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_form
@@ -1357,17 +2772,61 @@ msgid "Open the source record"
 msgstr "開啟來源紀錄"
 
 #. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_force_thread_id
+msgid ""
+"Optional ID of a thread (record) to which all incoming messages will be "
+"attached, even if they did not reply to it. If set, this will disable the "
+"creation of new records completely."
+msgstr "選填。所有來信都會附加到這個討論串（紀錄）的 ID，即使來信不是回覆它。設定後就完全不會建立新紀錄。"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Optional extensions"
 msgstr "可選副檔名"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__owner_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__owner_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__owner_id
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
 msgid "Owner"
 msgstr "擁有者"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "PDF"
+msgstr "PDF"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_wizard__line_ids
+msgid "PDF files"
+msgstr "PDF 檔案"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__pdf_merge
+msgid "PDF merged"
+msgstr "已合併 PDF"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__pdf_split
+msgid "PDF split"
+msgstr "已分割 PDF"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "PDF tools"
+msgstr "PDF 工具"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_pdf_split_wizard__mode__ranges
+msgid "Page ranges"
+msgstr "頁碼範圍"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__ranges
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
 msgid "Pages"
@@ -1379,26 +2838,61 @@ msgid "Parent"
 msgstr "上層項目"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_parent_model_id
+msgid "Parent Model"
+msgstr "上層模型"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__parent_path
 msgid "Parent Path"
 msgstr "上層路徑"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_parent_thread_id
+msgid "Parent Record Thread ID"
+msgstr "上層紀錄討論串 ID"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_parent_model_id
+msgid ""
+"Parent model holding the alias. The model holding the alias reference is not"
+" necessarily the model given by alias_model_id (example: project "
+"(parent_model) and task (model))"
+msgstr ""
+"持有這個收信地址的上層模型。持有收信地址參照的模型，不一定是 alias_model_id "
+"指定的模型（例如：專案（parent_model）與任務（model））"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__partner_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__partner_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__partner_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__partner_id
 msgid "Partner"
 msgstr "聯絡人"
-
-#. module: woow_document_management
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
-msgid "PDF"
-msgstr "PDF"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_client_ip_header__
 msgid "Peer address"
 msgstr "來源位址"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Points to"
+msgstr "指向"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_contact
+msgid ""
+"Policy to post a message on the document using the mailgateway.\n"
+"- everyone: everyone can post\n"
+"- partners: only authenticated partners\n"
+"- followers: only followers of the related document or members of following channels\n"
+msgstr ""
+"透過郵件閘道在紀錄上張貼訊息的規則：\n"
+"- everyone：任何人都可以張貼\n"
+"- partners：只有通過驗證的聯絡人\n"
+"- followers：只有相關紀錄的追蹤者，或追蹤中頻道的成員\n"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__portal
@@ -1407,8 +2901,16 @@ msgstr "入口網站"
 
 #. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__subject_type__partner
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__subject_type__partner
 msgid "Portal contact"
 msgstr "入口網站聯絡人"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_share_portal_viewer_only
+msgid "Portal contacts can only view."
+msgstr "入口網站聯絡人只能檢視。"
 
 #. module: woow_document_management
 #: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_folder_access_portal_max_upload
@@ -1464,6 +2966,114 @@ msgid "Quota warning percent"
 msgstr "配額警示百分比"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__ran
+msgid "Ran"
+msgstr "已執行"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__mail_in
+msgid "Received by email"
+msgstr "已由電子郵件收到"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mailin.py:0
+msgid ""
+"Received by email: %(stored)s stored, %(refused)s refused, %(ignored)s "
+"ignored."
+msgstr "以電子郵件收到：已存入 %(stored)s 個、拒收 %(refused)s 個、略過 %(ignored)s 個。"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__woow_section__recent
+msgid "Recent"
+msgstr "最近"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__alias_force_thread_id
+msgid "Record Thread ID"
+msgstr "紀錄討論串 ID"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_workspace
+msgid "Remove star"
+msgstr "取消星號"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Remove tag"
+msgstr "移除標籤"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
+msgid "Remove the star"
+msgstr "取消星號"
+
+#. module: woow_document_management
+#. odoo-javascript
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_lock
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form_rename
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_rename_wizard_form
+msgid "Rename"
+msgstr "重新命名"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_rename_wizard
+msgid "Rename a document or folder"
+msgstr "重新命名文件或資料夾"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_list
+msgid "Replaced by"
+msgstr "取代者"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_list
+msgid "Replaced on"
+msgstr "取代時間"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__request_activity_id
+msgid "Request activity"
+msgstr "索取待辦"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__request_done
+msgid "Request fulfilled"
+msgstr "已完成索取"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__request_note
+msgid "Request note"
+msgstr "索取備註"
+
+#. module: woow_document_management
+#. odoo-javascript
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_fulfil_wizard__document_id
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__document_type__request
+msgid "Requested file"
+msgstr "索取的檔案"
+
+#. module: woow_document_management
+#: model:mail.template,name:woow_document_management.mail_template_woow_document_request_reminder
+msgid "Requested file reminder"
+msgstr "索取檔案提醒"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_search_requests
+msgid "Requested files"
+msgstr "索取中的檔案"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__activity_user_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__activity_user_id
 msgid "Responsible User"
@@ -1499,13 +3109,21 @@ msgstr "還原日期"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/inspector.py:0
+msgid "Restricted"
+msgstr "受限"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
 msgid "Restricted document"
 msgstr "受限制的文件"
 
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document_folder.py:0
+#: code:addons/woow_document_management/models/mail_thread_guard.py:0
 msgid "Restricted folder"
 msgstr "受限制的資料夾"
 
@@ -1520,6 +3138,11 @@ msgid "Reverse proxy address"
 msgstr "反向代理位址"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__role
+msgid "Role"
+msgstr "角色"
+
+#. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__channel__rpc
 msgid "Rpc"
 msgstr "RPC"
@@ -1527,8 +3150,15 @@ msgstr "RPC"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__message_has_sms_error
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__message_has_sms_error
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__message_has_sms_error
 msgid "SMS Delivery error"
 msgstr "簡訊發送錯誤"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_dialog
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_folder_share_dialog
+msgid "Save"
+msgstr "儲存"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1546,8 +3176,19 @@ msgstr "請先儲存新的上層資料夾，再停用繼承權限。"
 #. odoo-python
 #: code:addons/woow_document_management/models/cron_jobs.py:0
 #: code:addons/woow_document_management/models/quota.py:0
+#: code:addons/woow_document_management/models/sharing.py:0
 msgid "Scheduled actions only."
 msgstr "此操作只能由排程執行。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__woow_section
+msgid "Section"
+msgstr "分類"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
+msgid "Sections"
+msgstr "分類"
 
 #. module: woow_document_management
 #: model:res.groups,comment:woow_document_management.group_woow_document_manager
@@ -1557,9 +3198,21 @@ msgstr "可以檢視所有資料夾，並管理標籤、回收桶、法律保留
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "Select at least one document."
+msgstr "請至少選擇一份文件。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/wizards/move_wizard.py:0
 msgid "Select at least one item to move."
 msgstr "請至少選擇一個要移動的項目。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "Select at most %(count)s documents to duplicate at once."
+msgstr "一次最多只能複製 %(count)s 份文件。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1574,9 +3227,34 @@ msgstr "請為所選類型選擇一位成員。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_share_subject_exactly_one
+msgid "Select exactly one person of the chosen type."
+msgstr "請選擇剛好一位符合所選類型的對象。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "Select fewer documents."
+msgstr "請選擇較少的文件。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "Select fewer versions."
+msgstr "請選擇較少的版本。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/wizards/restore_wizard.py:0
 msgid "Select items to restore."
 msgstr "請選擇要還原的項目。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "Select one document."
+msgstr "請選擇一份文件。"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_notify_wizard__recipient_ids
@@ -1584,12 +3262,40 @@ msgid "Selected members"
 msgstr "選取的成員"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
+msgid "Selection"
+msgstr "選取項目"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_notify_wizard_form
 msgid "Send"
 msgstr "寄送"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_request_fulfil_wizard
+msgid "Send a requested file"
+msgstr "送出索取的檔案"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_requests
+msgid "Send reminder"
+msgstr "寄出提醒"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_request_wizard_form
+msgid "Send request"
+msgstr "送出索取"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "Send the requested file with \"Upload the file\" on the request."
+msgstr "請在這項索取上用「上傳檔案」送出所索取的檔案。"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__sequence
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_merge_line__sequence
 msgid "Sequence"
 msgstr "順序"
 
@@ -1605,6 +3311,12 @@ msgid "Set a sender email address before notifying members."
 msgstr "通知成員前，請先設定寄件人電子郵件地址。"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "Set a sender email address before sending a reminder."
+msgstr "寄出提醒前，請先設定寄件者電子郵件地址。"
+
+#. module: woow_document_management
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_settings
 msgid "Settings"
 msgstr "設定"
@@ -1613,6 +3325,25 @@ msgstr "設定"
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__settings_change
 msgid "Settings changed"
 msgstr "設定已變更"
+
+#. module: woow_document_management
+#. odoo-javascript
+#. odoo-python
+#: code:addons/woow_document_management/models/sharing.py:0
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.xml:0
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__share_ids
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_sharing
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form_sharing
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_share_dialog
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_folder_share_dialog
+msgid "Share"
+msgstr "分享"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__shared_editor_user_ids
+msgid "Shared Editor User"
+msgstr "以分享取得編輯權的使用者"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__shared_partner_ids
@@ -1625,9 +3356,58 @@ msgid "Shared User"
 msgstr "分享對象使用者"
 
 #. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_pdf_common
+msgid "Shared steps of the PDF split and merge wizards"
+msgstr "PDF 分割與合併精靈的共用步驟"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_sharing
+msgid "Shared with"
+msgstr "分享對象"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__woow_section__shared
+msgid "Shared with me"
+msgstr "與我共用"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__document_type__shortcut
+msgid "Shortcut"
+msgstr "捷徑"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/shortcut_wizard.py:0
+msgid "Shortcut created"
+msgstr "已建立捷徑"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__shortcut_target_id
+msgid "Shortcut target"
+msgstr "捷徑目標"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_search_shortcut
+msgid "Shortcuts"
+msgstr "捷徑"
+
+#. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__res_config_settings__woow_doc_log_ip_mode__truncate
 msgid "Shortened address"
 msgstr "縮短後的位址"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "Show versions"
+msgstr "顯示版本"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_version__file_size
+msgid "Size"
+msgstr "大小"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1644,14 +3424,25 @@ msgid "Some selected items could not be deleted."
 msgstr "部分所選項目無法刪除。"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.js:0
+msgid "Something went wrong."
+msgstr "發生錯誤。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
+msgid "Source"
+msgstr "來源"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_attachment_id
+msgid "Source Attachment"
+msgstr "來源附件"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_display
 msgid "Source Display"
 msgstr "來源顯示值"
-
-#. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_source_record_label
-msgid "Source record"
-msgstr "來源紀錄"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_res_id
@@ -1662,6 +3453,64 @@ msgstr "來源紀錄"
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__source_res_model
 msgid "Source Res Model"
 msgstr "來源紀錄模型"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_source_record_label
+msgid "Source record"
+msgstr "來源紀錄"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_source_model_label
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
+msgid "Source type"
+msgstr "來源類型"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_split_wizard_form
+msgid "Split"
+msgstr "分割"
+
+#. module: woow_document_management
+#. odoo-javascript
+#. odoo-python
+#: code:addons/woow_document_management/models/pdftools.py:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_pdf_split_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_pdftools
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_split_wizard_form
+msgid "Split PDF"
+msgstr "分割 PDF"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_pdf_split_wizard
+msgid "Split a PDF document"
+msgstr "分割 PDF 文件"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_pdf_split_wizard__mode
+msgid "Split by"
+msgstr "分割方式"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_workspace
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
+msgid "Star"
+msgstr "加星號"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban_wsui
+msgid "Star or remove the star"
+msgstr "加上或取消星號"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__is_favorite
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document__woow_section__starred
+msgid "Starred"
+msgstr "已加星號"
 
 #. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__activity_state
@@ -1678,10 +3527,9 @@ msgstr ""
 "預定：活動日期在未來。"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_ir_attachment__woow_source_model_label
-#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
-msgid "Source type"
-msgstr "來源類型"
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_autofile_wizard__left
+msgid "Still to look at"
+msgstr "尚待檢查"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -1695,6 +3543,7 @@ msgstr "子資料夾數量"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__subject_type
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__subject_type
 msgid "Subject Type"
 msgstr "成員類型"
 
@@ -1706,13 +3555,20 @@ msgstr "下層法律保留"
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__tag_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__tag_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard__tag_ids
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_tag_form
 msgid "Tag"
 msgstr "標籤"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_tag
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__tag_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__tag_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__tag_ids
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_tag
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
 msgid "Tags"
 msgstr "標籤"
 
@@ -1723,6 +3579,33 @@ msgid "Target Folder"
 msgstr "目標資料夾"
 
 #. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__shortcut_target_available
+msgid "Target available"
+msgstr "目標可用"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__folder_id
+msgid "Target folder"
+msgstr "目標資料夾"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "The PDF file is damaged or is not a PDF file."
+msgstr "此 PDF 檔案已損毀，或不是 PDF 檔案。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_merge_wizard.py:0
+msgid "The PDF files were merged into one document of %(pages)s pages."
+msgstr "PDF 檔案已合併為一份共 %(pages)s 頁的文件。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__source_attachment_id
+msgid "The attachment of another app that this document was filed from."
+msgstr "這份文件是從其他模組的哪一個附件歸檔而來。"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
 msgid "The attachment selection is unavailable."
@@ -1730,12 +3613,61 @@ msgstr "所選附件無法使用。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/inspector.py:0
+msgid "The details are for internal users only."
+msgstr "詳細資料僅供內部使用者查看。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/controllers/streaming.py:0
 #: code:addons/woow_document_management/models/ir_binary.py:0
+#: code:addons/woow_document_management/models/shortcuts.py:0
+#: code:addons/woow_document_management/models/versions_binary.py:0
+#: code:addons/woow_document_management/wizards/shortcut_wizard.py:0
 msgid "The document is unavailable."
 msgstr "這份文件無法使用。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+msgid "The document of a share cannot be changed."
+msgstr "分享所屬的文件無法更改。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+#: code:addons/woow_document_management/models/sharing.py:0
+msgid "The end date cannot be in the past."
+msgstr "結束日不能早於今天。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+msgid "The file could not be uploaded."
+msgstr "無法上傳此檔案。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "The file has no name or no content."
+msgstr "檔案沒有名稱或沒有內容。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+msgid "The file is too large."
+msgstr "檔案太大。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_wizard_form
+msgid ""
+"The file that is current now is kept as the newest version. The document "
+"keeps its name; if the new file has another extension, the name takes it."
+msgstr "目前的檔案會保存為最新的版本。文件沿用原本的名稱；如果新檔案的副檔名不同，名稱會改用新的副檔名。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/autofile.py:0
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid "The file was not accepted."
 msgstr "此檔案未被接受。"
@@ -1745,6 +3677,41 @@ msgstr "此檔案未被接受。"
 #: code:addons/woow_document_management/models/upload_policy.py:0
 msgid "The file's content doesn't match its .%(ext)s extension."
 msgstr "檔案內容與 .%(ext)s 副檔名不符。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_merge_wizard_form
+msgid ""
+"The files are joined from top to bottom. Drag the handle to change the "
+"order. The originals are kept; only the ones you may edit are moved to the "
+"trash when you choose that."
+msgstr "檔案依由上到下的順序合併。拖曳把手可調整順序。原檔會保留；若您選擇移到回收桶，只有您可編輯的原檔會被移走。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "The files to merge have more than %(limit)s pages in all."
+msgstr "要合併的檔案總共超過 %(limit)s 頁。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_version__number
+msgid "The first version of a document is number 1."
+msgstr "文件的第一個版本編號為 1。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+msgid "The folder is not available."
+msgstr "此資料夾無法使用。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder_access__expiry_date
+msgid "The last day the member has access. Empty means no end."
+msgstr "成員可存取的最後一天。留空表示沒有結束日。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_share__expiry_date
+msgid "The last day the person has access. Empty means no end."
+msgstr "此對象可存取的最後一天。留空表示沒有結束日。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1759,9 +3726,117 @@ msgid "The link address must use HTTPS."
 msgstr "連結網址必須使用 HTTPS。"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_merge_wizard.py:0
+msgid "The merged file would be larger than the upload limit."
+msgstr "合併後的檔案會超過上傳大小上限。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_model_id
+msgid ""
+"The model (Odoo Document Kind) to which this alias corresponds. Any incoming"
+" email that does not reply to an existing record will cause the creation of "
+"a new record of this model (e.g. a Project Task)"
+msgstr "這個收信地址對應的模型（Odoo 文件類型）。凡是不是回覆既有紀錄的來信，都會建立一筆這個模型的新紀錄（例如專案任務）"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__alias_name
+msgid ""
+"The name of the email alias, e.g. 'jobs' if you want to catch emails for "
+"<jobs@example.odoo.com>"
+msgstr "收信地址的名稱，例如要接收寄給 <jobs@example.odoo.com> 的郵件時填 'jobs'"
+
+#. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_ir_attachment__woow_source_model_label
 msgid "The name of the kind of record that the file is attached to."
 msgstr "檔案所附屬的紀錄類型名稱。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_ir_attachment__woow_source_record_label
+msgid ""
+"The name of the record that the file is attached to, when you may read it."
+msgstr "檔案所附加的紀錄名稱（您有權讀取該紀錄時才會顯示）。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_version__name
+msgid "The name the file had while this content was current."
+msgstr "此內容為目前內容時，檔案使用的名稱。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "The note is too long."
+msgstr "備註太長。"
+
+#. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_version_woow_document_version_number_positive
+msgid "The number of a version starts at 1."
+msgstr "版本編號從 1 開始。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__version_last_number
+msgid ""
+"The number the newest version took. A number is never given twice, even "
+"after the newest version was deleted."
+msgstr "最新版本使用的編號。編號不會重複使用，即使最新的版本已被刪除。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_split_wizard.py:0
+msgid "The original was moved to the trash."
+msgstr "原檔已移到回收桶。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_auto_rule__owner_id
+msgid ""
+"The owner of the filed documents. A document user who may upload to the "
+"folder."
+msgstr "歸檔文件的擁有者。必須是可以上傳到該資料夾的文件使用者。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "The page ranges must not overlap."
+msgstr "頁碼範圍不可重疊。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "The person asked cannot be reached by email."
+msgstr "無法以電子郵件聯絡索取對象。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "The requested file was uploaded."
+msgstr "已上傳索取的檔案。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mailin.py:0
+msgid "The routing of a folder mailbox is fixed."
+msgstr "資料夾信箱的收信設定是固定的，無法變更。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/pdftools.py:0
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+#: code:addons/woow_document_management/wizards/pdftools_merge_wizard.py:0
+#: code:addons/woow_document_management/wizards/pdftools_split_wizard.py:0
+msgid "The selected document is unavailable."
+msgstr "所選文件無法使用。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+msgid "The server is busy. Try again in a moment."
+msgstr "伺服器忙碌中，請稍後再試。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/shortcut_wizard.py:0
+msgid "The shortcut is in the destination folder."
+msgstr "捷徑已放入目的資料夾。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1771,6 +3846,7 @@ msgstr "來源沒有檔案內容。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/inspector.py:0
 #: code:addons/woow_document_management/models/ir_attachment.py:0
 msgid "The source record is not available to you."
 msgstr "來源紀錄已不存在，或你沒有權限查看。"
@@ -1778,11 +3854,47 @@ msgstr "來源紀錄已不存在，或你沒有權限查看。"
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
+#: code:addons/woow_document_management/models/requests.py:0
+#: code:addons/woow_document_management/models/shortcuts.py:0
 #: code:addons/woow_document_management/wizards/add_attachment_wizard.py:0
 #: code:addons/woow_document_management/wizards/move_wizard.py:0
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+#: code:addons/woow_document_management/wizards/pdftools_merge_wizard.py:0
+#: code:addons/woow_document_management/wizards/requests_wizard.py:0
 #: code:addons/woow_document_management/wizards/restore_wizard.py:0
+#: code:addons/woow_document_management/wizards/shortcut_wizard.py:0
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
 msgid "The target folder is unavailable."
 msgstr "目標資料夾無法使用。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_shortcut
+msgid "The target of this shortcut is not available to you."
+msgstr "您無法使用此捷徑的目標。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "The target of this shortcut is not available."
+msgstr "此捷徑的目標無法使用。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "The upload is unavailable."
+msgstr "此上傳無法使用。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "The versions of a document under legal hold cannot be deleted."
+msgstr "受法律保留的文件，其版本不能刪除。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "These versions cannot be deleted."
+msgstr "這些版本不能刪除。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1792,9 +3904,134 @@ msgstr "這個附件不能加入討論。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "This document cannot take another version."
+msgstr "此文件不能再新增版本。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "This document field is not available to portal users."
 msgstr "入口網站使用者無法使用此文件欄位。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/sharing.py:0
+msgid "This document field is set by the server."
+msgstr "這個文件欄位由伺服器設定。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "This document has no file to duplicate."
+msgstr "這份文件沒有可複製的檔案。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/favorite.py:0
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_favorite_document_user_uniq
+msgid "This document is already a favourite."
+msgstr "此文件已在我的最愛中。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "This document is locked by another user."
+msgstr "這份文件已被其他使用者鎖定。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_lock
+msgid ""
+"This document is locked by another user. Its details cannot be changed until"
+" it is unlocked."
+msgstr "這份文件已被其他使用者鎖定，解除鎖定前無法變更內容。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "This document is not a shortcut."
+msgstr "此文件不是捷徑。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+#: code:addons/woow_document_management/models/favorite.py:0
+#: code:addons/woow_document_management/models/inspector.py:0
+#: code:addons/woow_document_management/models/versions.py:0
+#: code:addons/woow_document_management/models/workspace.py:0
+#: code:addons/woow_document_management/wizards/versions_wizard.py:0
+msgid "This document is unavailable."
+msgstr "無法使用這份文件。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid ""
+"This document is under legal hold, so none of its versions can be removed. "
+"It has reached the limit of versions."
+msgstr "此文件受法律保留，版本一律不能移除，而它已達版本數量上限。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "This field cannot be exported."
+msgstr "此欄位不能匯出。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "This field cannot be used in a search."
+msgstr "此欄位不能用於搜尋。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/shortcuts.py:0
+msgid "This field cannot be used to group documents."
+msgstr "此欄位不能用於分組文件。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/favorite.py:0
+#: code:addons/woow_document_management/models/share.py:0
+#: code:addons/woow_document_management/wizards/requests_wizard.py:0
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "This field is set by the server."
+msgstr "這個欄位由伺服器設定。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/autofile.py:0
+msgid "This field of a filing rule is set by the server."
+msgstr "歸檔規則的這個欄位由系統設定。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "This file has no content to keep as a version."
+msgstr "此檔案沒有內容可保存為版本。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "This file is not requested any more."
+msgstr "這個檔案已不在索取中。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/workspace.py:0
+msgid "This filter cannot be combined that way."
+msgstr "此篩選不能這樣組合。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "This filter is not supported."
+msgstr "不支援這個篩選條件。"
+
+#. module: woow_document_management
+#: model:ir.model.constraint,message:woow_document_management.constraint_woow_document_mail_intake_folder_unique
+msgid "This folder already has a mailbox."
+msgstr "這個資料夾已經有信箱了。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1811,10 +4048,13 @@ msgstr "此資料夾含有受保護的文件。"
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document_folder.py:0
+#: code:addons/woow_document_management/models/folder_access.py:0
 msgid "This folder field cannot be changed directly."
 msgstr "不能直接修改此資料夾欄位。"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_folder_form
 msgid ""
@@ -1836,11 +4076,16 @@ msgstr "這個項目無法永久刪除。"
 
 #. module: woow_document_management
 #. odoo-python
-#: code:addons/woow_document_management/hooks.py:0
-msgid ""
-"This site still has documents. Download what you need, then enter the "
-"confirmation code in Documents settings before uninstalling."
-msgstr "本站仍有文件。請先下載需要的內容，然後在「文件」設定中輸入確認碼，再解除安裝。"
+#: code:addons/woow_document_management/wizards/autofile_wizard.py:0
+#: code:addons/woow_document_management/wizards/docactions_wizard.py:0
+msgid "This item is unavailable."
+msgstr "無法使用這個項目。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "This kind of document cannot be duplicated."
+msgstr "這種文件無法建立複本。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -1849,8 +4094,97 @@ msgid "This kind of search is not available for the source type."
 msgstr "來源類型不支援這種搜尋方式。"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
+msgid "This link cannot be opened."
+msgstr "無法開啟此連結。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid ""
+"This lock cannot be released from your account now. Ask a document "
+"administrator."
+msgstr "目前無法以您的帳號解除這個鎖定，請洽文件管理員。"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_autofile_wizard_form
+msgid ""
+"This looks at the next batch of attachments of the kind of record named by the rule that\n"
+"          are not filed yet, and files them in the target folder. You can run it again until\n"
+"          nothing is left to look at. A file whose record is of another company, is gone, or cannot be\n"
+"          read by you is left out, and so is a file that was imported by hand before. A document that\n"
+"          was deleted for good is filed again by a later pass."
+msgstr ""
+"這會檢查規則所指紀錄類型中，下一批尚未歸檔的附件，\n"
+"          並把它們歸檔到目標資料夾。可以重複執行，直到沒有剩下可檢查的附件。\n"
+"          紀錄屬於其他公司、已不存在或您無法讀取的檔案會被略過，\n"
+"          之前手動匯入過的檔案也會略過。被永久刪除的文件，之後的執行會再次歸檔。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mailin.py:0
+msgid "This mailbox does not accept this email."
+msgstr "這個信箱不接受這封郵件。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+msgid "This person already has a row for this document."
+msgstr "這位對象在這份文件上已有一列分享。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "This person cannot add files to this folder."
+msgstr "這個人無法在此資料夾新增檔案。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/hooks.py:0
+msgid ""
+"This site still has documents. Download what you need, then enter the "
+"confirmation code in Documents settings before uninstalling."
+msgstr "本站仍有文件。請先下載需要的內容，然後在「文件」設定中輸入確認碼，再解除安裝。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "This version belongs to another document."
+msgstr "此版本屬於另一份文件。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "This version has no file content."
+msgstr "此版本沒有檔案內容。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/requests_wizard.py:0
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "Too many dialogs at once."
+msgstr "一次開啟的上傳視窗太多。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/favorite.py:0
+msgid "Too many documents at once."
+msgstr "一次選取的文件太多。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+msgid "Too many people at once."
+msgstr "一次選擇的對象太多。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_search_panel.xml:0
 #: model:ir.actions.act_window,name:woow_document_management.action_woow_document_trash
 #: model:ir.ui.menu,name:woow_document_management.menu_woow_document_trash
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
 msgid "Trash"
 msgstr "回收桶"
 
@@ -1858,6 +4192,11 @@ msgstr "回收桶"
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Trash retention (days)"
 msgstr "回收桶保留天數"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_auto_rule__trash_on_delete
+msgid "Trash when the original is deleted"
+msgstr "原附件刪除時丟進回收桶"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__trashed_by_id
@@ -1877,10 +4216,21 @@ msgid "Trusted proxy CIDRs"
 msgstr "信任的代理伺服器 CIDR"
 
 #. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
+msgid "Type"
+msgstr "類型"
+
+#. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__activity_exception_decoration
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__activity_exception_decoration
 msgid "Type of the exception activity on record."
 msgstr "記錄的異常活動的類型。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_common.py:0
+msgid "Type the pages like this: 1-3, 4, 5-8."
+msgstr "請這樣輸入頁碼：1-3, 4, 5-8。"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -1890,14 +4240,56 @@ msgstr "解除安裝確認碼"
 #. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
+#: code:addons/woow_document_management/models/requests.py:0
 msgid "Unknown document type."
 msgstr "未知的文件類型。"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_utils.js:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_lock
+msgid "Unlock"
+msgstr "解除鎖定"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__unlock
+msgid "Unlocked"
+msgstr "已解除鎖定"
+
+#. module: woow_document_management
+#: model:ir.actions.act_window,name:woow_document_management.action_woow_document_upload_wizard
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder__woow_all_users_level__upload
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__upload
 #: model_terms:ir.ui.view,arch_db:woow_document_management.portal_my_docs_folder
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_request_fulfil_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_upload_wizard
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_wizard_form
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_kanban
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_list
 msgid "Upload"
 msgstr "上傳"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_version_wizard
+msgid "Upload a new version of a file"
+msgstr "上傳檔案的新版本"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_upload_wizard
+msgid "Upload documents"
+msgstr "上傳文件"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_upload_wizard
+msgid "Upload files"
+msgstr "上傳檔案"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "Upload finished"
+msgstr "上傳完成"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
@@ -1905,9 +4297,28 @@ msgid "Upload month"
 msgstr "上傳月份"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_requests
+msgid "Upload the file"
+msgstr "上傳檔案"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_request_fulfil_wizard_form
+msgid "Upload the requested file"
+msgstr "上傳索取的檔案"
+
+#. module: woow_document_management
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__upload
 msgid "Uploaded"
 msgstr "已上傳"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__uploaded_by_partner_id
+msgid "Uploaded By Partner"
+msgstr "上傳者聯絡人"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_attachment_overview_search
@@ -1915,9 +4326,10 @@ msgid "Uploaded by"
 msgstr "上傳者"
 
 #. module: woow_document_management
-#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__uploaded_by_partner_id
-msgid "Uploaded By Partner"
-msgstr "上傳者聯絡人"
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace_components.js:0
+msgid "Uploading %(done)s of %(total)s"
+msgstr "正在上傳 %(done)s／%(total)s"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
@@ -1938,8 +4350,29 @@ msgid "Url"
 msgstr "網址"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "Use \"Ask for a file\" to request a file from a colleague."
+msgstr "請用「索取檔案」向同事索取檔案。"
+
+#. module: woow_document_management
+#: model_terms:ir.actions.act_window,help:woow_document_management.action_woow_document_workspace
+msgid ""
+"Use Upload to add files to a folder, or New link to keep the address of a "
+"web page."
+msgstr "用「上傳」把檔案加到資料夾，或用「新增連結」保存網頁的位址。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/document_folder.py:0
+msgid "Use the document trash actions to change folder state."
+msgstr "請使用回收桶的動作變更資料夾狀態。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_favorite__user_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder_access__user_id
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_log__user_id
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_share__user_id
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__subject_type__user
 msgid "User"
 msgstr "使用者"
@@ -1950,26 +4383,111 @@ msgid "User Agent"
 msgstr "瀏覽器資訊"
 
 #. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__version_add
+msgid "Version added"
+msgstr "已新增版本"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__version_delete
+msgid "Version deleted"
+msgstr "已刪除版本"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_log__event__version_restore
+msgid "Version restored"
+msgstr "已還原版本"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.js:0
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__version_ids
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_document_form_versions
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_version_list
+msgid "Versions"
+msgstr "版本"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "Versions are kept by the server."
+msgstr "版本由系統自動保存。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "Versions are removed by the server."
+msgstr "版本由系統自動移除。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/versions.py:0
+msgid "Versions cannot be changed."
+msgstr "版本不能修改。"
+
+#. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder__woow_all_users_level__read
 #: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_folder_access__level__read
 msgid "View"
 msgstr "檢視"
 
 #. module: woow_document_management
+#: model:ir.model.fields.selection,name:woow_document_management.selection__woow_document_share__role__viewer
+msgid "Viewer"
+msgstr "檢視者"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__website_message_ids
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__website_message_ids
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_mail_intake__website_message_ids
 msgid "Website Messages"
 msgstr "網站訊息"
 
 #. module: woow_document_management
 #: model:ir.model.fields,help:woow_document_management.field_woow_document__website_message_ids
 #: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__website_message_ids
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_mail_intake__website_message_ids
 msgid "Website communication history"
 msgstr "網站溝通紀錄"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document_folder__woow_all_users_level
+msgid ""
+"What every document user may do in this folder, without being named one by "
+"one."
+msgstr "不必逐一指定，每位文件使用者在此資料夾可以做的事。"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_request_wizard__name
+msgid "What is needed"
+msgstr "需要的檔案"
+
+#. module: woow_document_management
+#: model:ir.model.fields,help:woow_document_management.field_woow_document__is_favorite
+msgid ""
+"Whether you marked this document with a star. Stars are private to each "
+"user."
+msgstr "您是否已為此文件加上星號。星號只屬於各自的使用者。"
 
 #. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "Who may create tags"
 msgstr "誰可以建立標籤"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_workspace_search
+msgid "With activities"
+msgstr "有活動"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document_upload_wizard_line__wizard_id
+msgid "Wizard"
+msgstr "精靈"
+
+#. module: woow_document_management
+#: model:ir.model,name:woow_document_management.model_woow_document_wizard_refs_mixin
+msgid "Wizard rows that name records of the module"
+msgstr "指向本模組紀錄的精靈資料列"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_res_config_settings__woow_doc_allow_http_links
@@ -2077,10 +4595,25 @@ msgid "Woow Doc Zip Max Mb"
 msgstr "ZIP 大小上限（MB）"
 
 #. module: woow_document_management
+#: model:ir.module.module,shortdesc:base.module_woow_document_management
+msgid "Woow Document Management"
+msgstr "WoowTech 文件管理"
+
+#. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__woow_has_portal_members
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document_folder__woow_has_portal_members
 msgid "Woow Has Portal Members"
 msgstr "有入口網站成員"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__woow_locked_by_other
+msgid "Woow Locked By Other"
+msgstr "由他人鎖定"
+
+#. module: woow_document_management
+#: model:ir.model.fields,field_description:woow_document_management.field_woow_document__woow_user_can_share
+msgid "Woow User Can Share"
+msgstr "使用者可以分享"
 
 #. module: woow_document_management
 #: model:ir.model.fields,field_description:woow_document_management.field_woow_document__woow_user_can_write
@@ -2099,9 +4632,33 @@ msgstr "可在自己有成員資格的資料夾中使用。"
 
 #. module: woow_document_management
 #. odoo-python
+#: code:addons/woow_document_management/models/favorite.py:0
+msgid "You can only star documents for yourself."
+msgstr "您只能為自己的帳號加上星號。"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
+msgid "You cannot add files to this folder."
+msgstr "您無法在此資料夾加入檔案。"
+
+#. module: woow_document_management
+#. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
 msgid "You cannot assign a different owner."
 msgstr "不能指定其他擁有者。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/share.py:0
+msgid "You cannot change who this document is shared with."
+msgstr "您無法變更這份文件的分享對象。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "You cannot duplicate documents."
+msgstr "您無法建立文件複本。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -2110,10 +4667,48 @@ msgid "You cannot import attachments."
 msgstr "不能匯入附件。"
 
 #. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
+msgid "You cannot move this selection."
+msgstr "您無法移動這些選取項目。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+msgid "You cannot request files."
+msgstr "您無法索取檔案。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_split_wizard.py:0
+msgid "You cannot trash the original, so it was kept."
+msgstr "您無法將原檔移到回收桶，因此已保留。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/docactions.py:0
+msgid "You cannot unlock this document."
+msgstr "您無法解除這份文件的鎖定。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/upload_wizard.py:0
+msgid "You cannot upload documents."
+msgstr "您不能上傳文件。"
+
+#. module: woow_document_management
 #. odoo-python
 #: code:addons/woow_document_management/models/document.py:0
+#: code:addons/woow_document_management/models/requests.py:0
 msgid "You cannot upload to this folder."
 msgstr "您無法上傳到此資料夾。"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/requests.py:0
+#: code:addons/woow_document_management/wizards/requests_wizard.py:0
+msgid "You cannot upload to this request."
+msgstr "您無法上傳到這項索取。"
 
 #. module: woow_document_management
 #. odoo-python
@@ -2147,11 +4742,35 @@ msgid "https://example.invalid"
 msgstr "https://example.invalid"
 
 #. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/models/mailin.py:0
+msgid "mailbox unavailable"
+msgstr "信箱無法使用"
+
+#. module: woow_document_management
+#: model_terms:ir.ui.view,arch_db:woow_document_management.view_woow_document_pdf_merge_wizard_form
+msgid "merged.pdf"
+msgstr "merged.pdf"
+
+#. module: woow_document_management
 #: model_terms:ir.ui.view,arch_db:woow_document_management.res_config_settings_view_form_woow_document
 msgid "mp4, heic"
 msgstr "mp4, heic"
 
 #. module: woow_document_management
-#: model:ir.module.module,shortdesc:base.module_woow_document_management
-msgid "Woow Document Management"
-msgstr "WoowTech 文件管理"
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_split_wizard.py:0
+msgid "page %(first)s"
+msgstr "第 %(first)s 頁"
+
+#. module: woow_document_management
+#. odoo-python
+#: code:addons/woow_document_management/wizards/pdftools_split_wizard.py:0
+msgid "pages %(first)s-%(last)s"
+msgstr "第 %(first)s-%(last)s 頁"
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/inspector/inspector.xml:0
+msgid "until"
+msgstr "至"
