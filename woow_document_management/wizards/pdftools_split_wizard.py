@@ -24,9 +24,10 @@ class WoowDocumentPdfSplitWizard(models.TransientModel):
 
     @api.model_create_multi
     def create(self, vals_list):
-        self._woow_pdf_check_refs(vals_list, 'document_id', 'woow.document',
-                                  _('The selected document is unavailable.'))
-        return super().create(vals_list)
+        model = self._woow_pdf_without_defaults()
+        model._woow_pdf_check_refs(vals_list, 'document_id', 'woow.document',
+                                   _('The selected document is unavailable.'), required=True)
+        return super(WoowDocumentPdfSplitWizard, model).create(vals_list)
 
     def write(self, vals):
         self._woow_pdf_check_refs([vals], 'document_id', 'woow.document',
@@ -67,17 +68,23 @@ class WoowDocumentPdfSplitWizard(models.TransientModel):
             else:
                 raise UserError(_('Choose how to split the file.'))
             stem = self._woow_pdf_stem(source.name)
-            outputs = []
+        except PdfToolError as error:
+            raise UserError(self._woow_pdf_message(error)) from None
+
+        def outputs():
+            """The parts, one at a time: each is made when the store asks for it."""
             for first, last in parts:
                 label = _('page %(first)s', first=first) if first == last else _(
                     'pages %(first)s-%(last)s', first=first, last=last)
                 name = self._woow_pdf_name(stem, ' (%s).pdf' % label)
-                data = pdf_tools.write_pdf(pdf_tools.page_range(reader, first, last))
-                outputs.append((name, data, source.tag_ids.ids))
-        except PdfToolError as error:
-            raise UserError(self._woow_pdf_message(error)) from None
+                yield name, pdf_tools.write_pdf(pdf_tools.page_range(reader, first, last)), \
+                    source.tag_ids.ids
+
         with self.env.cr.savepoint():
-            created = self._woow_pdf_store(folder, outputs)
+            try:
+                created = self._woow_pdf_store(folder, outputs())
+            except PdfToolError as error:
+                raise UserError(self._woow_pdf_message(error)) from None
             trashed = self._woow_pdf_trash(source) if self.trash_original else 0
             self.env['woow.document.log']._log_event(
                 'pdf_split', channel=self._woow_pdf_log_channel(), document_id=source.id,

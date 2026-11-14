@@ -19,7 +19,16 @@ from .constants import PDF_MAX_OUTPUTS, PDF_MAX_PAGES
 
 RANGES_MAX_CHARS = 1000        # the text a user types is cut off here before it is looked at
 
-CODES = ('syntax', 'range', 'overlap', 'outputs', 'encrypted', 'damaged', 'pages')
+CODES = ('syntax', 'range', 'overlap', 'outputs', 'encrypted', 'damaged', 'pages', 'total')
+
+# The page tree of a file is walked by ``_check_page_tree`` before the library flattens it. A tree
+# with more nodes than this (a page counts as one) holds either too many pages or little else
+# than empty branches, and is refused.
+PAGE_TREE_NODES_MAX = 4 * PDF_MAX_PAGES
+# Most pages one merge puts together. The library copies the pages of a merge in time that grows
+# faster than the page count (about 4 s for 2,500 pages, 12 s for 5,000), so the total is capped
+# even though every source is within ``PDF_MAX_PAGES``.
+MERGE_MAX_PAGES = 5 * PDF_MAX_PAGES
 
 # One part of the text: a page number, or two joined by a dash. ASCII digits only, at most six.
 _PART = re.compile(r'\s*([0-9]{1,6})\s*(?:-\s*([0-9]{1,6})\s*)?', re.ASCII)
@@ -85,6 +94,57 @@ def _encrypted(reader):
     return bool(reader.isEncrypted if flag is None else flag)
 
 
+def _resolved(value):
+    """The object behind an indirect reference (the method name differs between versions)."""
+    getter = getattr(value, 'get_object', None) or getattr(value, 'getObject', None)
+    return getter() if getter else value
+
+
+def _check_page_tree(reader):
+    """Refuse a page tree that is too large or shared, before the library flattens it.
+
+    The library answers the number of pages by visiting every leaf of the tree, once for every
+    way to reach it. A few hundred bytes can describe a tree whose nodes list the same child
+    twice, to a depth where that is more leaves than the machine can count, so the count of
+    the file (or of the root) cannot be asked first. The walk here visits a node at most once,
+    stops after ``PAGE_TREE_NODES_MAX`` nodes, and refuses a node that is reached a second time
+    (a cycle, or a branch shared on purpose). The tree that the library flattens afterwards is
+    therefore a real tree of at most that size.
+    """
+    root = reader.trailer['/Root']['/Pages']
+    stack = [root]
+    seen = set()
+    nodes = 0
+    leaves = 0
+    while stack:
+        ref = stack.pop()
+        idnum = getattr(ref, 'idnum', None)
+        if idnum is not None:
+            key = (idnum, getattr(ref, 'generation', 0))
+            if key in seen:
+                raise PdfToolError('damaged')
+            seen.add(key)
+        nodes += 1
+        if nodes > PAGE_TREE_NODES_MAX:
+            raise PdfToolError('damaged')
+        node = _resolved(ref)
+        if not hasattr(node, 'keys'):
+            raise PdfToolError('damaged')
+        if '/Kids' not in node:
+            leaves += 1
+            if leaves > PDF_MAX_PAGES:
+                raise PdfToolError('pages', limit=PDF_MAX_PAGES)
+            continue
+        kids = _resolved(node['/Kids'])
+        if not isinstance(kids, list):
+            raise PdfToolError('damaged')
+        if len(kids) > PAGE_TREE_NODES_MAX:
+            raise PdfToolError('pages', limit=PDF_MAX_PAGES)
+        stack.extend(reversed(kids))
+        if len(stack) > PAGE_TREE_NODES_MAX:
+            raise PdfToolError('damaged')
+
+
 def open_pdf(data):
     """``(reader, number of pages)`` of the PDF in ``data`` (bytes).
 
@@ -98,6 +158,7 @@ def open_pdf(data):
         reader = odoo_pdf.PdfReader(io.BytesIO(data), strict=False)
         if _encrypted(reader):
             raise PdfToolError('encrypted')
+        _check_page_tree(reader)
         count = len(reader.pages)
     except PdfToolError:
         raise

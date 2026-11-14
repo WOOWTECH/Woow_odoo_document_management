@@ -26,12 +26,17 @@ class WoowDocumentPdfMergeLine(models.TransientModel):
 
     @api.model_create_multi
     def create(self, vals_list):
-        self._woow_pdf_check_refs(vals_list, 'document_id', 'woow.document',
-                                  _('The selected document is unavailable.'))
-        return super().create(vals_list)
+        model = self._woow_pdf_without_defaults()
+        model._woow_pdf_check_refs(vals_list, 'document_id', 'woow.document',
+                                   _('The selected document is unavailable.'), required=True)
+        model._woow_pdf_check_refs(vals_list, 'wizard_id', 'woow.document.pdf.merge.wizard',
+                                   _('The selected document is unavailable.'), required=True)
+        return super(WoowDocumentPdfMergeLine, model).create(vals_list)
 
     def write(self, vals):
         self._woow_pdf_check_refs([vals], 'document_id', 'woow.document',
+                                  _('The selected document is unavailable.'))
+        self._woow_pdf_check_refs([vals], 'wizard_id', 'woow.document.pdf.merge.wizard',
                                   _('The selected document is unavailable.'))
         return super().write(vals)
 
@@ -49,9 +54,10 @@ class WoowDocumentPdfMergeWizard(models.TransientModel):
 
     @api.model_create_multi
     def create(self, vals_list):
-        self._woow_pdf_check_refs(vals_list, 'folder_id', 'woow.document.folder',
-                                  _('The target folder is unavailable.'))
-        return super().create(vals_list)
+        model = self._woow_pdf_without_defaults()
+        model._woow_pdf_check_refs(vals_list, 'folder_id', 'woow.document.folder',
+                                   _('The target folder is unavailable.'), required=True)
+        return super(WoowDocumentPdfMergeWizard, model).create(vals_list)
 
     def write(self, vals):
         self._woow_pdf_check_refs([vals], 'folder_id', 'woow.document.folder',
@@ -61,6 +67,11 @@ class WoowDocumentPdfMergeWizard(models.TransientModel):
     @api.model
     def default_get(self, fields_list):
         values = super().default_get(fields_list)
+        selected = self.env.context.get('active_ids')
+        if self.env.context.get('active_model') == 'woow.document' \
+                and isinstance(selected, list) and len(selected) > PDF_MAX_INPUTS:
+            raise UserError(_('At most %(most)s PDF files can be merged at once.',
+                              most=PDF_MAX_INPUTS))
         ids = self._woow_pdf_active_ids()
         if ids and 'line_ids' in fields_list:
             seen = self.env['woow.document'].search([
@@ -103,8 +114,10 @@ class WoowDocumentPdfMergeWizard(models.TransientModel):
         try:
             for doc in sources:
                 reader, count = self._woow_pdf_read(doc)
-                pages.extend(pdf_tools.page_range(reader, 1, count))
                 total += count
+                if total > pdf_tools.MERGE_MAX_PAGES:
+                    raise PdfToolError('total', limit=pdf_tools.MERGE_MAX_PAGES)
+                pages.extend(pdf_tools.page_range(reader, 1, count))
             data = pdf_tools.write_pdf(pages)
         except PdfToolError as error:
             raise UserError(self._woow_pdf_message(error)) from None

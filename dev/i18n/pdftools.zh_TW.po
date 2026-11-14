@@ -110,6 +110,12 @@ msgstr "無法使用有密碼保護的 PDF 檔案。"
 msgid "A PDF file with more than %(limit)s pages cannot be used."
 msgstr "無法使用超過 %(limit)s 頁的 PDF 檔案。"
 
+msgid "The files to merge have more than %(limit)s pages in all."
+msgstr "要合併的檔案總共超過 %(limit)s 頁。"
+
+msgid "At most %(most)s PDF files can be merged at once."
+msgstr "一次最多只能合併 %(most)s 個 PDF 檔案。"
+
 msgid "The PDF file is damaged or is not a PDF file."
 msgstr "此 PDF 檔案已損毀，或不是 PDF 檔案。"
 

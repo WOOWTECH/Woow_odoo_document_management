@@ -15,7 +15,7 @@ from odoo.exceptions import AccessError, UserError
 from ..models.document_folder import _m2o_value
 from ..models.quota import LEDGER_KEY, QuotaLedger
 from ..services import pdf_tools
-from ..services.constants import FILENAME_MAX_CHARS, PDF_MAX_INPUTS
+from ..services.constants import FILENAME_MAX_CHARS, MIB, PDF_MAX_INPUTS
 from ..services.pdf_tools import PdfToolError
 
 _PDF = 'application/pdf'
@@ -36,19 +36,33 @@ class WoowDocumentPdfCommon(models.AbstractModel):
             return []
         return list(dict.fromkeys(ids))
 
-    def _woow_pdf_check_refs(self, vals_list, name, comodel, message):
+    def _woow_pdf_without_defaults(self):
+        """``self`` without the ``default_*`` keys of the caller's context.
+
+        Core fills a field that a create leaves out from those keys, after the checks of the
+        override have run, so a hidden document could be stored without being looked at. These
+        rows are filled in by the user and by nobody else: no default of the context is taken.
+        """
+        context = {key: value for key, value in self.env.context.items()
+                   if not key.startswith('default_')}
+        return self if len(context) == len(self.env.context) else self.with_context(context)
+
+    def _woow_pdf_check_refs(self, vals_list, name, comodel, message, required=False):
         """AccessError unless the caller's own search finds every record that ``name`` names.
 
-        A row of these wizards keeps an id for a document or a folder. Storing an id that does
-        not exist fails in the database and storing one that exists does not, which would tell
-        the caller whether a record they cannot read exists. A value with no id is refused with
-        the same words (the field is required, so it could not be stored anyway).
+        A row of these wizards keeps an id for a document, a folder or another wizard. Storing
+        an id that does not exist fails in the database and storing one that exists does not,
+        which would tell the caller whether a record they cannot read exists. A value with no id
+        is refused with the same words (the field is required, so it could not be stored anyway);
+        with ``required`` so is a row that leaves the field out.
         """
         if self.env.su:
             return
         wanted = set()
         for vals in vals_list:
             if name not in vals:
+                if required:
+                    raise AccessError(message)
                 continue
             ref = _m2o_value(vals[name], comodel)
             if ref is None:
@@ -78,6 +92,9 @@ class WoowDocumentPdfCommon(models.AbstractModel):
             return _('A password protected PDF file cannot be used.')
         if code == 'pages':
             return _('A PDF file with more than %(limit)s pages cannot be used.',
+                     limit=params['limit'])
+        if code == 'total':
+            return _('The files to merge have more than %(limit)s pages in all.',
                      limit=params['limit'])
         return _('The PDF file is damaged or is not a PDF file.')
 
@@ -126,25 +143,35 @@ class WoowDocumentPdfCommon(models.AbstractModel):
             woow_log_channel='backend')._woow_log_channel()
 
     def _woow_pdf_store(self, folder, outputs):
-        """Create ``outputs`` (a list of (name, bytes, tag ids)) in ``folder`` -> the documents.
+        """Create ``outputs`` (an iterable of (name, bytes, tag ids)) in ``folder`` -> the documents.
 
         They go through ``woow.document.create`` in the caller's environment, so the upload
         policy, the quota and the rights on the folder apply to each file. One quota
-        measurement is shared by the whole run, and ``create`` takes only as many files at a
-        time as the settings allow, so the files go in as several calls of one transaction.
+        measurement is shared by the whole run. ``outputs`` is read as it is stored: a call
+        of ``create`` is made as soon as it takes as many files as the settings allow, or as
+        soon as the files held add up to the upload limit, so that the files that a split makes
+        are never all in memory before the first of them is judged. The calls are made in one
+        transaction.
         """
         model = self.env['woow.document'].with_context(
             woow_log_channel='backend', **{LEDGER_KEY: QuotaLedger()})
-        step = max(1, self.env['woow.document.settings']._get_settings().max_files_per_upload)
-        values = []
+        settings = self.env['woow.document.settings']._get_settings()
+        step = max(1, settings.max_files_per_upload)
+        budget = max(1, settings.internal_max_upload_mb) * MIB
+        created = model.browse()
+        batch = []
+        held = 0
         for name, data, tag_ids in outputs:
             vals = {'name': name, 'folder_id': folder.id, 'datas': base64.b64encode(data)}
             if tag_ids:
                 vals['tag_ids'] = [(6, 0, list(tag_ids))]
-            values.append(vals)
-        created = model.browse()
-        for start in range(0, len(values), step):
-            created |= model.create(values[start:start + step])
+            batch.append(vals)
+            held += len(data)
+            if len(batch) >= step or held >= budget:
+                created |= model.create(batch)
+                batch, held = [], 0
+        if batch:
+            created |= model.create(batch)
         return created
 
     def _woow_pdf_trash(self, sources):
