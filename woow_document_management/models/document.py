@@ -39,7 +39,8 @@ class WoowDocument(models.Model):
         'message_follower_ids', 'message_ids', 'website_message_ids',
         'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
         'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other',
-        'version_ids', 'version_count'})
+        'version_ids', 'version_count',
+        'shortcut_target_id', 'shortcut_target_available'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,

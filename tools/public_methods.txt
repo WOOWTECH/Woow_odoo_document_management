@@ -41,6 +41,9 @@ woow.document.version::action_download
 woow.document.version::action_restore
 woow.document.version::action_delete
 woow.document.version.wizard::action_confirm
+woow.document::action_open_shortcut_wizard
+woow.document::action_open_shortcut_target
+woow.document.shortcut.wizard::action_create
 
 [override]
 *::create
@@ -64,3 +67,4 @@ woow.document.*.wizard::default_get
 ir.attachment::generate_access_token
 ir.attachment::validate_access
 woow.document::search_panel_select_range
+woow.document::web_read

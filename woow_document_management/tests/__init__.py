@@ -58,3 +58,4 @@ from . import test_reg_document_owner_typed_values
 from . import test_workspace
 from . import test_docactions
 from . import test_versions
+from . import test_shortcuts

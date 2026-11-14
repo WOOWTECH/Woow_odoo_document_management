@@ -31,6 +31,7 @@ acl:
   woow.document.rename.wizard: {user: '1110', manager: '1110'}
   woow.document.version: {user: '1011', manager: '1011'}
   woow.document.version.wizard: {user: '1110', manager: '1110'}
+  woow.document.shortcut.wizard: {user: '1110', manager: '1110'}
 hd07: [woow.document.folder, portal]
 rules:
 - id: rule_woow_document_folder_company
@@ -270,6 +271,18 @@ rules:
 - id: rule_woow_document_version_wizard_owner
   ref: R-V5
   model: woow.document.version.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_shortcut_share_users
+  ref: R-S1
+  model: woow.document
+  groups: []
+  perms: '1111'
+  domain: "[(1, '=', 1)] if not user.share else [('document_type', '!=', 'shortcut')]"
+- id: rule_woow_document_shortcut_wizard_owner
+  ref: R-W7
+  model: woow.document.shortcut.wizard
   groups: [user]
   perms: '1111'
   domain: "[('create_uid', '=', user.id)]"

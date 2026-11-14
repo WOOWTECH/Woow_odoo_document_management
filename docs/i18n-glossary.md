@@ -27,6 +27,8 @@
 | Rename | 重新命名 |
 | Version | 版本 |
 | Make current | 設為目前版本 |
+| Shortcut | 捷徑 |
+| Shortcut target | 捷徑目標 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
 

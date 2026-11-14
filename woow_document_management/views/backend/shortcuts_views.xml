@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_document_list_shortcut" model="ir.ui.view">
+    <field name="name">woow.document.list.shortcut</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_list"/>
+    <field name="arch" type="xml">
+      <xpath expr="//list" position="attributes">
+        <attribute name="decoration-muted">document_type == 'shortcut' and not shortcut_target_available</attribute>
+      </xpath>
+      <xpath expr="//field[@name='file_size']" position="after">
+        <field name="shortcut_target_available" column_invisible="1"/>
+        <button name="action_open_shortcut_target" type="object" string="Open target" icon="fa-external-link" invisible="document_type != 'shortcut' or not shortcut_target_available"/>
+      </xpath>
+    </field>
+  </record>
+  <record id="view_woow_document_document_form_shortcut" model="ir.ui.view">
+    <field name="name">woow.document.form.shortcut</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_open_shortcut_target" string="Open target" type="object" class="btn-primary" invisible="document_type != 'shortcut' or not shortcut_target_available"/>
+        <button name="action_open_shortcut_wizard" string="Create shortcut" type="object" invisible="document_type not in ('binary', 'url') or not id"/>
+      </xpath>
+      <xpath expr="//sheet" position="before">
+        <field name="shortcut_target_available" invisible="1"/>
+        <div class="alert alert-warning" role="alert" invisible="document_type != 'shortcut' or shortcut_target_available">The target of this shortcut is not available to you.</div>
+      </xpath>
+      <xpath expr="//field[@name='datas']" position="attributes">
+        <attribute name="invisible">document_type == 'shortcut'</attribute>
+      </xpath>
+      <xpath expr="//field[@name='url']" position="attributes">
+        <attribute name="invisible">document_type == 'shortcut'</attribute>
+      </xpath>
+      <xpath expr="//field[@name='document_type']" position="after">
+        <field name="shortcut_target_id" readonly="1" invisible="document_type != 'shortcut'" options="{'no_open': True}"/>
+      </xpath>
+    </field>
+  </record>
+  <record id="view_woow_document_document_search_shortcut" model="ir.ui.view">
+    <field name="name">woow.document.search.shortcut</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_search"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='name']" position="after">
+        <filter name="woow_shortcuts" string="Shortcuts" domain="[('document_type', '=', 'shortcut')]"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

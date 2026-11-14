@@ -7,4 +7,5 @@ from . import (
     favorite, workspace,
     docactions_trash,
     versions, versions_binary,
+    shortcuts,
 )
