@@ -31,8 +31,14 @@
         <button name="action_new_version" string="New version" type="object"
                 invisible="document_type != 'binary' or not woow_user_can_write"/>
       </xpath>
+      <!-- A file that has content is replaced through the New version button, which keeps the
+           earlier content; the field still takes the first file of an empty document. -->
+      <xpath expr="//field[@name='datas']" position="attributes">
+        <attribute name="readonly">id and file_size</attribute>
+      </xpath>
       <xpath expr="//sheet" position="inside">
         <field name="woow_user_can_write" invisible="1"/>
+        <field name="file_size" invisible="1"/>
         <notebook>
           <page string="Versions" name="woow_versions" invisible="document_type != 'binary'">
             <field name="version_ids" nolabel="1" readonly="1"

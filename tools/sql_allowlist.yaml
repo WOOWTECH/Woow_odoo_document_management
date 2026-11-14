@@ -77,3 +77,7 @@ entries:
   file: woow_document_management/models/sharing.py
   functions: [_woow_inherited_ends]
   note: the parents, owners and member rows above a folder that inherits, read as stored without record rules, to find when the access that a copy of the inherited members stands for ends (sharing lane)
+- id: Q31
+  file: woow_document_management/models/versions.py
+  functions: [_woow_lock_document_rows]
+  note: row locks on the documents whose version history a new version, a restore or a delete changes, in id order and writing no row version, taken before the history or a legal hold is read, so a hold, a trash or an upload committed after the snapshot of the call fails it with serialization_failure (the call is run again) and a later one waits

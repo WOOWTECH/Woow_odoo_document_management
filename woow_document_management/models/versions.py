@@ -20,6 +20,8 @@ from .document import WoowDocument
 from .ir_attachment import NO_INDEX_CTX_KEY
 from .upload_policy import WoowUploadRejected
 
+_MANAGER = 'woow_document_management.group_woow_document_manager'
+
 # The marker of a server call that makes or removes version rows.
 _SWAP = object()
 
@@ -113,14 +115,26 @@ class WoowDocumentVersion(models.Model):
         return True
 
     def action_delete(self):
-        """Delete these versions; refused while their document is under a legal hold."""
+        """Delete these versions; refused while their document is under a legal hold.
+
+        The document rows are locked before the hold is judged: a hold committed after the
+        snapshot of this call changed the row of its document, so the call fails with a
+        serialization error (and is run again) instead of removing a version that is held.
+        """
         self.check_access('read')
         if len(self) > MAX_VERSIONS_PER_DOCUMENT:
             raise UserError(_('Select fewer versions.'))
-        self.document_id.check_access('write')
+        documents = self.document_id
+        documents.check_access('write')
+        documents._woow_lock_document_rows()
+        for document in documents:
+            document._woow_history_open()
         if not self.has_access('unlink'):
             # The caller may write the document, so the record rules refuse because of a hold.
-            raise UserError(_('The versions of a document under legal hold cannot be deleted.'))
+            # Only a document administrator may read the hold, so only one is told about it.
+            if self.env.su or self.env.user.has_group(_MANAGER):
+                raise UserError(_('The versions of a document under legal hold cannot be deleted.'))
+            raise UserError(_('These versions cannot be deleted.'))
         self._woow_drop()
         return True
 
@@ -132,6 +146,10 @@ class WoowDocumentVersions(models.Model):
                                   readonly=True, groups='base.group_user')
     version_count = fields.Integer(string='Number of versions', compute='_compute_version_count',
                                    groups='base.group_user')
+    version_last_number = fields.Integer(
+        string='Last version number', readonly=True, copy=False, groups='base.group_user',
+        help='The number the newest version took. A number is never given twice, even after '
+             'the newest version was deleted.')
 
     @api.depends('version_ids')
     def _compute_version_count(self):
@@ -178,11 +196,34 @@ class WoowDocumentVersions(models.Model):
         self.check_access('write')
         if self.document_type != 'binary':
             raise UserError(_('Only a file has versions.'))
+        self._woow_history_open()
+
+    def _woow_history_open(self):
+        """The history of this document may be changed now: it is not in the trash, not locked.
+
+        Shared by the three actions that change a history (a new version, a restore, a delete).
+        """
+        self.ensure_one()
         if not self.active or self.folder_in_trash:
             raise AccessError(_('This document is unavailable.'))
         holder = self._woow_lock_holder()
         if holder and not self.env.su and holder != self.env.user:
             raise UserError(_('Another user has locked this file.'))
+
+    def _woow_lock_document_rows(self):
+        """Row locks on the rows of these documents, writing no row version.
+
+        Taken before anything about the history is read or judged. Under Repeatable Read the
+        statement fails with a serialization error when a transaction that committed after the
+        snapshot of this call changed one of the rows (a legal hold, a trash, another upload),
+        and a transaction that starts later waits for this one. The call is run again on a fresh
+        snapshot. The ids are locked in order, so two calls cannot wait for each other.
+        """
+        ids = sorted({record_id for record_id in self.ids if isinstance(record_id, int)})
+        if ids:
+            self.env.cr.execute(  # sql-ok: Q31
+                'SELECT id FROM woow_document WHERE id = ANY(%s) ORDER BY id FOR NO KEY UPDATE',
+                (ids,))
 
     def _woow_add_version(self, raw, filename):
         """Store ``raw`` as the current content and keep the content it replaces as a version."""
@@ -204,40 +245,48 @@ class WoowDocumentVersions(models.Model):
             raise UserError(_('This version has no file content.'))
         # The bytes of a version are stored already: nothing is added to the quota.
         self._woow_push_version(raw, version.name, quota=False, event='version_restore',
-                                detail={'restored': version.number})
+                                detail={'restored': version.number}, keep=version)
 
-    def _woow_push_version(self, raw, filename, *, quota, event, detail):
+    def _woow_push_version(self, raw, filename, *, quota, event, detail, keep=None):
         """Make ``raw`` the current content; the content it replaces becomes the newest version.
 
-        Everything that can be refused is judged before the first change: a document under legal
-        hold keeps every version, so when the limit would remove one the call is refused; the
-        file passes the upload policy and, for a new upload, the quota. The versions beyond
-        ``MAX_VERSIONS_PER_DOCUMENT`` are removed oldest first. The name of the document keeps
-        its stem and takes the extension of the new file, so that a name never disagrees with
-        the type of its content.
+        The row of the document is locked first (``_woow_lock_document_rows``): two uploads of
+        one file take turns, and the one that comes second is run again on a fresh snapshot, so
+        it takes the next number. Everything that can be refused is judged before the first
+        change: a document under legal hold keeps every version, so when the limit would remove
+        one the call is refused; the file passes the upload policy and, for a new upload, the
+        quota. The versions beyond ``MAX_VERSIONS_PER_DOCUMENT`` are removed oldest first, never
+        ``keep`` (the version that a restore is putting back). The name of the document keeps its
+        stem and takes the extension of the new file, so that a name never disagrees with the
+        type of its content. A number is never used twice: it follows the counter of the
+        document, not the highest row that is left.
         """
         self.ensure_one()
+        self._woow_lock_document_rows()
         versions = self.env['woow.document.version']
         kept = versions.search([('document_id', '=', self.id)], order='number, id')
-        surplus = kept[:max(0, len(kept) + 1 - MAX_VERSIONS_PER_DOCUMENT)]
+        droppable = kept - keep if keep else kept
+        surplus = droppable[:max(0, len(kept) + 1 - MAX_VERSIONS_PER_DOCUMENT)]
         if surplus and not surplus.has_access('unlink'):
-            raise UserError(_('This document is under legal hold, so none of its versions can be '
-                              'removed. It has reached the limit of versions.'))
+            # Only a document administrator may read the hold, so only one is told about it.
+            if self.env.su or self.env.user.has_group(_MANAGER):
+                raise UserError(_('This document is under legal hold, so none of its versions '
+                                  'can be removed. It has reached the limit of versions.'))
+            raise UserError(_('This document cannot take another version.'))
         current = self.datas
         if not current:
             raise UserError(_('This file has no content to keep as a version.'))
         policy = self.env['woow.document.upload.policy']
         checked = policy._validate(filename or self.name, raw, quota=quota)
         name = self._woow_name_for_content(policy, checked.name)
-        number = (kept[-1].number if kept else 0) + 1
+        number = max(self.version_last_number or 0, kept[-1].number if kept else 0) + 1
         earlier = {'document_id': self.id, 'number': number, 'name': self.name,
                    'mimetype': self.mimetype, 'datas': current, 'file_size': self.file_size,
                    'checksum': self.checksum}
         with self.env.cr.savepoint():
-            # The content is replaced first: two uploads at once meet on the row of the file, and
-            # the one that comes second is run again, instead of both taking the same number.
             super(WoowDocument, self.with_context(**{NO_INDEX_CTX_KEY: True})).write({
-                'datas': base64.b64encode(raw), 'name': name, 'mimetype': checked.mimetype})
+                'datas': base64.b64encode(raw), 'name': name, 'mimetype': checked.mimetype,
+                'version_last_number': number})
             _swap(versions).create(earlier)
             if surplus:
                 surplus._woow_drop()

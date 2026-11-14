@@ -43,7 +43,8 @@ class WoowDocument(models.Model):
         'shortcut_target_id', 'shortcut_target_available',
         'request_user_id', 'request_deadline', 'request_note', 'request_activity_id', 'request_last_reminder',
         'share_ids', 'shared_editor_user_ids', 'woow_user_can_share',
-        'source_attachment_id', 'auto_rule_id'})
+        'source_attachment_id', 'auto_rule_id',
+        'version_last_number'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,
@@ -190,7 +191,8 @@ class WoowDocument(models.Model):
                      'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
                      'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other',
                      'version_ids', 'version_count',
-                     'source_attachment_id', 'auto_rule_id'}
+                     'source_attachment_id', 'auto_rule_id',
+                     'version_last_number'}
         docs = self.browse()
         with self.env.cr.savepoint():
             policy = self.env['woow.document.upload.policy']
@@ -298,7 +300,8 @@ class WoowDocument(models.Model):
                          'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
                          'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other',
                          'version_ids', 'version_count',
-                         'source_attachment_id', 'auto_rule_id'}
+                         'source_attachment_id', 'auto_rule_id',
+                         'version_last_number'}
             if protected.intersection(vals):
                 raise AccessError(_('File metadata is set by the server.'))
             if {'source_res_model', 'source_res_id'}.intersection(vals) and \

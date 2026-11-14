@@ -4,12 +4,14 @@
 import base64
 import io
 import secrets
+import threading
+import time
 import zipfile
 from unittest.mock import patch
 
 from psycopg2 import errors
 
-from odoo import Command
+from odoo import Command, SUPERUSER_ID, api
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import new_test_user
@@ -308,6 +310,95 @@ class TestNewVersion(_Fixture, TransactionCase):
             self._server_version(self.doc, 0, b'zero')
 
 
+    def test_a_number_is_never_given_twice_after_the_newest_version_is_deleted(self):
+        self._upload(self.editor, self.doc, b'content 1')
+        self._upload(self.editor, self.doc, b'content 2')
+        self.assertEqual(self._versions(self.doc).mapped('number'), [1, 2])
+        self._versions(self.doc)[-1].with_user(self.editor).action_delete()
+        self._upload(self.editor, self.doc, b'content 3')
+        self.assertEqual(self._versions(self.doc).mapped('number'), [1, 3])
+        self.assertEqual(sorted(event.detail['number']
+                                for event in self._events('version_add', self.doc)), [1, 2, 3])
+        self.assertEqual(self.doc.sudo().version_last_number, 3)
+
+    def test_the_counter_of_numbers_is_set_by_the_server_only(self):
+        for user in (self.editor, self.docmgr):
+            with self.subTest(user=user.login), self.assertRaises(AccessError):
+                self.doc.with_user(user).write({'version_last_number': 0})
+            with self.subTest(user=user.login, create=True), self.assertRaises(AccessError):
+                self.env['woow.document'].with_user(user).create({
+                    'name': 'counter.txt', 'folder_id': self.folder.id,
+                    'datas': base64.b64encode(b'x'), 'version_last_number': 7})
+        with self.assertRaises(AccessError):
+            self.doc.with_user(self.portal).read(['version_last_number'])
+
+    def test_a_non_administrator_is_not_told_about_a_legal_hold(self):
+        with patch(_CAP, 1):
+            self._upload(self.editor, self.doc, b'content 1')
+            self.doc.with_user(self.docmgr).action_set_legal_hold(True)
+            hold = 'legal hold'
+            with self.assertRaises(UserError) as editor:
+                self._upload(self.editor, self.doc, b'content 2')
+            with self.assertRaises(UserError) as manager:
+                self._upload(self.docmgr, self.doc, b'content 2')
+        self.assertNotIn(hold, str(editor.exception).lower())
+        self.assertIn(hold, str(manager.exception).lower())
+        # the editor cannot read the hold, and the message does not give it away either
+        with self.assertRaises(AccessError):
+            self.doc.with_user(self.editor).read(['legal_hold'])
+
+    def test_the_new_file_is_judged_when_it_arrives_in_the_wizard(self):
+        """Nothing is parked in the table of the wizard: a file that the policy refuses, or
+        a document the caller may not change (hidden, missing or read-only), is refused at once."""
+        wizard = self.env['woow.document.version.wizard']
+        for name, content in (('run.exe', b'MZ binary'), ('bad.txt', b'text\x00with nul')):
+            with self.subTest(name=name), self.assertRaises(WoowUploadRejected):
+                wizard.with_user(self.editor).create({
+                    'document_id': self.doc.id, 'datas': base64.b64encode(content),
+                    'filename': name})
+        with self.assertRaises(WoowUploadRejected):
+            wizard.with_user(self.editor).create({
+                'document_id': self.doc.id, 'datas': 'not base64 !', 'filename': 'a.txt'})
+        row = wizard.with_user(self.editor).create({
+            'document_id': self.doc.id, 'datas': base64.b64encode(b'fine'), 'filename': 'a.txt'})
+        with self.assertRaises(WoowUploadRejected):
+            row.write({'datas': base64.b64encode(b'MZ binary'), 'filename': 'run.exe'})
+        row.write({'filename': 'b.txt'})
+        self.assertEqual(wizard.sudo().search_count([]), 1)
+
+    def test_a_hidden_a_missing_and_a_read_only_document_get_the_same_answer_in_the_wizard(self):
+        other_folder = self.env['woow.document.folder'].sudo().create({
+            'name': 'Versions hidden folder', 'owner_id': self.admin.id})
+        hidden = self._document('hidden.txt', b'hidden', folder=other_folder)
+        self.env.flush_all()
+        missing = self.env['woow.document'].sudo().search([], order='id desc', limit=1).id + 1000
+        answers = set()
+        for user, document_id in ((self.editor, hidden.id), (self.editor, missing),
+                                  (self.reader, self.doc.id), (self.uploader, self.doc.id),
+                                  (self.reader, hidden.id), (self.reader, missing)):
+            with self.subTest(user=user.login, document=document_id):
+                with self.assertRaises(AccessError) as caught:
+                    self.env['woow.document.version.wizard'].with_user(user).create({
+                        'document_id': document_id, 'datas': base64.b64encode(b'x'),
+                        'filename': 'x.txt'})
+                answers.add(str(caught.exception))
+        self.assertEqual(len(answers), 1)
+        self.assertFalse(self.env['woow.document.version.wizard'].sudo().search_count([]))
+        row = self.env['woow.document.version.wizard'].with_user(self.editor).create({
+            'document_id': self.doc.id, 'datas': base64.b64encode(b'fine'), 'filename': 'a.txt'})
+        with self.assertRaises(AccessError):
+            row.write({'document_id': hidden.id})
+        with self.assertRaises(AccessError):
+            row.write({'document_id': missing})
+
+    def test_a_file_that_has_content_is_replaced_through_the_button_not_the_field(self):
+        arch = self.env['woow.document'].with_user(self.editor).get_views(
+            [(False, 'form')])['views']['form']['arch']
+        field = arch[arch.index('name="datas"') - 20:arch.index('name="datas"') + 120]
+        self.assertIn('id and file_size', field)
+        self.assertIn('name="file_size"', arch)
+
+
 @tagged('woow_docmgmt_core')
 class TestRestoreAndDelete(_Fixture, TransactionCase):
 
@@ -394,6 +485,52 @@ class TestRestoreAndDelete(_Fixture, TransactionCase):
             '/woow_document/version/%d/download' % self.first.id)
         with self.assertRaises(AccessError):
             self.first.with_user(self.plain).action_download()
+
+
+    def test_a_restore_at_the_limit_keeps_the_version_that_was_chosen(self):
+        self._upload(self.editor, self.doc, b'third content')
+        self._upload(self.editor, self.doc, b'fourth content')
+        self.assertEqual(self._versions(self.doc).mapped('number'), [1, 2, 3])
+        with patch(_CAP, 3):
+            self.first.with_user(self.editor).action_restore()
+        versions = self._versions(self.doc)
+        # the oldest one that was not chosen is dropped, the chosen row stays in the list
+        self.assertEqual(versions.mapped('number'), [1, 3, 4])
+        self.assertEqual(self._content(self.doc), b'first content')
+        self.assertEqual(base64.b64decode(versions[0].datas), b'first content')
+        self.assertEqual(base64.b64decode(versions[-1].datas), b'fourth content')
+        self.assertEqual([event.detail['number']
+                          for event in self._events('version_delete', self.doc)], [2])
+
+    def test_a_non_administrator_is_not_told_about_a_legal_hold_on_delete(self):
+        self.doc.with_user(self.docmgr).action_set_legal_hold(True)
+        with self.assertRaises(UserError) as editor:
+            self.first.with_user(self.editor).action_delete()
+        with self.assertRaises(UserError) as manager:
+            self.first.with_user(self.docmgr).action_delete()
+        self.assertNotIn('legal hold', str(editor.exception).lower())
+        self.assertIn('legal hold', str(manager.exception).lower())
+        self.assertTrue(self.first.exists())
+
+    def test_the_history_of_a_trashed_file_is_not_deleted(self):
+        self.doc.with_user(self.editor).action_trash()
+        for user in (self.editor, self.docmgr):
+            with self.subTest(user=user.login), self.assertRaises(AccessError):
+                self.first.with_user(user).action_delete()
+        self.assertTrue(self.first.exists())
+        self.doc.with_user(self.docmgr).action_restore()
+        self.first.with_user(self.editor).action_delete()
+        self.assertFalse(self.first.exists())
+
+    def test_the_history_of_a_file_locked_by_another_user_is_not_deleted(self):
+        model = type(self.env['woow.document'])
+        with patch.object(model, '_woow_lock_holder', lambda doc: self.reader):
+            with self.assertRaises(UserError):
+                self.first.with_user(self.editor).action_delete()
+            self.assertTrue(self.first.exists())
+        with patch.object(model, '_woow_lock_holder', lambda doc: self.editor):
+            self.first.with_user(self.editor).action_delete()   # the holder is not stopped
+        self.assertFalse(self.first.exists())
 
 
 @tagged('woow_docmgmt_core')
@@ -667,6 +804,146 @@ class TestVersionFiles(_Fixture, TransactionCase):
         self.assertFalse(wizard.sudo().datas)
         self.assertFalse(self.env['ir.attachment'].sudo().search_count([
             ('res_model', '=', 'woow.document.version.wizard')]))
+
+
+@tagged('woow_docmgmt_core')
+class TestVersionRaces(TransactionCase):
+    """Real Repeatable Read transactions of their own (no registry test mode).
+
+    The fixture is committed first: a folder owned by the administrator and one document with
+    content. Every race is the same shape: the call under test takes its snapshot, another
+    transaction changes the document, and the call must not act on what its snapshot says.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.admin_id = self.env.ref('base.user_admin').id
+        self._documents, self._folders = [], []
+        self.addCleanup(self._drop_committed)
+        with self.registry.cursor() as cr:
+            env = api.Environment(cr, SUPERUSER_ID, {
+                'tracking_disable': True, 'mail_create_nolog': True,
+                'mail_create_nosubscribe': True})
+            folder = env['woow.document.folder'].create({
+                'name': 'Version race %s' % secrets.token_hex(6), 'owner_id': self.admin_id})
+            document = env['woow.document'].create({
+                'name': 'race.txt', 'folder_id': folder.id,
+                'datas': base64.b64encode(b'race content')})
+            self._folders.append(folder.id)
+            self._documents.append(document.id)
+            self.document_id = document.id
+
+    def _drop_committed(self):
+        with self.registry.cursor() as cr:
+            documents, folders = self._documents, self._folders
+            cr.execute("DELETE FROM ir_attachment WHERE res_model = 'woow.document.version' "
+                       "AND res_id IN (SELECT id FROM woow_document_version "
+                       "WHERE document_id = ANY(%s))", (documents,))
+            cr.execute('DELETE FROM woow_document_version WHERE document_id = ANY(%s)',
+                       (documents,))
+            cr.execute('DELETE FROM woow_document_log WHERE document_id = ANY(%s) '
+                       'OR folder_id = ANY(%s)', (documents, folders))
+            cr.execute("DELETE FROM mail_followers WHERE (res_model = 'woow.document' "
+                       "AND res_id = ANY(%s)) OR (res_model = 'woow.document.folder' "
+                       "AND res_id = ANY(%s))", (documents, folders))
+            cr.execute("DELETE FROM mail_message WHERE (model = 'woow.document' "
+                       "AND res_id = ANY(%s)) OR (model = 'woow.document.folder' "
+                       "AND res_id = ANY(%s))", (documents, folders))
+            cr.execute('DELETE FROM woow_document WHERE id = ANY(%s)', (documents,))
+            cr.execute("DELETE FROM ir_attachment WHERE res_model = 'woow.document' "
+                       "AND res_id = ANY(%s)", (documents,))
+            cr.execute('DELETE FROM woow_document_folder WHERE id = ANY(%s)', (folders,))
+
+    def _env(self, cr):
+        return api.Environment(cr, self.admin_id, {})
+
+    def _upload(self, env, content):
+        wizard = env['woow.document.version.wizard'].create({
+            'document_id': self.document_id, 'datas': base64.b64encode(content),
+            'filename': 'race.txt'})
+        wizard.action_confirm()
+
+    def _committed(self):
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT number FROM woow_document_version WHERE document_id = %s '
+                       'ORDER BY number', (self.document_id,))
+            numbers = [row[0] for row in cr.fetchall()]
+            cr.execute('SELECT legal_hold IS TRUE FROM woow_document WHERE id = %s',
+                       (self.document_id,))
+            return numbers, cr.fetchone()[0]
+
+    def _wait_for_a_blocked_statement(self):
+        with self.registry.cursor() as cr:
+            for _attempt in range(100):
+                cr.execute("SELECT count(*) FROM pg_stat_activity WHERE "
+                           "datname = current_database() AND wait_event_type = 'Lock'")
+                if cr.fetchone()[0]:
+                    return True
+                time.sleep(0.1)
+
+        return False
+
+    def test_two_uploads_at_once_take_turns_and_the_second_is_run_again(self):
+        """The second upload waits for the first and fails with a serialization error (which the
+        server runs again); it never fails on the unique number, and nothing is half done."""
+        outcome = {}
+        with self.registry.cursor() as cr_first, self.registry.cursor() as cr_second:
+            self._upload(self._env(cr_first), b'first racer')
+            # made here: a thread cannot take the registry lock while the tests run at load time
+            env_second = self._env(cr_second)
+
+            def second():
+                try:
+                    with mute_logger('odoo.sql_db'):
+                        self._upload(env_second, b'second racer')
+                    outcome['error'] = None
+                except Exception as exc:    # noqa: BLE001 - the type is what the test judges
+                    outcome['error'] = exc
+                finally:
+                    cr_second.rollback()
+
+            thread = threading.Thread(target=second)
+            thread.start()
+            try:
+                self.assertTrue(self._wait_for_a_blocked_statement(),
+                                'the second upload did not wait for the first: %r' % outcome)
+            finally:
+                cr_first.commit()
+                thread.join(30)
+        self.assertFalse(thread.is_alive())
+        self.assertIsInstance(outcome['error'], errors.SerializationFailure)
+        self.assertEqual(self._committed()[0], [1])
+        # run again on a fresh snapshot, it takes the next number
+        with self.registry.cursor() as cr:
+            self._upload(self._env(cr), b'second racer')
+        self.assertEqual(self._committed()[0], [1, 2])
+
+    def test_a_legal_hold_committed_after_the_snapshot_stops_the_delete_of_a_version(self):
+        with self.registry.cursor() as cr:
+            self._upload(self._env(cr), b'next content')
+        with self.registry.cursor() as cr_delete:
+            env = self._env(cr_delete)
+            version = env['woow.document.version'].search(
+                [('document_id', '=', self.document_id)])    # the snapshot of this call
+            with self.registry.cursor() as cr_hold:
+                self._env(cr_hold)['woow.document'].browse(
+                    self.document_id).action_set_legal_hold(True)
+            with mute_logger('odoo.sql_db'), self.assertRaises(errors.SerializationFailure):
+                version.action_delete()
+        numbers, hold = self._committed()
+        self.assertEqual((numbers, hold), ([1], True))
+
+    def test_a_delete_started_after_the_hold_is_refused_as_usual(self):
+        with self.registry.cursor() as cr:
+            self._upload(self._env(cr), b'next content')
+        with self.registry.cursor() as cr:
+            self._env(cr)['woow.document'].browse(self.document_id).action_set_legal_hold(True)
+        with self.registry.cursor() as cr:
+            version = self._env(cr)['woow.document.version'].search(
+                [('document_id', '=', self.document_id)])
+            with self.assertRaises(UserError):
+                version.action_delete()
+        self.assertEqual(self._committed(), ([1], True))
 
 
 @tagged('woow_docmgmt_http')
