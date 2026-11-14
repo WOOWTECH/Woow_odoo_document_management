@@ -42,3 +42,5 @@ access_woow_document_request_fulfil_wizard_manager,woow.document.request.fulfil.
 access_woow_document_share_user,woow.document.share.user,model_woow_document_share,group_woow_document_user,1,1,1,1
 access_woow_document_share_manager,woow.document.share.manager,model_woow_document_share,group_woow_document_manager,1,1,1,1
 access_woow_document_mail_intake_manager,woow.document.mail.intake.manager,model_woow_document_mail_intake,group_woow_document_manager,1,1,1,1
+access_woow_document_auto_rule_manager,woow.document.auto.rule.manager,model_woow_document_auto_rule,group_woow_document_manager,1,1,1,1
+access_woow_document_autofile_wizard_manager,woow.document.autofile.wizard.manager,model_woow_document_autofile_wizard,group_woow_document_manager,1,1,1,0

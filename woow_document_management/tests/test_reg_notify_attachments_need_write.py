@@ -54,6 +54,9 @@ def _fixture(env, suffix, password=None):
         'document_id': document.id, 'subject_type': 'user', 'user_id': users['reader'].id})
     records['woow.document.mail.intake'] = env['woow.document.mail.intake'].sudo().create({
         'folder_id': folder.id, 'alias_name': 'notify-%s' % suffix})
+    records['woow.document.auto.rule'] = env['woow.document.auto.rule'].sudo().create({
+        'name': 'Notify %s' % suffix, 'folder_id': folder.id,
+        'model_id': env['ir.model']._get('res.currency').id})
     assert set(records) == set(WOOW_MODELS)
     env.flush_all()
     return records, users

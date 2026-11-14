@@ -6,6 +6,7 @@ Allowlist (file, model, function -> count):
   S1  models/document_log.py   woow.document.log    _log_event              1  (# sudo-ok: S1)
   S3  models/settings.py       woow.document.settings _read_params          1  (# sudo-ok: S3)
   S4  models/mailin.py         woow.document.mail.intake _woow_sender_documents 1 with_user (# sudo-ok: S4)
+  A1  models/autofile.py       woow.document.auto.rule _woow_elevated        1  (# sudo-ok: A1)
 
 Every other escalation in non-test code is a violation: any ``sudo`` attribute except the
 literal ``sudo(False)``, ``with_user(``, ``with_env(``, ``env(su=...|user=...)`` except
@@ -35,6 +36,8 @@ ALLOW = {
            '_read_params', {'sudo': 1}),
     'S4': ('woow_document_management/models/mailin.py', 'woow.document.mail.intake',
            '_woow_sender_documents', {'with_user': 1}),
+    'A1': ('woow_document_management/models/autofile.py', 'woow.document.auto.rule',
+           '_woow_elevated', {'sudo': 1}),
 }
 SU_CHECKED_PREFIXES = ('_cron_',)
 

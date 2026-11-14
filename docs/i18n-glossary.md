@@ -42,6 +42,9 @@
 | Portal contact | 入口網站聯絡人 |
 | Folder mailbox | 資料夾信箱 |
 | Follower | 追蹤者 |
+| Filing rule | 歸檔規則 |
+| Filed documents | 歸檔的文件 |
+| Source Attachment | 來源附件 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
 

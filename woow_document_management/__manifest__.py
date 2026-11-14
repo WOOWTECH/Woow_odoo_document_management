@@ -22,6 +22,7 @@
         'security/requests_rules.xml',
         'security/sharing_rules.xml',
         'security/mailin_rules.xml',
+        'security/autofile_rules.xml',
         'data/ir_cron.xml',
         'data/sharing_data.xml',
         'data/mail_templates.xml',
@@ -53,6 +54,8 @@
         'views/wizards/requests_wizard_views.xml',
         'views/backend/requests_views.xml',
         'views/backend/mailin_views.xml',
+        'views/backend/autofile_views.xml',
+        'views/wizards/autofile_wizard_views.xml',
         'views/menus.xml',
     ],
     'assets': {

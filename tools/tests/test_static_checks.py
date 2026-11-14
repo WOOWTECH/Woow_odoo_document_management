@@ -851,7 +851,7 @@ class TestCheckSweepConfig(ToolCase):
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         self.assertIn('.security/', cfg['always_human']['paths'])
         # The 33 required files and the tests/test_reg_<slug>.py files that fixes added.
-        self.assertEqual(len(cfg['verify']['regression_tests']), 33 + 19 + 1)   # test_requests.py is listed too
+        self.assertEqual(len(cfg['verify']['regression_tests']), 33 + 19 + 2)   # test_requests.py and test_autofile.py are listed too
 
     def test_check_workflow_rules(self):
         """T-STAT-10 / sec 8: no pull_request_target, read-only permissions, SHA-pinned actions."""
@@ -990,7 +990,7 @@ class TestRepo(unittest.TestCase):
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 35 + 19 + 7)   # the nineteen tests/test_reg_<slug>.py files, and one test_<lane>.py per merged lane (workspace, docactions, versions, shortcuts) and test_requests, which sweep.yaml lists
+        self.assertEqual(len(imported), 35 + 19 + 8)   # the nineteen tests/test_reg_<slug>.py files, and one test_<lane>.py per merged lane (workspace, docactions, versions, shortcuts) plus test_requests and test_autofile, which sweep.yaml lists
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""
@@ -1030,7 +1030,8 @@ class TestServerFieldsDeclared(unittest.TestCase):
     FORM_ONLY = frozenset({
         'woow.document.move.wizard', 'woow.document.purge.wizard',
         'woow.document.restore.wizard', 'woow.document.add.attachment.wizard',
-        'woow.document.notify.wizard'})
+        'woow.document.notify.wizard',
+        'woow.document.autofile.wizard'})
 
     @staticmethod
     def _literal(node):

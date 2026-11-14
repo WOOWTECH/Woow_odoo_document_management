@@ -29,6 +29,7 @@ WOOW_MODELS: tuple[str, ...] = (
     'woow.document', 'woow.document.folder', 'woow.document.folder.access',
     'woow.document.tag', 'woow.document.log', 'woow.document.favorite',
     'woow.document.version', 'woow.document.share', 'woow.document.mail.intake',
+    'woow.document.auto.rule',
 )
 TRASHABLE_MODELS: tuple[str, ...] = ('woow.document', 'woow.document.folder')   # I-04
 

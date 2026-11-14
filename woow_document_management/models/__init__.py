@@ -11,4 +11,5 @@ from . import (
     requests,
     share, sharing,
     mailin,
+    autofile,
 )

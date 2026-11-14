@@ -727,7 +727,7 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
                         'woow.document.folder.access': 0, 'woow.document.tag': 0,
                         'woow.document.log': 0, 'woow.document.favorite': 0,
                         'woow.document.version': 0, 'woow.document.share': 0,
-                        'woow.document.mail.intake': 0}
+                        'woow.document.mail.intake': 0, 'woow.document.auto.rule': 0}
         self.assertEqual(set(self.targets), set(WOOW_MODELS))
 
     def _values(self, name, model, res_id, **extra):
