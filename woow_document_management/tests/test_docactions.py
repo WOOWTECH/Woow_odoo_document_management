@@ -171,15 +171,14 @@ class TestLockRights(DocActionsCase):
         self.assertTrue(self._as(self.dave, doc).action_unlock())
         self.assertFalse(doc.lock_uid)
 
-    def test_a_folder_manager_gets_a_clear_refusal_inside_a_trashed_folder(self):
+    def test_a_document_in_a_trashed_folder_is_released_by_an_administrator_only(self):
         self._as(self.alice).action_lock()
         self.assertTrue(self.folder.with_user(self.dave).action_trash())
-        as_dave = self.doc.with_user(self.dave).with_context(active_test=False)
-        with self.assertRaises(UserError) as caught:
-            as_dave.action_unlock()
-        self.assertIs(type(caught.exception), UserError)    # not the generic access error
+        # The read rule hides every document of a trashed folder from its manager: the ordinary
+        # answer for a record the caller cannot see, and the lock stays.
+        with self.assertRaises(AccessError):
+            self.doc.with_user(self.dave).with_context(active_test=False).action_unlock()
         self.assertEqual(self.doc.lock_uid, self.alice)
-        # An administrator releases it, and so does the folder manager once it is restored.
         self.assertTrue(self.doc.with_user(self.admin).with_context(
             active_test=False).action_unlock())
         self.assertFalse(self.doc.lock_uid)

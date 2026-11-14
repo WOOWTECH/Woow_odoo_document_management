@@ -126,8 +126,8 @@ class WoowDocumentLock(models.Model):
                 raise AccessError(_('You cannot unlock this document.'))
             if not doc.has_access('write'):
                 # The release is an ordinary write of the two lock columns (no elevation), so a
-                # holder who lost write access, or a folder manager facing a trashed folder, gets
-                # a clear answer here instead of the generic one from the ORM.
+                # holder who lost write access gets a clear answer here instead of the generic
+                # one from the ORM.
                 raise UserError(_('This lock cannot be released from your account now. '
                                   'Ask a document administrator.'))
         for doc in self.with_context(active_test=False):

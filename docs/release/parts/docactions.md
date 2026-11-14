@@ -85,11 +85,11 @@ therefore in the first file, and the overrides that must be asked before the tra
   existing documents are unlocked.
 - A user who is archived or whose rights changed can leave a lock behind. A manager of the folder or
   a document administrator releases it with Unlock. Deleting a user clears the locks he held.
-- A holder who lost write access to the document cannot unlock it himself, and a folder manager
-  cannot unlock a document inside a trashed folder: the release is an ordinary write with no
-  elevation, so both get a short refusal ("This lock cannot be released from your account now. Ask a
-  document administrator."). A document administrator can release it; a folder manager can once
-  the folder is restored or the holder's access is back.
+- A holder who lost write access to the document cannot unlock it himself: the release is an
+  ordinary write with no elevation, so he gets a short refusal ("This lock cannot be released from
+  your account now. Ask a document administrator."). A folder manager releases it. The documents of
+  a trashed folder are hidden by the read rule even from the folder's manager (they get the ordinary
+  "no access" answer); a document administrator releases such a lock, or the folder is restored first.
 - The limits (20 documents per duplicate call, 200 per lock or unlock call) are constants in
   `models/docactions.py`. A duplicate call is also held to the "files per upload" setting (1 to 20,
   default 10), whichever is smaller; the total size of the copies is bounded by the quota and the
