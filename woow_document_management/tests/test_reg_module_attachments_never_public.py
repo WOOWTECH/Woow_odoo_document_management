@@ -34,6 +34,12 @@ from ..services.constants import WOOW_MODELS
 from .test_reg_chatter_attachment_tokens import _NO_SIGNUP_MAIL, _USER, _ChatterFixture, _png
 from .test_reg_server_columns_ignore_defaults import WAYS, _forget, _store
 
+
+def _passes_through(self, vals):
+    """The write of ``ir.attachment`` without the guard of this module (for the cost comparison)."""
+    return super(IrAttachment, self).write(vals)
+
+
 # Values that are not truthy and that a Char column nevertheless keeps as text ('0', '0.0', '[]',
 # '{}', '()'): the ORM stores ``str(value)`` for everything that is not None or False.
 TYPED_FALSY = (0, 0.0, [], {}, ())
@@ -703,7 +709,9 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
         and for a set of 5, and the two must be the same: one select for the whole set, not one
         per row. A write that names the model, or none of the three, makes no look at all, so the
         cache makes no difference to this module's guard and what is left is what others add: it
-        also does not grow with the set and is never more than the look costs.
+        also does not grow with the set and is never more than the look costs. That part is
+        measured as the difference to the same write with this module's guard replaced by a
+        pass-through, so that the per-row queries of other installed modules cancel out.
         """
         looked, left = {}, {}
         for size in (1, 5):
@@ -722,8 +730,15 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
             for name, vals in (('the model', {'res_model': 'woow.document', 'res_id': 0}),
                                ('something else', {})):
                 with self.subTest(rows=size, vals=name):
-                    left[(name, size)] = (self._statements(rows, vals, cold=True)
-                                          - self._statements(rows, vals, cold=False))
+                    # what the write costs with this module's guard, less what the very same
+                    # write costs with the guard replaced by a pass-through: what is left is the
+                    # guard's own cost, whatever another installed module adds to each row
+                    with_guard = (self._statements(rows, vals, cold=True)
+                                  - self._statements(rows, vals, cold=False))
+                    with patch.object(IrAttachment, 'write', _passes_through):
+                        without_guard = (self._statements(rows, vals, cold=True)
+                                         - self._statements(rows, vals, cold=False))
+                    left[(name, size)] = with_guard - without_guard
         for name in ('the flag', 'the token', 'a typed token'):
             with self.subTest(vals=name, check='the same for one row and for five'):
                 self.assertEqual(looked[(name, 1)], looked[(name, 5)])

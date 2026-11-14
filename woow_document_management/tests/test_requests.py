@@ -6,6 +6,7 @@ import io
 import secrets
 import zipfile
 from datetime import timedelta
+from unittest.mock import patch
 
 from odoo import Command, fields
 from odoo.exceptions import AccessError, MissingError, UserError
@@ -399,11 +400,14 @@ class TestRequestFulfil(RequestsCase):
 
     def test_the_quota_applies(self):
         self.env['ir.config_parameter'].sudo().set_param('woow_document_management.quota_mb', '1')
-        with self.assertRaises(WoowUploadRejected) as caught:
-            self._fulfil(self.asked, name='big.txt', data=b'x' * (1024 * 1024))
-        self.assertEqual(caught.exception.code, 'quota')
-        self.assertEqual(self.doc.sudo().document_type, 'request')
-        self.assertTrue(self._fulfil(self.asked))      # a small file still fits
+        # the stored bytes of the site are measured as nothing: on a site that already holds other
+        # modules' files every file would be refused, and this test is about the room of a quota
+        with patch.object(type(self.env['woow.document.quota']), '_usage_bytes', return_value=0):
+            with self.assertRaises(WoowUploadRejected) as caught:
+                self._fulfil(self.asked, name='big.txt', data=b'x' * (1024 * 1024))
+            self.assertEqual(caught.exception.code, 'quota')
+            self.assertEqual(self.doc.sudo().document_type, 'request')
+            self.assertTrue(self._fulfil(self.asked))      # a small file still fits
 
     def test_the_name_keeps_the_request_and_takes_the_extension_of_the_file(self):
         doc = self._ask(name='Report.txt')

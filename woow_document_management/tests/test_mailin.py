@@ -440,7 +440,10 @@ class TestMailinReceiving(_MailinFixture, TransactionCase):
 
         self.env['ir.config_parameter'].sudo().set_param('woow_document_management.quota_mb', '5')
         locks._reset_tracker(self.env.cr)
-        with patch.object(quota_model, '_check_many', spy):
+        # the stored bytes of the site are measured as nothing, so that the room of the quota does
+        # not depend on what other modules of the database already store
+        with patch.object(quota_model, '_check_many', spy), \
+                patch.object(quota_model, '_usage_bytes', return_value=0):
             self._send(self.uploader.email, [('led-%d.txt' % index, b'file %d' % index)
                                              for index in range(3)])
             self._send(self.uploader.email, [('next.txt', b'another mail')])
@@ -462,7 +465,9 @@ class TestMailinReceiving(_MailinFixture, TransactionCase):
 
         self.env['ir.config_parameter'].sudo().set_param('woow_document_management.quota_mb', '1')
         locks._reset_tracker(self.env.cr)
-        with patch.object(type(self.env['woow.document.quota']), '_check_many', busy):
+        # the stored bytes of the site are measured as nothing (see the ledger test above)
+        with patch.object(type(self.env['woow.document.quota']), '_check_many', busy), \
+                patch.object(type(self.env['woow.document.quota']), '_usage_bytes', return_value=0):
             self._send(self.uploader.email, [('first.txt', b'busy'), ('second.txt', b'free')])
         self.assertEqual(self._documents().mapped('name'), ['second.txt'])
         self.assertEqual(self._mail_in_rows()[-1].detail, {'files': 1, 'refused': 1, 'ignored': 0})
