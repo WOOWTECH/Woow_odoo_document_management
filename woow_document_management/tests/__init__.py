@@ -67,3 +67,4 @@ from . import test_pdftools
 from . import test_integration
 from . import test_wsui
 from . import test_inspector
+from . import test_reg_sharing_round1

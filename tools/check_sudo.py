@@ -7,6 +7,7 @@ Allowlist (file, model, function -> count):
   S3  models/settings.py       woow.document.settings _read_params          1  (# sudo-ok: S3)
   S4  models/mailin.py         woow.document.mail.intake _woow_sender_documents 1 with_user (# sudo-ok: S4)
   A1  models/autofile.py       woow.document.auto.rule _woow_elevated        1  (# sudo-ok: A1)
+  S5  models/sharing.py        woow.document          _woow_release_lost_locks 1 sudo + 1 with_user (# sudo-ok: S5)
 
 Every other escalation in non-test code is a violation: any ``sudo`` attribute except the
 literal ``sudo(False)``, ``with_user(``, ``with_env(``, ``env(su=...|user=...)`` except
@@ -14,7 +15,9 @@ literal ``sudo(False)``, ``with_user(``, ``with_env(``, ``env(su=...|user=...)``
 ``request.update_env(user=...)``, ``_get_param(``, ``getattr(x, 'sudo')``, and explicit
 ``compute_sudo=True`` / ``related_sudo=True``. ``with_user(`` is never allowed, except the one
 call that S4 registers (the document model in the environment of the person who e-mailed a file
-to a folder: it lowers the rights of the mail gateway to the sender's own).
+to a folder: it lowers the rights of the mail gateway to the sender's own) and the one that S5
+registers (a document in the environment of the person who holds its lock, to see whether that
+person can still write it).
 
 The model of a class is its ``_name`` literal, else its single string ``_inherit`` (ER-44).
 Counts are "<=" by default and "==" with --g1. Also enforced: no ``<name>_sudo.env`` anywhere
@@ -38,6 +41,8 @@ ALLOW = {
            '_woow_sender_documents', {'with_user': 1}),
     'A1': ('woow_document_management/models/autofile.py', 'woow.document.auto.rule',
            '_woow_elevated', {'sudo': 1}),
+    'S5': ('woow_document_management/models/sharing.py', 'woow.document',
+           '_woow_release_lost_locks', {'sudo': 1, 'with_user': 1}),
 }
 SU_CHECKED_PREFIXES = ('_cron_',)
 
