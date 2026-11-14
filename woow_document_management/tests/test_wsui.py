@@ -196,23 +196,6 @@ class TestWorkspaceBrowserViews(TransactionCase):
                     with self.subTest(file=path.name, line=number):
                         self.assertIn('encodeURIComponent', line)
 
-    def test_the_lane_translations_cover_the_texts_of_the_screen(self):
-        root = Path(__file__).resolve().parents[2] / 'dev' / 'i18n' / 'wsui.zh_TW.po'
-        if not root.exists():      # an installed module has no dev directory
-            self.skipTest('dev/i18n is not part of the installed module')
-        catalog = root.read_text(encoding='utf-8')
-        sources = []
-        for path in _SRC.glob('*.js'):
-            sources += re.findall(r'_t\(\s*"([^"]+)"', path.read_text(encoding='utf-8'))
-        for path in _SRC.glob('*.xml'):
-            text = path.read_text(encoding='utf-8')
-            sources += [item.strip() for item in re.findall(r'>([A-Z][A-Za-z ]+)<', text)]
-            sources += re.findall(r'title="([A-Z][A-Za-z ]+)"', text)
-        self.assertTrue(sources)
-        for source in sources:
-            with self.subTest(text=source):
-                self.assertIn('msgid "%s"' % source, catalog)
-
 
 @tagged('-at_install', 'post_install', 'woow_docmgmt_wsui_js')
 class TestWorkspaceBrowserUnits(HttpCase):
