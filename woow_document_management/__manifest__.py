@@ -61,6 +61,7 @@
         'views/wizards/pdftools_wizard_views.xml',
         'views/backend/pdftools_views.xml',
         'views/backend/wsui_views.xml',
+        'views/backend/inspector_views.xml',
         'views/menus.xml',
     ],
     'assets': {
@@ -76,6 +77,7 @@
         ],
         'web.assets_unit_tests': [
             'woow_document_management/static/tests/unit/**/*',
+            'woow_document_management/static/tests/inspector/**/*',
         ],
     },
     'application': True,

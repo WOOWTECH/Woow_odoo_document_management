@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<templates xml:space="preserve">
+
+<t t-name="woow_document_management.InspectorPage">
+    <div class="o_woow_inspector_page h-100 overflow-auto">
+        <t t-if="inspector">
+            <t t-component="inspector" resModel="'woow.document'" resId="resId" onClose.bind="close"/>
+        </t>
+    </div>
+</t>
+
+</templates>

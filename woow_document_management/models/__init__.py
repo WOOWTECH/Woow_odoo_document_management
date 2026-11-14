@@ -14,3 +14,4 @@ from . import (
     autofile,
 )
 from . import pdftools
+from . import inspector
