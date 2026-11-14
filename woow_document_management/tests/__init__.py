@@ -64,3 +64,4 @@ from . import test_sharing
 from . import test_mailin
 from . import test_autofile
 from . import test_pdftools
+from . import test_integration
