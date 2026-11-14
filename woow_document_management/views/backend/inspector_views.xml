@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <!-- The details panel on a page of its own. The workspace screen shows the same panel at its side;
+       the form has a button for the cases where there is no such screen. The record to show comes
+       from the button (params) or from the id of the address (active_id). -->
+  <record id="action_woow_document_inspector" model="ir.actions.client">
+    <field name="name">Details</field>
+    <field name="tag">woow_document_inspector</field>
+  </record>
+
+  <record id="view_woow_document_document_form_inspector" model="ir.ui.view">
+    <field name="name">woow.document.form.inspector</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_open_inspector" string="Details" type="object" invisible="not id"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

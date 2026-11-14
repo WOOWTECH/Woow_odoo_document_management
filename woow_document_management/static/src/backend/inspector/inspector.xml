@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<templates xml:space="preserve">
+
+<t t-name="woow_document_management.Inspector">
+    <div class="o_woow_inspector d-flex flex-column h-100 overflow-auto bg-view">
+        <t t-if="state.error">
+            <div class="o_woow_inspector_error alert alert-danger m-2" role="alert" t-esc="state.error"/>
+        </t>
+        <t t-if="!supported or !data">
+            <div t-if="!state.error" class="o_woow_inspector_empty text-muted text-center p-4">
+                <i class="fa fa-info-circle fa-2x d-block mb-2" role="img"/>
+                Nothing selected
+            </div>
+            <div t-if="props.onClose and !supported" class="text-center pb-3">
+                <button class="o_woow_inspector_close btn btn-secondary" t-on-click="() => props.onClose()">Close</button>
+            </div>
+        </t>
+        <t t-else="">
+            <t t-set="doc" t-value="data"/>
+            <!-- identity -->
+            <div class="o_woow_inspector_head d-flex align-items-start gap-3 p-3 border-bottom">
+                <span t-attf-class="o_woow_inspector_icon fa #{iconClass} fa-3x text-muted"/>
+                <div class="flex-grow-1 overflow-hidden">
+                    <div class="o_woow_inspector_name fw-bold fs-4 text-break" t-esc="doc.name"/>
+                    <div class="text-muted small">
+                        <span class="o_woow_inspector_kind" t-esc="doc.type_label"/>
+                        <t t-if="sizeText"> · <span class="o_woow_inspector_size" t-esc="sizeText"/></t>
+                    </div>
+                    <div t-if="changedText" class="text-muted small">
+                        Last change: <span t-esc="changedText"/>
+                    </div>
+                    <div t-if="!doc.active or doc.in_trash" class="o_woow_inspector_trashed badge text-bg-warning mt-1">In the trash</div>
+                </div>
+                <button t-if="props.onClose" class="o_woow_inspector_close btn btn-link text-muted p-0" aria-label="Close" title="Close" t-on-click="() => props.onClose()">
+                    <i class="fa fa-times fa-lg"/>
+                </button>
+            </div>
+            <!-- buttons -->
+            <div class="o_woow_inspector_buttons d-flex flex-wrap gap-2 p-3 border-bottom">
+                <button class="o_woow_inspector_star btn btn-sm btn-light border" t-att-disabled="state.busy" t-on-click="toggleStar">
+                    <i t-attf-class="fa #{doc.is_favorite ? 'fa-star text-warning' : 'fa-star-o'}"/>
+                    <t t-if="doc.is_favorite"> Remove star</t>
+                    <t t-else=""> Star</t>
+                </button>
+                <button t-if="doc.is_locked and doc.can_unlock" class="o_woow_inspector_unlock btn btn-sm btn-light border" t-att-disabled="state.busy" t-on-click="toggleLock">
+                    <i class="fa fa-unlock"/> Unlock
+                </button>
+                <button t-if="!doc.is_locked and doc.can_lock" class="o_woow_inspector_lock btn btn-sm btn-light border" t-att-disabled="state.busy" t-on-click="toggleLock">
+                    <i class="fa fa-lock"/> Lock
+                </button>
+                <button t-if="doc.can_share" class="o_woow_inspector_share btn btn-sm btn-light border" t-att-disabled="state.busy" t-on-click="openShare">
+                    <i class="fa fa-share-alt"/> Share
+                </button>
+                <button t-if="doc.request and doc.request.can_upload" class="o_woow_inspector_upload btn btn-sm btn-primary" t-att-disabled="state.busy" t-on-click="openUpload">
+                    <i class="fa fa-upload"/> Upload the file
+                </button>
+            </div>
+            <div t-if="doc.is_locked" class="o_woow_inspector_lockstate px-3 pt-2 small">
+                <i class="fa fa-lock text-muted"/>
+                <t t-if="doc.locked_by_me"> Locked by you</t>
+                <t t-else=""> Locked by <span class="fw-bold" t-esc="doc.locked_by"/></t>
+            </div>
+            <!-- facts -->
+            <dl class="o_woow_inspector_facts row gy-2 px-3 pt-3 mb-0">
+                <dt class="col-4 text-muted fw-normal">Folder</dt>
+                <dd class="col-8 text-break">
+                    <a t-if="doc.folder.selectable" href="#" class="o_woow_inspector_folder" t-on-click.prevent="chooseFolder" t-esc="doc.folder.name"/>
+                    <span t-else="" class="o_woow_inspector_folder text-muted" t-esc="doc.folder.name"/>
+                </dd>
+                <t t-if="doc.owner">
+                    <dt class="col-4 text-muted fw-normal">Owner</dt>
+                    <dd class="col-8 text-break o_woow_inspector_owner" t-esc="doc.owner.name"/>
+                </t>
+                <t t-if="doc.contact">
+                    <dt class="col-4 text-muted fw-normal">Contact</dt>
+                    <dd class="col-8 text-break o_woow_inspector_contact" t-esc="doc.contact.name"/>
+                </t>
+                <t t-if="doc.company">
+                    <dt class="col-4 text-muted fw-normal">Company</dt>
+                    <dd class="col-8 text-break o_woow_inspector_company" t-esc="doc.company.name"/>
+                </t>
+                <t t-if="doc.url">
+                    <dt class="col-4 text-muted fw-normal">Link</dt>
+                    <dd class="col-8 text-break o_woow_inspector_url" t-esc="doc.url"/>
+                </t>
+                <t t-if="doc.shortcut_target">
+                    <dt class="col-4 text-muted fw-normal">Points to</dt>
+                    <dd class="col-8 text-break o_woow_inspector_target" t-esc="doc.shortcut_target.name"/>
+                </t>
+                <t t-if="doc.source">
+                    <dt class="col-4 text-muted fw-normal">Came from</dt>
+                    <dd class="col-8 text-break">
+                        <div class="o_woow_inspector_source_kind text-muted small" t-esc="doc.source.model"/>
+                        <div class="d-flex flex-wrap gap-2 align-items-baseline">
+                            <span class="o_woow_inspector_source_name" t-esc="doc.source.name"/>
+                            <button class="o_woow_inspector_source_open btn btn-sm btn-link p-0" t-att-disabled="state.busy" t-on-click="openSource">Open</button>
+                        </div>
+                    </dd>
+                </t>
+                <t t-if="doc.document_type == 'binary'">
+                    <dt class="col-4 text-muted fw-normal">Versions</dt>
+                    <dd class="col-8">
+                        <span class="o_woow_inspector_versions_count" t-esc="doc.version_count"/>
+                        <button t-if="doc.version_count" class="o_woow_inspector_versions btn btn-sm btn-link p-0 ms-2" t-on-click="openVersions">Show versions</button>
+                    </dd>
+                </t>
+            </dl>
+            <!-- requested file -->
+            <div t-if="doc.request" class="o_woow_inspector_request m-3 p-2 border rounded">
+                <div class="fw-bold mb-1"><i class="fa fa-inbox"/> Requested file</div>
+                <div t-if="doc.request.asked">Asked of <span class="o_woow_inspector_asked fw-bold" t-esc="doc.request.asked.name"/></div>
+                <div t-if="doc.request.deadline" t-att-class="doc.request.overdue ? 'text-danger' : ''">
+                    Due <span class="o_woow_inspector_deadline" t-esc="deadlineText"/>
+                </div>
+                <div t-if="doc.request.note" class="text-muted text-break" t-esc="doc.request.note"/>
+            </div>
+            <!-- tags -->
+            <div class="o_woow_inspector_tags px-3 pt-3">
+                <div class="text-muted mb-1">Tags</div>
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                    <span t-foreach="doc.tags" t-as="tag" t-key="tag.id" t-attf-class="o_woow_inspector_tag o_tag o_badge badge rounded-pill #{tagClass(tag)}">
+                        <span t-esc="tag.name"/>
+                        <button t-if="doc.can_write" class="o_woow_inspector_tag_remove btn btn-link p-0 ms-1 text-reset" aria-label="Remove tag" title="Remove tag" t-att-disabled="state.busy" t-on-click="() => this.removeTag(tag)">
+                            <i class="fa fa-times"/>
+                        </button>
+                    </span>
+                    <span t-if="!doc.tags.length and !doc.can_write" class="text-muted">None</span>
+                </div>
+                <div t-if="doc.can_write" class="position-relative mt-1">
+                    <input class="o_woow_inspector_tag_input form-control form-control-sm" type="text" maxlength="100" placeholder="Add a tag" t-att-value="state.tagSearch" t-on-input="onTagInput"/>
+                    <div t-if="state.tagChoices.length" class="o_woow_inspector_tag_choices list-group position-absolute w-100 shadow-sm" style="z-index: 2;">
+                        <button t-foreach="state.tagChoices" t-as="choice" t-key="choice.id" class="o_woow_inspector_tag_choice list-group-item list-group-item-action py-1" t-on-click="() => this.addTag(choice)" t-esc="choice.name"/>
+                    </div>
+                </div>
+            </div>
+            <!-- shared with -->
+            <div class="o_woow_inspector_shares px-3 pt-3">
+                <div class="text-muted mb-1">Shared with</div>
+                <ul t-if="doc.shares.length" class="list-unstyled mb-0">
+                    <li t-foreach="doc.shares" t-as="share" t-key="share.id" class="o_woow_inspector_share_row d-flex flex-wrap gap-2 align-items-baseline">
+                        <i t-attf-class="fa #{share.kind == 'partner' ? 'fa-globe' : 'fa-user'} text-muted"/>
+                        <span class="o_woow_inspector_share_name text-break" t-esc="share.name"/>
+                        <span class="o_woow_inspector_share_role badge text-bg-light border" t-esc="share.role_label"/>
+                        <span t-if="share.expiry_date" class="text-muted small">until <t t-esc="expiryText(share)"/></span>
+                    </li>
+                </ul>
+                <div t-else="" class="o_woow_inspector_noshares text-muted">Not shared with anyone</div>
+            </div>
+            <!-- chatter -->
+            <div class="o_woow_inspector_chatter mt-3 border-top">
+                <div t-if="doc.has_portal_members" class="o_woow_inspector_portal_warning alert alert-warning m-2" role="alert">
+                    This folder has portal members. Messages you send are emailed to every follower, including people outside the company. Use Log note for internal discussion.
+                </div>
+                <Chatter threadId="props.resId" threadModel="props.resModel" compactHeight="true" isChatterAside="false" t-key="props.resId"/>
+            </div>
+        </t>
+    </div>
+</t>
+
+</templates>
