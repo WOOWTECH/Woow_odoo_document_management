@@ -1609,7 +1609,7 @@ lanes L11 deliverable「記入 docs/CONTRACTS.md 變更請求」照這個方式�
 - route：`GET /woow_document/version/<int:version_id>/download`（`auth='user'`，`tools/routes.lock.json` 第 10 筆；entry point 共 11）。其餘功能沒有新 route；工作區畫面只呼叫既有的上傳、預覽、下載、ZIP route 與 core 的圖片 route。
 - cron：`Documents: End expired access`，每 30 分鐘；每次最多移除 `ACCESS_EXPIRY_BATCH`（500）筆過期成員列與 500 筆過期分享列，還有剩就要求再跑；寫 `access_expire`。
 
-### 22.4 提權與降權（§4.3 的登記；每一個都有標記與測試）
+### 22.4 提權與降權（§4.3 的登記；每一個都有標記與測試；共 S4、A1、A2、S5、S6）
 
 | 代號 | 位置 | 做什麼 | 為什麼安全 |
 |---|---|---|---|
@@ -1617,6 +1617,7 @@ lanes L11 deliverable「記入 docs/CONTRACTS.md 變更請求」照這個方式�
 | A1 | `models/autofile.py` `_woow_elevated` | `sudo()`：附加檔案的人通常不是目標資料夾的成員，歸檔文件以 superuser 建立 | 授權來自文件管理員建立的規則；政策與配額照常；整個歸檔在 savepoint 內，失敗只記錄；in-process 標記避免遞迴 |
 | A2 | `models/autofile.py` `_woow_creator_readable` | `with_user(規則建立者)`：先用建立者的環境確認該筆記錄讀得到 | 只讀、降權：規則不會歸檔建立者本人讀不到的記錄 |
 | S5 | `models/sharing.py` `_woow_release_lost_locks` | `sudo()` 找出鎖定中的文件，`with_user(鎖定者)` 判斷他是否還能寫入，不能就清除鎖 | 只在分享列或成員列被移除（含到期 cron）之後呼叫；唯一的寫入是清除鎖，並記一筆 `forced` 的 `unlock` |
+| S6 | `models/versions.py` `_woow_server_scope` | `sudo()`：只用來淘汰最舊的版本（達到 20 版上限時，由允許的取代觸發） | 僅靠分享編輯的人可以取代內容但沒有刪除歷史的權利；呼叫前一律先確認文件不在法律保全（保全的文件整個取代被拒絕）；被淘汰的版本會記 `version_delete` |
 
 ### 22.5 新的 record rule 與限制
 
@@ -1951,11 +1952,11 @@ sweep 類別對 T-SEC 的對照是 sec §3，套用 設計勘誤 ER-23 第 3 點
 | 2026-11-14 | 審查修正（收信與文件的 owner） | **ZIP 的 `mimetype` 成員**：每一個被接受的 ZIP（不只 ODF）只要有名為 `mimetype` 的成員，就先以壓縮方式、壓縮後大小、宣告大小檢查，不合以 `'mime'` 拒絕（§7.1）。**From 標頭**：進來的信，原始 From 標頭（解析後）的第一個位址要等於 core 解出的寄件者位址；標頭有瑕疵、沒有網域或位址解不出來就拒絕（§8.6）。**`message_update`**：兩個 model 只有 su 能呼叫（core 一律以 su 呼叫），其他呼叫者以同一個 AccessError 拒絕。**文件的 owner**：`woow.document` 的 `owner_id` 依 ORM 存下的 id 判斷，沒有 id 的值除了 su 一律拒絕，不是文件管理員的呼叫者只能指定自己（§8.1）。**文件**：SECURITY.md 說明收信的部署要求（寄件位址依投遞的內容信任，站台的郵件伺服器要執行 SPF、DKIM、DMARC；收回覆用 IMAP；不把 mail alias 指到這兩個 model）與使用者會遇到的拒絕（個人或次要位址的回信；與內部使用者共用位址、沒有帳號的聯絡人被 core 選為作者時）；HD-13 說明有內容的 list 被拒絕、空的 list 或 tuple 是沒有記錄；成員列的 `company_id` 形狀不對時，create 以資料庫錯誤結束、不存任何東西，write 乾淨地拒絕（§8.1）。測試：`test_upload_policy.py`、`test_reg_inbound_mail_replies.py`、`test_reg_many2one_typed_values.py`、`test_reg_document_owner_typed_values.py`、`test_mail_thread_guard.py`。 |
 | 2026-11-14 | 附件總覽預設可見（18.0.1.1.0） | **附件總覽改為文件使用者預設可見**（負責人修訂 DEC-17）：`group_woow_document_user` 加上 implied `group_woow_document_attachment_overview`，升級時 Odoo 把既有文件使用者加進總覽群組；總覽群組仍可單獨授予內部使用者。選單與 action 改名 en「Attachments in other apps」、zh_TW「各模組附件」，選單排在 sequence 30。`ir.attachment` 加兩個非儲存欄位 `woow_source_model_label`（來源類型，可搜尋）與 `woow_source_record_label`（來源記錄名稱），以及按鈕方法 `action_woow_open_source`、`action_woow_download`；總覽多了 kanban、form、搜尋 view（預設篩選「Business records」）。沒有新欄位、沒有 ACL 或 record rule、沒有 sudo；總覽看到的仍然等於使用者自己的 `ir.attachment` 搜尋結果。升級＝`-u woow_document_management`，沒有資料表變更。 |
 | 2026-11-14 | 18.0.2 workspace | **工作區與星號**：`woow.document.favorite`（每人自己的星號，domain 不能用 `favorite_ids` 查）、`woow.document` 的 `is_favorite`、`woow_section`（`mine`／`shared`／`recent`／`starred`）、`woow_icon`；上傳精靈與其列（`attachment=False` 的暫存欄位，每位使用者保留最新五個對話）；`search_panel_select_range` 覆寫（資料夾樹把看不到上層的資料夾接到最近看得到的祖先）；選單「Documents」改開新 action。 |
-| 2026-11-14 | 18.0.2 docactions | **鎖、複製、改名**：`lock_uid`、`lock_date`、`is_locked`、`woow_locked_by_other`（皆只給內部使用者、伺服器專用）；別人持有鎖時文件的 write、搬移、丟回收桶、還原、永久刪除一律拒絕（資料夾整體的動作與 superuser、cron 不受限）；持有者、擁有者、資料夾 manage 與文件管理員可解鎖；`action_duplicate`（每次至多 20 份）；改名精靈。 |
+| 2026-11-14 | 18.0.2 docactions | **鎖、複製、改名**：`lock_uid`、`lock_date`、`is_locked`、`woow_locked_by_other`（皆只給內部使用者、伺服器專用）；別人持有鎖時文件的 write、搬移、丟回收桶、還原、永久刪除一律拒絕（資料夾整體的動作與 superuser、cron 不受限）；持有者、資料夾 manage 與文件管理員可解鎖（文件擁有者本身不可）；`action_duplicate`（每次至多 20 份）；改名精靈。 |
 | 2026-11-14 | 18.0.2 versions | **版本**：`woow.document.version`、`GET /woow_document/version/<id>/download`、`version_ids`、`version_count`、`version_last_number`；最多 20 版；法律保留的文件保留全部版本；使用者對檔案內容的每一次取代（含直接 write）都會把舊內容留成版本，superuser 與伺服器路徑不留；版本檔案算進配額（`ir_attachment` 去重後計算）。 |
 | 2026-11-14 | 18.0.2 shortcuts | **捷徑**：`document_type='shortcut'`、`shortcut_target_id`、`shortcut_target_available`；建立只經精靈與 in-process 標記；目標只能是檔案或連結（不是捷徑、資料夾或請求檔案）；捷徑不給任何存取，以目標的搜尋結果判斷；分享使用者看不到（R-SC1）；目標被永久刪除時由 `api.ondelete` 連同捷徑一起刪。 |
 | 2026-11-14 | 18.0.2 requests | **請求檔案**：`document_type='request'` 與五個伺服器專用欄位；請求精靈與上傳精靈；被請求者必須本來就能在該資料夾存檔；提醒每 20 小時至多一次；請求的活動只能由上傳檔案完成；分享使用者看不到（R-Q0）；請求者以 R-Q3（只有 write）在請求還是佔位時能改名、標籤、取消、提醒。 |
-| 2026-11-14 | 18.0.2 sharing | **角色與到期日**：`woow.document.folder.access.expiry_date`、`woow.document.share`（viewer／editor）、`shared_editor_user_ids`；列是三個儲存清單的來源，直接改舊清單會鏡射成列；規則 R-D2 多一條：editor 分享且文件未在回收桶時可寫；cron 每 30 分鐘移除過期列；遷移 `post-sharing.py` 為每個既有直接分享建立 viewer 列（冪等）；登記提權 S5。 |
+| 2026-11-14 | 18.0.2 sharing | **角色與到期日**：`woow.document.folder.access.expiry_date`、`woow.document.share`（viewer／editor）、`shared_editor_user_ids`；列是三個儲存清單的來源，直接改舊清單會鏡射成列；規則 R-D2 多一條：editor 分享且文件未在回收桶時可寫；cron 每 30 分鐘移除過期列；遷移 `post-sharing.py` 為每個既有直接分享建立 viewer 列（冪等）；登記提權 S5。修正輪 2：文件擁有者本身不再能解鎖（只有持有者、資料夾 manage 與文件管理員）；登記提權 S6（版本達上限時淘汰最舊版本）。 |
 | 2026-11-14 | 18.0.2 mailin | **資料夾信箱**：`woow.document.mail.intake`；寄件者必須是信箱的 follower，且當下是有 upload 等級的內部文件使用者；每封信至多 10 個附件；信件內容不保留；alias 與 follower 列對一般內部使用者隱藏（R-I1、R-I2）；登記提權 S4（`with_user`）；部署必須有會執行 SPF、DKIM、DMARC 的收信伺服器。 |
 | 2026-11-14 | 18.0.2 autofile | **自動歸檔**：`woow.document.auto.rule`、`source_attachment_id`、`auto_rule_id`、補歸檔精靈；掛在 `ir.attachment` 的 create 與 `res_model`／`res_id` 的 write 與 unlink；登記提權 A1（`sudo`）與 A2（`with_user`）；歸檔不取配額鎖，只在每次呼叫以旁路連線量測一次。 |
 | 2026-11-14 | 18.0.2 pdftools | **PDF 分割與合併**：分割與合併精靈；`services/pdf_tools.py` 是唯一接觸 `odoo.tools.pdf` 的程式；頁數、輸出數、輸入數上限；之後的修正輪加上原始位元組的預先檢查、解析時間預算與解壓後大小上限。 |

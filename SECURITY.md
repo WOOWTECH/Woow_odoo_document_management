@@ -135,13 +135,13 @@ sharing, which is not part of this module. Retired numbers are not reused.
   keeps access until the next run after the last day, not until midnight. When a share row or member row
   is removed, the server clears the locks of people who can no longer write the document (it asks in the
   holder's own environment; the only write is clearing the lock, logged as a forced unlock).
-- **HD-18** Four places use another environment than the caller's, each registered in the static check
+- **HD-18** Five places use another environment than the caller's, each registered in the static check
   and documented: the folder mailbox creates documents *as the sender* (it lowers the gateway's rights to
   the sender's own); automatic filing creates the filed document as the superuser, because the person who
   attaches a file is usually no member of the target folder (the rule made by a document administrator is
   the authorisation; policy and quota still apply, failures never break the attachment); filing first
   reads the record in the environment of the maker of the rule, so a rule never files what its maker may
-  not read; and the lost-lock release described in HD-17.
+  not read; the lost-lock release described in HD-17; and the removal of the oldest version when a permitted replacement reaches the limit of 20 versions (an editor by share may replace the content but has no right to delete history; the call is refused for a document under legal hold before it is used). Only the holder of a lock, a manager of the folder and a document administrator can unlock; the owner of the document cannot, unless he is one of them.
 - **HD-19** Files filed by a rule are visible to everyone who can open the target folder, even to people
   who cannot open the record the file was attached to. The filing rule form says so in plain words.
   A document administrator decides which kinds of record are filed and where.
