@@ -40,6 +40,8 @@
 | Access ends | 存取結束日 |
 | All document users | 所有文件使用者 |
 | Portal contact | 入口網站聯絡人 |
+| Folder mailbox | 資料夾信箱 |
+| Follower | 追蹤者 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
 

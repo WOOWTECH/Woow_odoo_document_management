@@ -21,6 +21,7 @@
         'security/shortcuts_rules.xml',
         'security/requests_rules.xml',
         'security/sharing_rules.xml',
+        'security/mailin_rules.xml',
         'data/ir_cron.xml',
         'data/sharing_data.xml',
         'data/mail_templates.xml',
@@ -51,6 +52,7 @@
         'data/requests_data.xml',
         'views/wizards/requests_wizard_views.xml',
         'views/backend/requests_views.xml',
+        'views/backend/mailin_views.xml',
         'views/menus.xml',
     ],
     'assets': {

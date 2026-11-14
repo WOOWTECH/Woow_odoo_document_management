@@ -10,4 +10,5 @@ from . import (
     shortcuts,
     requests,
     share, sharing,
+    mailin,
 )

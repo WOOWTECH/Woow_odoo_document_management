@@ -1,0 +1,44 @@
+# Traditional Chinese text of lane "mailin" (folder mailboxes), for the integrator to merge.
+# Wording follows docs/i18n-glossary.md.
+msgid ""
+msgstr ""
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Folder mailbox"
+msgstr "資料夾信箱"
+
+msgid "Folder mailboxes"
+msgstr "資料夾信箱"
+
+msgid "Address"
+msgstr "位址"
+
+msgid "Archived"
+msgstr "已封存"
+
+msgid "Email Alias"
+msgstr "電子郵件別名"
+
+msgid "Only the followers of this mailbox can send files to it. Add the colleagues who may send as followers below. A file is stored only if its sender has at least upload access to the folder when the mail arrives; the mail text is not kept."
+msgstr "只有這個信箱的追蹤者可以寄檔案到這裡。請把可以寄信的同事加為下方的追蹤者。寄件者在信件送達時，對資料夾至少要有上傳權限，檔案才會存入；信件內文不會保留。"
+
+msgid "The routing of a folder mailbox is fixed."
+msgstr "資料夾信箱的收信設定是固定的，無法變更。"
+
+msgid "A tag of another company cannot be used here."
+msgstr "這裡不能使用其他公司的標籤。"
+
+msgid "mailbox unavailable"
+msgstr "信箱無法使用"
+
+msgid "This mailbox does not accept this email."
+msgstr "這個信箱不接受這封郵件。"
+
+msgid "Received by email: %(stored)s stored, %(refused)s refused, %(ignored)s ignored."
+msgstr "以電子郵件收到：已存入 %(stored)s 個、拒收 %(refused)s 個、略過 %(ignored)s 個。"
+
+msgid "This folder already has a mailbox."
+msgstr "這個資料夾已經有信箱了。"

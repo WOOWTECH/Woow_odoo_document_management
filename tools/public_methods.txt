@@ -74,3 +74,6 @@ ir.attachment::generate_access_token
 ir.attachment::validate_access
 woow.document::search_panel_select_range
 woow.document::web_read
+woow.document.mail.intake::message_post
+woow.document.mail.intake::message_new
+woow.document.mail.intake::message_update
