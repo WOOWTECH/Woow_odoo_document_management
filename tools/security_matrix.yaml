@@ -404,3 +404,10 @@ rules:
   groups: [user]
   perms: '1111'
   domain: "[('create_uid', '=', user.id)]"
+# R-W7 (docactions lane): the rename wizard row is its creator's alone, like R-W2..R-W6.
+- id: rule_woow_document_rename_wizard_owner
+  ref: R-W7
+  model: woow.document.rename.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"

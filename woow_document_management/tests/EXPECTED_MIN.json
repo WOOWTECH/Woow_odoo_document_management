@@ -20,7 +20,7 @@
     "test_core_models.py": 25,
     "test_cron.py": 4,
     "test_display_name_folding.py": 2,
-    "test_docactions.py": 67,
+    "test_docactions.py": 72,
     "test_folding_service.py": 4,
     "test_i18n_complete.py": 1,
     "test_integration.py": 19,

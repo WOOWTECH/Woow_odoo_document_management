@@ -9,23 +9,25 @@
     <field name="arch" type="xml">
       <xpath expr="//header" position="inside">
         <button name="action_lock" string="Lock" type="object" icon="fa-lock"
-                invisible="not id or is_locked or not woow_user_can_write"/>
+                invisible="not id or is_locked or not woow_user_can_write" groups="base.group_user"/>
         <button name="action_unlock" string="Unlock" type="object" icon="fa-unlock"
-                invisible="not id or not is_locked"/>
+                invisible="not id or not is_locked" groups="base.group_user"/>
         <button name="action_duplicate" string="Duplicate" type="object" icon="fa-clone"
                 invisible="not id"/>
         <button name="action_open_rename_wizard" string="Rename" type="object" icon="fa-pencil"
-                invisible="not id or not woow_user_can_write or woow_locked_by_other"/>
+                invisible="not id or not woow_user_can_write or woow_locked_by_other"
+                groups="base.group_user"/>
       </xpath>
       <xpath expr="//field[@name='owner_id']" position="after">
-        <field name="lock_uid" invisible="not is_locked"/>
-        <field name="lock_date" invisible="not is_locked"/>
+        <field name="lock_uid" invisible="not is_locked" groups="base.group_user"/>
+        <field name="lock_date" invisible="not is_locked" groups="base.group_user"/>
       </xpath>
       <xpath expr="//sheet" position="before">
-        <field name="is_locked" invisible="1"/>
-        <field name="woow_locked_by_other" invisible="1"/>
+        <field name="is_locked" invisible="1" groups="base.group_user"/>
+        <field name="woow_locked_by_other" invisible="1" groups="base.group_user"/>
         <field name="woow_user_can_write" invisible="1"/>
-        <div class="alert alert-warning" role="alert" invisible="not woow_locked_by_other">
+        <div class="alert alert-warning" role="alert" invisible="not woow_locked_by_other"
+             groups="base.group_user">
           This document is locked by another user. Its details cannot be changed until it is unlocked.
         </div>
       </xpath>

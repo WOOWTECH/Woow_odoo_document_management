@@ -24,6 +24,7 @@
         'security/mailin_rules.xml',
         'security/autofile_rules.xml',
         'security/pdftools_rules.xml',
+        'security/docactions_rules.xml',
         'data/ir_cron.xml',
         'data/sharing_data.xml',
         'data/mail_templates.xml',

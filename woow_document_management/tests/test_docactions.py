@@ -157,6 +157,32 @@ class TestLockRights(DocActionsCase):
         self.assertTrue(self._as(self.bob).action_unlock())
         self.assertFalse(self._events('unlock'))
 
+    def test_a_holder_who_lost_write_access_gets_a_clear_refusal_and_a_manager_releases(self):
+        doc = self._doc('held.txt', b'held content', owner_id=self.bob.id)
+        self._as(self.alice, doc).action_lock()
+        self.env['woow.document.folder.access'].sudo().search([
+            ('folder_id', '=', self.folder.id), ('user_id', '=', self.alice.id)]).write(
+                {'level': 'read'})
+        self.env.flush_all()
+        with self.assertRaises(UserError) as caught:
+            self._as(self.alice, doc).action_unlock()
+        self.assertIs(type(caught.exception), UserError)    # not the generic access error
+        self.assertEqual(doc.lock_uid, self.alice)
+        self.assertTrue(self._as(self.dave, doc).action_unlock())
+        self.assertFalse(doc.lock_uid)
+
+    def test_a_document_in_a_trashed_folder_is_released_by_an_administrator_only(self):
+        self._as(self.alice).action_lock()
+        self.assertTrue(self.folder.with_user(self.dave).action_trash())
+        # The read rule hides every document of a trashed folder from its manager: the ordinary
+        # answer for a record the caller cannot see, and the lock stays.
+        with self.assertRaises(AccessError):
+            self.doc.with_user(self.dave).with_context(active_test=False).action_unlock()
+        self.assertEqual(self.doc.lock_uid, self.alice)
+        self.assertTrue(self.doc.with_user(self.admin).with_context(
+            active_test=False).action_unlock())
+        self.assertFalse(self.doc.lock_uid)
+
     def test_a_manager_of_another_folder_cannot_unlock_here(self):
         elsewhere = self.env['woow.document.folder'].sudo().create({
             'name': 'Elsewhere', 'owner_id': self.admin.id})
@@ -564,6 +590,8 @@ class TestDuplicate(DocActionsCase):
         self.assertEqual(sorted(copies.mapped('name')),
                          ['report (copy).txt', 'second (copy).txt'])
         self.assertEqual(action['view_mode'], 'list,form')
+        self.env['ir.config_parameter'].sudo().set_param(
+            _PARAM + 'max_files_per_upload', str(DUPLICATE_MAX_PER_CALL))
         many = self.env['woow.document']
         for index in range(DUPLICATE_MAX_PER_CALL + 1):
             many |= self._doc('batch%02d.txt' % index, b'batch %d' % index)
@@ -575,6 +603,18 @@ class TestDuplicate(DocActionsCase):
         exactly.with_user(self.bob).action_duplicate()
         self.assertEqual(self.env['woow.document'].sudo().search_count([]),
                          before + DUPLICATE_MAX_PER_CALL)
+
+    def test_the_files_per_upload_setting_bounds_a_duplicate_call(self):
+        self.env['ir.config_parameter'].sudo().set_param(_PARAM + 'max_files_per_upload', '2')
+        docs = self.doc
+        for index in range(2):
+            docs |= self._doc('cap%d.txt' % index, b'cap %d' % index)
+        before = self.env['woow.document'].sudo().search_count([])
+        with self.assertRaises(UserError):
+            docs.with_user(self.bob).action_duplicate()
+        self.assertEqual(self.env['woow.document'].sudo().search_count([]), before)
+        docs[:2].with_user(self.bob).action_duplicate()
+        self.assertEqual(self.env['woow.document'].sudo().search_count([]), before + 2)
 
     def test_an_empty_selection_is_refused(self):
         with self.assertRaises(UserError):
@@ -710,6 +750,25 @@ class TestRename(DocActionsCase):
             wizard.action_rename()
         self.assertEqual(self.folder.name, 'Actions folder')
 
+    def test_a_rename_row_is_its_creators_alone(self):
+        wizard = self._wizard(self.alice, document_id=self.doc.id, name='private-title.txt')
+        self.env.flush_all()
+        for user in (self.nobody, self.bob, self.admin):
+            with self.subTest(user=user.login):
+                found = self.env['woow.document.rename.wizard'].with_user(user)
+                self.assertEqual(found.search_count([('id', '=', wizard.id)]), 0)
+                self.assertEqual(found.search_read([('id', '=', wizard.id)], ['name']), [])
+                with self.assertRaises(AccessError):
+                    found.browse(wizard.id).read(['name'])
+                with self.assertRaises(AccessError):
+                    found.browse(wizard.id).write({'name': 'chosen-by-someone-else.txt'})
+                with self.assertRaises(AccessError):
+                    found.browse(wizard.id).action_rename()
+        self.assertEqual(wizard.read(['name'])[0]['name'], 'private-title.txt')
+        self.assertEqual(self.doc.name, 'report.txt')
+        wizard.action_rename()
+        self.assertEqual(self.doc.name, 'private-title.txt')
+
     def test_portal_users_cannot_use_the_wizard(self):
         with self.assertRaises(AccessError):
             self._wizard(self.portal, document_id=self.doc.id, name='x.txt')
@@ -732,6 +791,12 @@ class TestDocActionsViews(DocActionsCase):
         search = self.env['woow.document'].with_user(self.alice).get_view(
             view_type='search')['arch']
         self.assertIn('woow_locked', search)
+
+    def test_the_new_form_elements_raise_no_access_rights_warning(self):
+        views = self.env.ref('woow_document_management.view_woow_document_document_form_lock')
+        views |= self.env.ref('woow_document_management.view_woow_document_document_list_lock')
+        with self.assertNoLogs('odoo.addons.base.models.ir_ui_view', 'WARNING'):
+            views._check_xml()
 
     def test_the_folder_form_offers_rename(self):
         arch = self.env['woow.document.folder'].with_user(self.alice).get_view(
