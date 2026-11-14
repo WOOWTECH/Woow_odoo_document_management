@@ -335,6 +335,7 @@ class WoowDocument(models.Model):
                 if {'shared_user_ids', 'shared_partner_ids'}.intersection(vals) and not self.env.su:
                     doc.folder_id._woow_require_rank(4)
                 update = dict(vals)
+                replaced = 'datas' in update
                 if 'datas' in update:
                     if doc.document_type != 'binary' or not update['datas']:
                         raise WoowUploadRejected('content')
@@ -344,6 +345,17 @@ class WoowDocument(models.Model):
                         raise WoowUploadRejected('content') from None
                     checked = policy._validate(update.get('name', doc.name), data)
                     update['name'], update['mimetype'] = checked.name, checked.mimetype
+                    if not self.env.su and doc.datas:
+                        # A replacement keeps the content it replaces as a version, by the same
+                        # rules as the new-version action (lock, trash, the limit, legal hold).
+                        # The file was judged above (policy and quota); the server writes the
+                        # content, the name and the type, and the rest of the call follows.
+                        doc._woow_history_open()
+                        doc._woow_push_version(
+                            data, update['name'], quota=False, event='replace', detail={},
+                            name=update['name'], log=False)
+                        for key in ('datas', 'name', 'mimetype'):
+                            update.pop(key)
                 elif 'name' in update and update['name'] != doc.name:
                     # A rename follows the upload name policy against the stored type.
                     # Writing other fields, or the unchanged name, leaves legacy names alone.
@@ -362,13 +374,13 @@ class WoowDocument(models.Model):
                     update['url'] = safe_url
                 result = super(WoowDocument, doc.with_context(**{NO_INDEX_CTX_KEY: True})).write(
                     update)
-                if 'datas' in update or 'folder_id' in update:
+                if replaced or 'folder_id' in update:
                     self.env['woow.document.log']._log_event(
-                        'replace' if 'datas' in update else 'move',
+                        'replace' if replaced else 'move',
                         channel=self._woow_log_channel(), document_id=doc.id,
                         folder_id=(target or doc.folder_id).id,
                         company_id=doc.company_id.id,
-                        detail={'bytes': len(data) if 'datas' in update else 0})
+                        detail={'bytes': len(data) if replaced else 0})
                 self.env.flush_all()
         return result
 

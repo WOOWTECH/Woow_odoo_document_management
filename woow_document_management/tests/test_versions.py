@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from psycopg2 import errors
 
-from odoo import Command, SUPERUSER_ID, api
+from odoo import Command, SUPERUSER_ID, api, models
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import new_test_user
@@ -398,6 +398,140 @@ class TestNewVersion(_Fixture, TransactionCase):
         field = arch[arch.index('name="datas"') - 20:arch.index('name="datas"') + 120]
         self.assertIn('id and file_size', field)
         self.assertIn('name="file_size"', arch)
+
+
+@tagged('woow_docmgmt_core')
+class TestDirectReplacementKeepsVersion(_Fixture, TransactionCase):
+    """A write of ``datas`` by a non-superuser keeps the replaced content as a version."""
+
+    def setUp(self):
+        super().setUp()
+        self._fixture()
+
+    def _replace(self, user, doc, content, **extra):
+        return doc.with_user(user).write(dict(extra, datas=base64.b64encode(content)))
+
+    def test_a_direct_replacement_keeps_the_previous_content(self):
+        self._replace(self.editor, self.doc, b'second content')
+        self.assertEqual(self._content(self.doc), b'second content')
+        versions = self._versions(self.doc)
+        self.assertEqual(versions.mapped('number'), [1])
+        self.assertEqual(base64.b64decode(versions.datas), b'first content')
+        self.assertEqual(versions.create_uid, self.editor)
+        self._replace(self.editor, self.doc, b'third content')
+        self.assertEqual(self._versions(self.doc).mapped('number'), [1, 2])
+        # the audit row of a replacement stays ``replace``: one per write, none of a new version
+        events = self._events('replace', self.doc)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].detail['bytes'], len(b'second content'))
+        self.assertFalse(self._events('version_add', self.doc))
+
+    def test_the_rest_of_the_call_is_still_applied(self):
+        self._replace(self.editor, self.doc, b'second content', description='<p>x</p>')
+        self.assertEqual(self.doc.description, '<p>x</p>')
+        self._replace(self.editor, self.doc, b'third content', name='renamed.txt')
+        self.assertEqual(self.doc.name, 'renamed.txt')
+        self.assertEqual(self._versions(self.doc).mapped('number'), [1, 2])
+
+    def test_the_superuser_and_the_first_content_are_not_versioned(self):
+        self.doc.write({'datas': base64.b64encode(b'by the server')})
+        self.assertFalse(self._versions(self.doc))
+
+    def test_the_limit_and_legal_hold_are_the_wizards(self):
+        with patch(_CAP, 2):
+            self._replace(self.editor, self.doc, b'content 1')
+            self._replace(self.editor, self.doc, b'content 2')
+            self.assertEqual(self._versions(self.doc).mapped('number'), [1, 2])
+            self._replace(self.editor, self.doc, b'content 3')      # the oldest one goes
+            self.assertEqual(self._versions(self.doc).mapped('number'), [2, 3])
+            self.doc.with_user(self.docmgr).action_set_legal_hold(True)
+            before = (self._content(self.doc), self._versions(self.doc).ids)
+            for user in (self.editor, self.docmgr):
+                with self.assertRaises(UserError):
+                    self._replace(user, self.doc, b'content 4')
+            self.assertEqual((self._content(self.doc), self._versions(self.doc).ids), before)
+
+    def test_a_lock_of_another_user_and_the_policy_still_refuse(self):
+        model = type(self.env['woow.document'])
+        with patch.object(model, '_woow_lock_holder', lambda doc: self.reader):
+            with self.assertRaises(UserError):
+                self._replace(self.editor, self.doc, b'blocked')
+        with self.assertRaises(WoowUploadRejected):
+            self._replace(self.editor, self.doc, b'MZ binary', name='run.exe')
+        with self.assertRaises(AccessError):
+            self._replace(self.reader, self.doc, b'no right')
+        self.assertEqual(self._content(self.doc), b'first content')
+        self.assertFalse(self._versions(self.doc))
+
+
+@tagged('woow_docmgmt_core')
+class TestShareEditorReplacement(_Fixture, TransactionCase):
+    """Someone who edits only through a share replaces the content and the content is kept."""
+
+    def setUp(self):
+        super().setUp()
+        self._fixture()
+        self.sharer = self.outsider
+        self.env['woow.document.share'].sudo().create({
+            'document_id': self.doc.id, 'role': 'editor', 'subject_type': 'user',
+            'user_id': self.sharer.id})
+        self.env.flush_all()
+
+    def test_a_share_editor_replacement_keeps_a_version_and_cannot_touch_the_history(self):
+        doc = self.doc.with_user(self.sharer)
+        doc.write({'datas': base64.b64encode(b'second content')})
+        self.assertEqual(self._content(self.doc), b'second content')
+        versions = self._versions(self.doc)
+        self.assertEqual(base64.b64decode(versions.datas), b'first content')
+        with self.assertRaises(UserError):
+            versions.with_user(self.sharer).action_delete()
+        with self.assertRaises(AccessError):
+            self.env['woow.document.version'].with_user(self.sharer).create({
+                'document_id': self.doc.id, 'number': 9, 'name': 'x.txt'})
+        self.assertEqual(self._versions(self.doc), versions)
+
+    def test_at_the_limit_a_share_editor_is_refused_and_nothing_is_lost(self):
+        with patch(_CAP, 1):
+            doc = self.doc.with_user(self.sharer)
+            doc.write({'datas': base64.b64encode(b'second content')})
+            with self.assertRaises(UserError):
+                doc.write({'datas': base64.b64encode(b'third content')})
+        self.assertEqual(self._content(self.doc), b'second content')
+        self.assertEqual(self._versions(self.doc).mapped('number'), [1])
+
+
+@tagged('woow_docmgmt_core')
+class TestVersionPathsWriteOnlyContent(_Fixture, TransactionCase):
+    """The new-version and restore paths write the content columns and nothing else."""
+
+    ALLOWED = {'datas', 'name', 'mimetype', 'version_last_number'}
+
+    def test_new_version_and_restore_write_only_the_content(self):
+        self._fixture()
+        doc = self.doc
+        other = self.env['woow.document.folder'].sudo().create({
+            'name': 'Other folder', 'owner_id': self.admin.id})
+        before = {name: doc.sudo()[name] for name in (
+            'folder_id', 'owner_id', 'tag_ids', 'description', 'legal_hold', 'active',
+            'lock_uid', 'document_type', 'company_id', 'source_attachment_id')}
+        seen = []
+        original = models.BaseModel.write
+
+        def spy(records, vals):
+            if records._name == 'woow.document':
+                seen.append(set(vals))
+            return original(records, vals)
+
+        with patch.object(models.BaseModel, 'write', spy):
+            self._upload(self.editor, doc, b'second content')
+            self._versions(doc).with_user(self.editor).action_restore()
+        self.assertTrue(seen)
+        for keys in seen:
+            self.assertLessEqual(keys, self.ALLOWED)
+        self.assertNotIn('folder_id', set().union(*seen))
+        after = {name: doc.sudo()[name] for name in before}
+        self.assertEqual(before, after)
+        self.assertNotEqual(doc.folder_id, other)
 
 
 @tagged('woow_docmgmt_core')

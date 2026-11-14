@@ -66,4 +66,17 @@
         <field name="perm_create" eval="True" />
         <field name="perm_unlink" eval="True" />
     </record>
+    <!-- R-V6: the one thing a person who edits the document only through a share may do to its
+         history: the server makes the version row that keeps the content they replace (R-D2 lets
+         them replace it). Create only: they never read more, remove or change a version. -->
+    <record id="rule_woow_document_version_share_editor_create" model="ir.rule">
+        <field name="name">R-V6 rule_woow_document_version_share_editor_create</field>
+        <field name="model_id" ref="model_woow_document_version" />
+        <field name="domain_force">[('document_id', 'any', ['&amp;', ('active', '=', True), '&amp;', ('folder_in_trash', '=', False), ('shared_editor_user_ids', 'in', [user.id])])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="False" />
+    </record>
 </odoo>

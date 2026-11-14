@@ -247,7 +247,8 @@ class WoowDocumentVersions(models.Model):
         self._woow_push_version(raw, version.name, quota=False, event='version_restore',
                                 detail={'restored': version.number}, keep=version)
 
-    def _woow_push_version(self, raw, filename, *, quota, event, detail, keep=None):
+    def _woow_push_version(self, raw, filename, *, quota, event, detail, keep=None, name=None,
+                           log=True):
         """Make ``raw`` the current content; the content it replaces becomes the newest version.
 
         The row of the document is locked first (``_woow_lock_document_rows``): two uploads of
@@ -260,6 +261,9 @@ class WoowDocumentVersions(models.Model):
         stem and takes the extension of the new file, so that a name never disagrees with the
         type of its content. A number is never used twice: it follows the counter of the
         document, not the highest row that is left.
+
+        ``name`` is the final name when the caller has already judged it (a direct write that
+        carries its own name); ``log=False`` leaves the audit row to the caller.
         """
         self.ensure_one()
         self._woow_lock_document_rows()
@@ -278,7 +282,7 @@ class WoowDocumentVersions(models.Model):
             raise UserError(_('This file has no content to keep as a version.'))
         policy = self.env['woow.document.upload.policy']
         checked = policy._validate(filename or self.name, raw, quota=quota)
-        name = self._woow_name_for_content(policy, checked.name)
+        name = name or self._woow_name_for_content(policy, checked.name)
         number = max(self.version_last_number or 0, kept[-1].number if kept else 0) + 1
         earlier = {'document_id': self.id, 'number': number, 'name': self.name,
                    'mimetype': self.mimetype, 'datas': current, 'file_size': self.file_size,
@@ -290,10 +294,11 @@ class WoowDocumentVersions(models.Model):
             _swap(versions).create(earlier)
             if surplus:
                 surplus._woow_drop()
-            self.env['woow.document.log']._log_event(
-                event, channel=self._woow_log_channel(), document_id=self.id,
-                folder_id=self.folder_id.id, company_id=self.company_id.id,
-                detail=dict(detail, number=number, bytes=len(raw), removed=len(surplus)))
+            if log:
+                self.env['woow.document.log']._log_event(
+                    event, channel=self._woow_log_channel(), document_id=self.id,
+                    folder_id=self.folder_id.id, company_id=self.company_id.id,
+                    detail=dict(detail, number=number, bytes=len(raw), removed=len(surplus)))
             self.env.flush_all()
 
     def _woow_name_for_content(self, policy, uploaded_name):

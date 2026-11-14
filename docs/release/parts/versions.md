@@ -59,9 +59,10 @@ of `models/versions.py` (an object that exists in the process only, kept under t
 ## Security notes
 
 - Access: ACL for the document groups (read, create, unlink; no write) and no ACL for portal or public.
-  Record rules (`security/versions_rules.xml`, matrix rows R-V0 to R-V5): R-V1 spells out the read
+  Record rules (`security/versions_rules.xml`, matrix rows R-V0 to R-V6): R-V1 spells out the read
   condition of the document (R-D1), R-V2 the write condition (R-D2) for the server paths that make
-  or remove rows, R-V3 the document administrators, R-V0 the company, R-V5 the owner of the wizard row.
+  or remove rows, R-V3 the document administrators, R-V0 the company, R-V5 the owner of the wizard row, R-V6 (create only) the editor by share, whose
+  replacement of the content keeps the replaced content as a version.
   R-V4 is a global rule: no row is removed while its document is under legal hold. Record rules run
   as superuser, so it can read the hold, a field that only administrators read.
 - No `sudo()`. One registered raw statement (`# sql-ok: Q31`, `_woow_lock_document_rows`): a row lock
