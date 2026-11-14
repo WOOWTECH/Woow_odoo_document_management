@@ -36,6 +36,8 @@
         'views/wizards/upload_wizard_views.xml',
         'views/backend/workspace_views.xml',
         'views/portal_templates.xml',
+        'views/backend/docactions_views.xml',
+        'views/wizards/docactions_wizard_views.xml',
         'views/menus.xml',
     ],
     'assets': {

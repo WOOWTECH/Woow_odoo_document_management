@@ -28,6 +28,7 @@ acl:
   woow.document.favorite: {user: '1011', manager: '1011'}
   woow.document.upload.wizard: {user: '1110', manager: '1110'}
   woow.document.upload.wizard.line: {user: '1111', manager: '1111'}
+  woow.document.rename.wizard: {user: '1110', manager: '1110'}
 hd07: [woow.document.folder, portal]
 rules:
 - id: rule_woow_document_folder_company

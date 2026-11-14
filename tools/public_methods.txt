@@ -30,6 +30,12 @@ ir.attachment::action_woow_download
 woow.document.notify.wizard::action_send
 woow.document::action_toggle_favorite
 woow.document.upload.wizard::action_upload
+woow.document::action_lock
+woow.document::action_unlock
+woow.document::action_duplicate
+woow.document::action_open_rename_wizard
+woow.document.folder::action_open_rename_wizard
+woow.document.rename.wizard::action_rename
 
 [override]
 *::create

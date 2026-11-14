@@ -37,7 +37,8 @@ class WoowDocument(models.Model):
         'attachment_id', 'checksum', 'file_size', 'company_id', 'folder_in_trash',
         'woow_user_can_write', 'source_display', 'activity_ids',
         'message_follower_ids', 'message_ids', 'website_message_ids',
-        'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon'})
+        'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
+        'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,
@@ -181,7 +182,8 @@ class WoowDocument(models.Model):
         portal_fields = {'name', 'folder_id', 'datas', 'description'}
         protected = {'mimetype', 'attachment_id', 'checksum', 'file_size',
                      'uploaded_by_partner_id', 'folder_in_trash', 'company_id',
-                     'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon'}
+                     'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
+                     'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other'}
         docs = self.browse()
         with self.env.cr.savepoint():
             policy = self.env['woow.document.upload.policy']
@@ -286,7 +288,8 @@ class WoowDocument(models.Model):
                          'uploaded_by_partner_id', 'folder_in_trash', 'company_id',
                          'active', 'trashed_date', 'trashed_by_id', 'restored_date',
                          'legal_hold', 'woow_user_can_write',
-                         'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon'}
+                         'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
+                         'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other'}
             if protected.intersection(vals):
                 raise AccessError(_('File metadata is set by the server.'))
             if {'source_res_model', 'source_res_id'}.intersection(vals) and \

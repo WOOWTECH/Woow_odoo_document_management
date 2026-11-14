@@ -980,12 +980,13 @@ class TestRepo(unittest.TestCase):
         expected = sorted(os.path.basename(p)[:-3] for p in cfg['verify']['regression_tests']
                           if p.startswith(W)) + ['test_perf', 'test_core_assumptions_http',
                                                   'test_core_assumptions_access',
-                                                  'test_workspace']
+                                                  'test_workspace',
+                                                  'test_docactions']
         tree = ast.parse(_read(os.path.join(REPO, W + 'tests/__init__.py')))
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 35 + 19 + 1)   # the nineteen tests/test_reg_<slug>.py files, and test_workspace
+        self.assertEqual(len(imported), 35 + 19 + 2)   # the nineteen tests/test_reg_<slug>.py files, test_workspace and test_docactions
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""

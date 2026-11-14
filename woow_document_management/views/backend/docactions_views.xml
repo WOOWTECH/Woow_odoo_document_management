@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_document_form_lock" model="ir.ui.view">
+    <field name="name">woow.document.form.docactions</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="woow_document_management.view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_lock" string="Lock" type="object" icon="fa-lock"
+                invisible="not id or is_locked or not woow_user_can_write"/>
+        <button name="action_unlock" string="Unlock" type="object" icon="fa-unlock"
+                invisible="not id or not is_locked"/>
+        <button name="action_duplicate" string="Duplicate" type="object" icon="fa-clone"
+                invisible="not id"/>
+        <button name="action_open_rename_wizard" string="Rename" type="object" icon="fa-pencil"
+                invisible="not id or not woow_user_can_write or woow_locked_by_other"/>
+      </xpath>
+      <xpath expr="//field[@name='owner_id']" position="after">
+        <field name="lock_uid" invisible="not is_locked"/>
+        <field name="lock_date" invisible="not is_locked"/>
+      </xpath>
+      <xpath expr="//sheet" position="before">
+        <field name="is_locked" invisible="1"/>
+        <field name="woow_locked_by_other" invisible="1"/>
+        <field name="woow_user_can_write" invisible="1"/>
+        <div class="alert alert-warning" role="alert" invisible="not woow_locked_by_other">
+          This document is locked by another user. Its details cannot be changed until it is unlocked.
+        </div>
+      </xpath>
+    </field>
+  </record>
+  <record id="view_woow_document_document_list_lock" model="ir.ui.view">
+    <field name="name">woow.document.list.docactions</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="woow_document_management.view_woow_document_document_list"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='name']" position="after">
+        <field name="is_locked" string="Locked" widget="boolean" optional="show"/>
+        <field name="lock_uid" optional="hide"/>
+      </xpath>
+    </field>
+  </record>
+  <record id="view_woow_document_document_search_lock" model="ir.ui.view">
+    <field name="name">woow.document.search.docactions</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="woow_document_management.view_woow_document_document_search"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='name']" position="after">
+        <filter name="woow_locked" string="Locked" domain="[('lock_uid', '!=', False)]"/>
+        <filter name="woow_locked_by_me" string="Locked by me" domain="[('lock_uid', '=', uid)]"/>
+      </xpath>
+    </field>
+  </record>
+  <record id="view_woow_document_folder_form_rename" model="ir.ui.view">
+    <field name="name">woow.document.folder.form.docactions</field>
+    <field name="model">woow.document.folder</field>
+    <field name="inherit_id" ref="woow_document_management.view_woow_document_folder_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_open_rename_wizard" string="Rename" type="object" icon="fa-pencil"
+                invisible="not id or woow_user_rank &lt; 3"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

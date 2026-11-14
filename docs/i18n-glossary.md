@@ -19,6 +19,12 @@
 | Attachments in other apps | 各模組附件 |
 | Source type | 來源類型 |
 | Source record | 來源紀錄 |
+| Lock | 鎖定 |
+| Unlock | 解除鎖定 |
+| Locked | 已鎖定 |
+| Duplicate | 建立複本 |
+| Copy (of a document) | 複本 |
+| Rename | 重新命名 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
 
