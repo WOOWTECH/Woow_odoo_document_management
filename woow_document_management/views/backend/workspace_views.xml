@@ -26,9 +26,9 @@
     <field name="inherit_id" ref="view_woow_document_document_form"/>
     <field name="arch" type="xml">
       <xpath expr="//button[@name='action_open_move_wizard']" position="after">
-        <field name="is_favorite" invisible="1"/>
-        <button name="action_toggle_favorite" type="object" string="Star" icon="fa-star-o" invisible="not id or is_favorite"/>
-        <button name="action_toggle_favorite" type="object" string="Remove star" icon="fa-star" invisible="not id or not is_favorite"/>
+        <field name="is_favorite" invisible="1" groups="base.group_user"/>
+        <button name="action_toggle_favorite" type="object" string="Star" icon="fa-star-o" invisible="not id or is_favorite" groups="base.group_user"/>
+        <button name="action_toggle_favorite" type="object" string="Remove star" icon="fa-star" invisible="not id or not is_favorite" groups="base.group_user"/>
       </xpath>
       <xpath expr="//field[@name='document_type']" position="attributes">
         <attribute name="readonly">id</attribute>
