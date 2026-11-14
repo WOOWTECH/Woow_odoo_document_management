@@ -23,7 +23,7 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from ..services.constants import (
     AUTO_FILE_BACKFILL_BATCH, CTX_AUTO_FILE, MIB, WOOW_MODELS)
 from .document import SOURCE_CTX_KEY, _SOURCE_SENTINEL
-from .quota import LEDGER_KEY, QuotaLedger
+from .quota import LEDGER_KEY, UNCHARGED_KEY, UNCHARGED_SENTINEL, QuotaLedger
 
 _logger = logging.getLogger(__name__)
 
@@ -38,6 +38,10 @@ _AUTO_FILE_SENTINEL = object()
 # The fields of a rule that only the server writes (the kind's name follows the kind, the
 # company follows the folder).
 _SERVER_FIELDS = frozenset({'res_model', 'company_id', 'backfill_cursor'})
+
+# One backfill run files no more than this many bytes of content (the count of files is limited
+# as well), so that a run cannot hold the content of a whole batch of large files in memory.
+_BACKFILL_MAX_BYTES = 256 * MIB
 
 # The kinds of record a rule cannot be made for.
 _FORBIDDEN_PREFIXES = ('ir.', 'mail.', 'woow.document')
@@ -74,6 +78,9 @@ class WoowDocumentAutoRule(models.Model):
                 '!', ('model', '=like', 'mail.%'), '!', ('model', '=like', 'woow.document%')],
         help='Files attached to records of this kind are also filed as documents.')
     res_model = fields.Char(related='model_id.model', store=True, index=True, readonly=True)
+    kind_model = fields.Selection(
+        selection='_woow_kind_choices', string='Kind of record', compute='_compute_kind_model',
+        readonly=False, help='Files attached to records of this kind are also filed as documents.')
     folder_id = fields.Many2one(
         'woow.document.folder', string='Target folder', required=True, ondelete='restrict',
         index=True)
@@ -98,6 +105,42 @@ class WoowDocumentAutoRule(models.Model):
         for rule in self:
             if not _kind_is_allowed(self.env.registry, rule.res_model):
                 raise ValidationError(_('Choose a kind of record from another app.'))
+            # a rule is no way to reach records that its maker cannot read
+            if not self.env.su and not self.env[rule.res_model].has_access('read'):
+                raise ValidationError(_('Choose a kind of record that you may read.'))
+
+    @api.model
+    def _woow_kind_choices(self):
+        """The kinds of record that a rule can name and the caller may read, for the form.
+
+        The model catalogue (``ir.model``) is open to the technical group only, so the form does
+        not pick the kind from it: it lists the registry's own models, as the choices of a field.
+        """
+        registry = self.env.registry
+        choices = []
+        for name, model in registry.items():
+            if model._auto and _kind_is_allowed(registry, name) and self.env[name].has_access('read'):
+                choices.append((name, '%s (%s)' % (model._description or name, name)))
+        return sorted(choices, key=lambda choice: choice[1].lower())
+
+    @api.depends('res_model')
+    def _compute_kind_model(self):
+        for rule in self:
+            rule.kind_model = rule.res_model or False
+
+    @api.model
+    def _woow_kind_to_model(self, vals):
+        """``vals`` with the kind of the form (a technical name) turned into the ``ir.model`` row."""
+        if 'kind_model' not in vals:
+            return vals
+        vals = dict(vals)
+        name = vals.pop('kind_model')
+        if name:
+            model_id = _kind_is_allowed(self.env.registry, name) and self.env['ir.model']._get_id(name)
+            if not model_id:
+                raise ValidationError(_('Choose a kind of record from another app.'))
+            vals['model_id'] = model_id
+        return vals
 
     @api.model
     def _woow_owner_acceptable(self, owner, folder):
@@ -154,6 +197,7 @@ class WoowDocumentAutoRule(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         self._woow_refuse_server_fields(vals_list)
+        vals_list = [self._woow_kind_to_model(vals) for vals in vals_list]
         rules = super().create(vals_list)
         self.env.registry.clear_cache()
         rules._woow_audit_change()
@@ -161,6 +205,7 @@ class WoowDocumentAutoRule(models.Model):
 
     def write(self, vals):
         self._woow_refuse_server_fields([vals])
+        vals = self._woow_kind_to_model(vals)
         result = super().write(vals)
         self.env.registry.clear_cache()
         if set(vals) - {'backfill_cursor'}:
@@ -210,12 +255,14 @@ class WoowDocumentAutoRule(models.Model):
                     and attachment.type == 'binary' and not attachment.public
                     and attachment.file_size)
 
-    def _woow_file_attachment(self, attachment, channel, *, ledger=None):
+    def _woow_file_attachment(self, attachment, channel, *, ledger=None, uncharged=False):
         """File ``attachment`` as a document of the rule and return it.
 
         ``self`` is the rule and ``attachment`` the file, both in the elevated environment
         (``_woow_elevated``). Everything the policy refuses raises; the callers run this in a
-        savepoint and decide what a failure means.
+        savepoint and decide what a failure means. ``uncharged`` tells that the caller already
+        measured the stored bytes against the quota (``_check_uncharged``): the content is the
+        stored file of the attachment, so the filing adds no bytes and takes no quota lock.
         """
         self.ensure_one()
         folder = self.folder_id
@@ -228,6 +275,8 @@ class WoowDocumentAutoRule(models.Model):
         context = {SOURCE_CTX_KEY: _SOURCE_SENTINEL}
         if ledger is not None:
             context[LEDGER_KEY] = ledger
+        if uncharged:
+            context[UNCHARGED_KEY] = UNCHARGED_SENTINEL
         document = self.env['woow.document'].with_context(**context).create({
             'name': attachment.name, 'folder_id': folder.id,
             'datas': base64.b64encode(attachment.raw),
@@ -237,7 +286,59 @@ class WoowDocumentAutoRule(models.Model):
         self.env['woow.document.log']._log_event(
             'auto_file', channel=channel, document_id=document.id, folder_id=folder.id,
             company_id=folder.company_id.id, detail={'rule': self.id})
+        # the content of the file is not kept in the cache of the run
+        attachment.invalidate_recordset(['raw', 'datas'])
+        document.invalidate_recordset(['datas'])
         return document
+
+    # -- where an attachment belongs ---------------------------------------------------------------
+    @api.model
+    def _woow_record_scope(self, attachments):
+        """``{attachment id: company id}`` of the attachments whose record exists.
+
+        The company is the one of the record the file is attached to (the field of the attachment
+        is the company of whoever made it, and a caller may set it freely); a record of a kind that
+        has no company is judged by the company of the attachment. ``False`` means no company.
+        An attachment whose record does not exist is left out. Read as the superuser: ``self`` is
+        used in the elevated environment, the records are only looked at, never changed.
+        """
+        elevated = self._woow_elevated().env
+        by_model = {}
+        for attachment in elevated['ir.attachment'].browse(attachments.ids):
+            by_model.setdefault(attachment.res_model, []).append(attachment)
+        scope = {}
+        for model_name, items in by_model.items():
+            if model_name not in elevated:
+                continue
+            records = elevated[model_name].with_context(active_test=False).browse(
+                list({item.res_id for item in items})).exists()
+            field = records._fields.get('company_id')
+            has_company = field is not None and field.type == 'many2one' \
+                and field.comodel_name == 'res.company'
+            companies = {record.id: record.company_id.id for record in records} if has_company else {}
+            for item in items:
+                if item.res_id in records._ids:
+                    scope[item.id] = companies[item.res_id] if has_company else item.company_id.id
+        return scope
+
+    @api.model
+    def _woow_already_imported(self, rule_id, attachments):
+        """The ids of ``attachments`` that the attachment wizard of release 18.0.1 already filed.
+
+        Those documents have no link to their attachment (the link is new): a document of the
+        rule's folder that names the same record and has the same name and content is the same
+        file. The filed copy of the rule itself is found through the link and not here.
+        """
+        elevated = self._woow_elevated()
+        rule = elevated.browse(rule_id)
+        attachments = elevated.env['ir.attachment'].browse(attachments.ids)
+        documents = elevated.env['woow.document'].with_context(active_test=False).search([
+            ('folder_id', '=', rule.folder_id.id), ('source_attachment_id', '=', False),
+            ('source_res_model', '=', rule.res_model),
+            ('source_res_id', 'in', attachments.mapped('res_id'))])
+        known = {(doc.source_res_id, doc.name, doc.checksum) for doc in documents}
+        return {attachment.id for attachment in attachments
+                if (attachment.res_id, attachment.name, attachment.checksum) in known}
 
     @api.model
     def _woow_auto_file(self, attachments, unfiled=False):
@@ -256,17 +357,22 @@ class WoowDocumentAutoRule(models.Model):
     @api.model
     def _woow_auto_file_checked(self, attachments, unfiled):
         by_kind = _auto_state(self.env)[0]
-        work = []
+        candidates = []
         for attachment in attachments:
-            for rule_id, company_id in by_kind.get(attachment.res_model, ()):
-                # a rule of a company files only what was attached in that company
-                if (self._woow_fileable(attachment)
-                        and (not company_id or not attachment.company_id
-                             or attachment.company_id.id == company_id)):
-                    work.append((attachment.id, rule_id))
-            if len(work) >= AUTO_FILE_BACKFILL_BATCH:
-                work = work[:AUTO_FILE_BACKFILL_BATCH]
+            if self._woow_fileable(attachment):
+                for rule_id, company_id in by_kind.get(attachment.res_model, ()):
+                    candidates.append((attachment, rule_id, company_id))
+            if len(candidates) >= AUTO_FILE_BACKFILL_BATCH:
+                candidates = candidates[:AUTO_FILE_BACKFILL_BATCH]
                 break
+        if not candidates:
+            return
+        # the record decides: it must exist, and a rule of a company files only the files of
+        # records of that company
+        scope = self._woow_record_scope(attachments.browse([item[0].id for item in candidates]))
+        work = [(attachment.id, rule_id) for attachment, rule_id, company_id in candidates
+                if attachment.id in scope
+                and (not company_id or not scope[attachment.id] or scope[attachment.id] == company_id)]
         if work and unfiled:
             with self.env.cr.savepoint():
                 done = {
@@ -275,16 +381,24 @@ class WoowDocumentAutoRule(models.Model):
                         active_test=False).search([
                             ('source_attachment_id', 'in', [item[0] for item in work]),
                             ('auto_rule_id', 'in', [item[1] for item in work])])}
-            work = [item for item in work if item not in done]
+                work = [item for item in work if item not in done]
+                for rule_id in {item[1] for item in work}:
+                    imported = self._woow_already_imported(
+                        rule_id, attachments.browse([item[0] for item in work if item[1] == rule_id]))
+                    work = [item for item in work if item[1] != rule_id or item[0] not in imported]
         if not work:
             return
+        # the content is the stored file of the attachment: no bytes are added, so the quota is
+        # only looked at (no lock is taken for the rest of the caller's transaction)
+        self.env['woow.document.quota']._check_uncharged()
         channel = self._woow_log_channel()
         elevated = self._woow_elevated()
         for attachment_id, rule_id in work:
             try:
                 with self.env.cr.savepoint():
                     elevated.browse(rule_id)._woow_file_attachment(
-                        elevated.env['ir.attachment'].browse(attachment_id), channel)
+                        elevated.env['ir.attachment'].browse(attachment_id), channel,
+                        uncharged=True)
             except Exception as error:  # noqa: BLE001 - filing must never break an attachment
                 _logger.info('Filing rule %s skipped attachment %s (%s)',
                              rule_id, attachment_id, type(error).__name__)
@@ -313,35 +427,70 @@ class WoowDocumentAutoRule(models.Model):
 
     # -- the backfill ----------------------------------------------------------------------------
     def _woow_backfill_domain(self):
-        """The attachments of the rule's kind that are not filed by this rule yet."""
+        """The attachments of the rule's kind that are not filed by this rule yet.
+
+        The company is not part of it: the company of the record decides, and a domain on the
+        attachment cannot say it (``_woow_record_scope`` does, for each batch).
+        """
         self.ensure_one()
-        domain = [
+        return [
             ('res_model', '=', self.res_model), ('res_id', '>', 0), ('res_field', '=', False),
             ('type', '=', 'binary'), ('public', '=', False), ('file_size', '>', 0),
             ('woow_filed_document_ids', 'not any', [('auto_rule_id', '=', self.id)])]
-        if self.company_id:
-            domain += ['|', ('company_id', '=', False), ('company_id', '=', self.company_id.id)]
-        return domain
+
+    def _woow_backfill_eligible(self, batch):
+        """The attachments of ``batch`` (elevated) that this run may file for its caller.
+
+        The record must exist, be of the rule's company (or of none) and be readable by the person
+        who runs the backfill: a rule never lets an administrator copy what the record rules deny
+        them. A file that the attachment wizard of 18.0.1 already imported is left out.
+        """
+        self.ensure_one()
+        scope = self._woow_record_scope(batch)
+        kept = batch.filtered(lambda a: a.id in scope and (
+            not self.company_id or not scope[a.id] or scope[a.id] == self.company_id.id))
+        if not kept:
+            return kept
+        readable = self.env[self.res_model].with_context(active_test=False).search(
+            [('id', 'in', kept.mapped('res_id'))]).ids
+        kept = kept.filtered(lambda a: a.res_id in readable)
+        imported = self._woow_already_imported(self.id, kept) if kept else set()
+        return kept.filtered(lambda a: a.id not in imported)
 
     def _woow_backfill(self):
         """Look at the next batch of unfiled attachments of the rule's kind and file them.
 
-        Returns ``{'looked': n, 'filed': n, 'refused': n, 'left': n}``. One run looks at no more
-        than ``AUTO_FILE_BACKFILL_BATCH`` attachments after the cursor of the rule; a run that
-        ends the list sets the cursor back to the start, so the next run begins again and
-        files what an earlier run could not. A run can be repeated at any time: an attachment
-        that a rule has filed (a trashed document included) is not filed again.
+        Returns ``{'looked': n, 'filed': n, 'refused': n, 'skipped': n, 'left': n}``. One run
+        looks at no more than ``AUTO_FILE_BACKFILL_BATCH`` attachments after the cursor of the
+        rule (and files no more than ``_BACKFILL_MAX_BYTES`` of content); a run that ends the list
+        sets the cursor back to the start, so the next run begins again and files what an earlier
+        run could not. A run can be repeated at any time: an attachment that a rule has filed (a
+        trashed document included) is not filed again. ``skipped`` counts what the rule does not
+        file for its caller (another company's record, a record that is gone or that the caller
+        cannot read, a file that was imported by hand before).
         """
         self.ensure_one()
+        # whoever runs a backfill must be able to read the kind of record
+        self.env[self.res_model].check_access('read')
         channel = self._woow_log_channel()
         rule = self._woow_elevated()
+        # Claiming the row of the rule serialises two runs of the same rule: the second one waits
+        # for the first and is then retried on a fresh read of the cursor and of what is filed.
+        super(WoowDocumentAutoRule, rule).write({'backfill_cursor': rule.backfill_cursor})
         attachments = rule.env['ir.attachment'].with_context(active_test=False)
         batch = attachments.search(
             rule._woow_backfill_domain() + [('id', '>', rule.backfill_cursor)],
             order='id', limit=AUTO_FILE_BACKFILL_BATCH)
+        eligible = self._woow_backfill_eligible(batch)
         ledger = QuotaLedger()
         filed = refused = 0
-        for attachment in batch:
+        total = 0
+        stopped = None
+        for attachment in eligible:
+            if total and total + attachment.file_size > _BACKFILL_MAX_BYTES:
+                break       # the rest of the batch is for the next run
+            total += attachment.file_size
+            stopped = attachment
             try:
                 with self.env.cr.savepoint():
                     rule._woow_file_attachment(attachment, channel, ledger=ledger)
@@ -350,12 +499,15 @@ class WoowDocumentAutoRule(models.Model):
                 refused += 1
                 _logger.info('Backfill of rule %s skipped attachment %s (%s)',
                              rule.id, attachment.id, type(error).__name__)
-        finished = len(batch) < AUTO_FILE_BACKFILL_BATCH
-        cursor = 0 if finished else batch[-1].id
+        cut = len(eligible) and stopped != eligible[-1]
+        finished = len(batch) < AUTO_FILE_BACKFILL_BATCH and not cut
+        cursor = 0 if finished else (stopped.id if cut else batch[-1].id)
+        looked = len(batch.filtered(lambda a: a.id <= cursor)) if cut else len(batch)
         super(WoowDocumentAutoRule, rule).write({'backfill_cursor': cursor})
         left = 0 if finished else attachments.search_count(
             rule._woow_backfill_domain() + [('id', '>', cursor)])
-        return {'looked': len(batch), 'filed': filed, 'refused': refused, 'left': left}
+        return {'looked': looked, 'filed': filed, 'refused': refused,
+                'skipped': looked - filed - refused, 'left': left}
 
     def action_open_backfill(self):
         """Open the wizard that files the existing attachments of this rule's kind."""

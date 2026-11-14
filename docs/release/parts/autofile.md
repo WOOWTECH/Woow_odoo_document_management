@@ -40,8 +40,13 @@ are also filed as documents, in a chosen folder, with chosen tags and a chosen o
 ## Behaviour that matters
 
 - Hook on `ir.attachment.create` and on the write of `res_model` / `res_id`: an attachment is filed
-  when it has a record (`res_id`), no `res_field`, type binary, is not public, is not empty and its kind
-  has an active rule whose company is empty or the company of the attachment.
+  when it has a record (`res_id`) that exists, no `res_field`, type binary, is not public, is not empty
+  and its kind has an active rule whose company is empty or the company of the record.
+- The company is the one of the **record** the file is attached to (`_woow_record_scope`), never the
+  one of the attachment (that is the company of whoever made it, and a caller sets it freely). A
+  record of no company goes to the rule of any company; a kind without a `company_id` field is judged
+  by the company of the attachment, as the only information there is. The backfill applies the same
+  test to every batch.
 - It never breaks or slows an attachment: the kinds with rules (and whether any rule trashes) are kept
   in a registry cache that is cleared when a rule is created, changed or deleted, so an attachment of a
   kind without a rule costs no query; each filing runs in its own savepoint; any failure (policy,
@@ -53,11 +58,31 @@ are also filed as documents, in a chosen folder, with chosen tags and a chosen o
   match anyway.
 - Upload policy and quota apply as for every document. The file size is compared with the limit
   before the content is read. The filing is credited for content that is already stored (it is the
-  same stored file), as the attachment import wizard is.
+  same stored file), as the attachment import wizard is. The filing of a new attachment adds no
+  bytes, so it takes **no quota lock** (a lock would be held to the end of the attacher's
+  transaction and would make every upload of the site wait): the stored bytes are only measured once
+  per call through a side connection (`woow.document.quota._check_uncharged`, refuses above the block
+  percentage) and the documents are created with the in-process marker `UNCHARGED_SENTINEL`, which
+  `_check_many` honours. The backfill (an explicit administrator action) still takes the lock, as
+  the import wizard does.
 - The backfill keeps a cursor on the rule (`backfill_cursor`): a run looks at the next batch after
   the cursor; a run that ends the list puts the cursor back at the start, so a file that an earlier run
   could not accept is tried again in the next pass. A document that was purged (deleted for good) is
-  filed again by a later pass.
+  filed again by a later pass (known and documented in the wizard: the purge removes the only link to
+  the original, which is still there).
+- The backfill files for its caller only what the caller may read: the caller needs read access to the
+  kind (checked when a rule is made or its kind changed, and at every run), the record must be
+  readable through the caller's own record rules, exist and be of the company of the rule, and a file
+  that the attachment wizard of 18.0.1 imported by hand (same folder, same record, same name and
+  content, no link) is not filed again. What a run leaves out is counted as "Left out". A run files at
+  most 256 MiB of content (and `AUTO_FILE_BACKFILL_BATCH` files) and drops the content of each file
+  from the cache once it is filed. A run first writes the row of its rule, so two runs of one rule at
+  once are serialised (the second one is retried by the framework on a fresh read).
+- The kind of the rule is chosen in the form from a list of the technical model names that the caller may
+  read (`kind_model`, a server-side choice list), so a document administrator needs no access to the
+  model catalogue. `model_id` stays the stored field; a create or write with `kind_model` sets it.
+- Audit note: the `upload` event of a filed document is written inside the elevated environment and
+  so carries the channel `cron`; the `auto_file` event of the same document carries the real channel.
 - Audit: `auto_file` per filed document (ids only: `{'rule': id}`), the usual `upload` and, on
   deletion, `trash` events, and `settings_change` (`{'rule': id}`) when a rule is created, changed or
   deleted.
@@ -89,9 +114,6 @@ are also filed as documents, in a chosen folder, with chosen tags and a chosen o
 
 - Upgrade with `-u woow_document_management`. The new table and the new columns are created; there
   is no data migration. Nothing is filed until a rule exists.
-- Choosing the kind of record in the form reads the model catalogue (`ir.model`), which Odoo opens to
-  the technical "Access Rights" group only: a document administrator who has no such right can read and
-  change the other fields of a rule but cannot pick another kind in the drop-down.
 - A rule is not retroactive. Use **File existing attachments** for what was attached before.
 - Cache: the registry cache of Odoo is cleared (and signalled to the other workers) at each change of a
   rule. Rules change rarely, so this is cheap.

@@ -19,6 +19,11 @@ from ..services.locks import try_lock
 
 # Context key of the QuotaLedger that several calls of one run share.
 LEDGER_KEY = 'woow_quota_ledger'
+# Context key whose in-process marker tells ``_check_many`` that the caller has already measured
+# the stored bytes with ``_check_uncharged`` and that the files it stores are files that are already
+# stored (the filing rules). A context sent by a client never holds the marker.
+UNCHARGED_KEY = 'woow_quota_uncharged'
+UNCHARGED_SENTINEL = object()
 
 
 class QuotaLedger:
@@ -84,6 +89,18 @@ class WoowDocumentQuota(models.AbstractModel):
         ''', (checksum,))  # sql-ok: Q5
         return 0 if self.env.cr.fetchone() else size
 
+    def _check_uncharged(self) -> None:
+        """Refuse when the stored bytes are already above quota_block_pct; takes no lock.
+
+        For the callers that file content that is already stored (the filing rules): such a
+        filing adds no bytes, so nothing has to be ordered against the uploads that add some, and
+        the lock that ``_check_many`` holds until the end of the caller's transaction is not taken.
+        """
+        settings = self.env['woow.document.settings']._get_settings()
+        if settings.quota_mb and self._usage_bytes() * 100 > (
+                settings.quota_mb * MIB * settings.quota_block_pct):
+            raise WoowUploadRejected('quota')
+
     def _check(self, checksum, size) -> None:
         """Refuse an upload above quota_block_pct (see ``_check_many``)."""
         self._check_many([(checksum, size)])
@@ -115,6 +132,8 @@ class WoowDocumentQuota(models.AbstractModel):
         settings = self.env['woow.document.settings']._get_settings()
         if not settings.quota_mb or not items:
             return
+        if self.env.context.get(UNCHARGED_KEY) is UNCHARGED_SENTINEL:
+            return      # already stored content, measured by the caller (``_check_uncharged``)
         self.env['ir.attachment'].flush_model(['store_fname', 'file_size', 'checksum'])
         lock(self.env.cr, 'quota:u:%d' % self.env.uid)
         lock(self.env.cr, 'quota')

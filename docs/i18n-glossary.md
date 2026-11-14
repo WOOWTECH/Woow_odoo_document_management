@@ -21,6 +21,7 @@
 | Source record | 來源紀錄 |
 | Filing rule | 歸檔規則 |
 | Filed documents | 歸檔的文件 |
+| Left out (filing run) | 已略過 |
 | Source Attachment | 來源附件 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
