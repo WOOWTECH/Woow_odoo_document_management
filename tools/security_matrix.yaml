@@ -245,7 +245,7 @@ rules:
   groups: []
   perms: '1111'
   domain: "[(1, '=', 1)] if not user.share else [('model', 'not in', ['woow.document', 'woow.document.folder'])]"
-# R-V0..R-V5: versions of a file (see security/versions_rules.xml). R-V4 is global: no version is
+# R-V0..R-V6: versions of a file (see security/versions_rules.xml). R-V4 is global: no version is
 # removed while its document is under legal hold.
 - id: rule_woow_document_version_company
   ref: R-V0
@@ -283,6 +283,12 @@ rules:
   groups: [user]
   perms: '1111'
   domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_version_share_editor_create
+  ref: R-V6
+  model: woow.document.version
+  groups: [user]
+  perms: '0010'
+  domain: "[('document_id', 'any', ['&', ('active', '=', True), '&', ('folder_in_trash', '=', False), ('shared_editor_user_ids', 'in', [user.id])])]"
 - id: rule_woow_document_shortcut_share_users
   ref: R-SC1
   model: woow.document
