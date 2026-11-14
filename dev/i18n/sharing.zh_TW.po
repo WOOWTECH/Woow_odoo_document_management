@@ -1,0 +1,104 @@
+# Copyright 2026 WoowTech; License LGPL-3.0 or later.
+# Traditional Chinese (zh_TW) for the strings of lane `sharing` of release 18.0.2.0.0.
+# The integrator merges these entries into i18n/zh_TW.po. Terms follow docs/i18n-glossary.md.
+msgid ""
+msgstr ""
+"Project-Id-Version: woow_document_management 18.0.2.0.0\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A document cannot be shared with more than %(count)s people."
+msgstr "一份文件最多只能分享給 %(count)s 人。"
+
+msgid "A document that is only shared with you can be edited, not moved or given to someone else."
+msgstr "只分享給您的文件可以編輯，但不能移動或轉給他人。"
+
+msgid "Access ends"
+msgstr "存取結束日"
+
+msgid "Another change to this document is in progress. Try again."
+msgstr "這份文件正在進行另一項變更，請稍後再試。"
+
+msgid "Choose an available document."
+msgstr "請選擇可用的文件。"
+
+msgid "Choose an available person."
+msgstr "請選擇可用的對象。"
+
+msgid "Choose no access, view, upload or edit."
+msgstr "請選擇無存取權限、檢視、上傳或編輯。"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Document share"
+msgstr "文件分享"
+
+msgid "Document user"
+msgstr "文件使用者"
+
+msgid "Documents: End expired access"
+msgstr "文件：結束已到期的存取"
+
+msgid "Editor"
+msgstr "編輯者"
+
+msgid "Portal contacts can only view."
+msgstr "入口網站聯絡人只能檢視。"
+
+msgid "Role"
+msgstr "角色"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Select exactly one person of the chosen type."
+msgstr "請選擇剛好一位符合所選類型的對象。"
+
+msgid "Share"
+msgstr "分享"
+
+msgid "Shared Editor User"
+msgstr "以分享取得編輯權的使用者"
+
+msgid "Shared with"
+msgstr "分享對象"
+
+msgid "The document of a share cannot be changed."
+msgstr "分享所屬的文件無法更改。"
+
+msgid "The end date cannot be in the past."
+msgstr "結束日不能早於今天。"
+
+msgid "The last day the member has access. Empty means no end."
+msgstr "成員可存取的最後一天。留空表示沒有結束日。"
+
+msgid "The last day the person has access. Empty means no end."
+msgstr "此對象可存取的最後一天。留空表示沒有結束日。"
+
+msgid "This document field is set by the server."
+msgstr "這個文件欄位由伺服器設定。"
+
+msgid "This field is set by the server."
+msgstr "這個欄位由伺服器設定。"
+
+msgid "This person already has a row for this document."
+msgstr "這位對象在這份文件上已有一列分享。"
+
+msgid "Too many people at once."
+msgstr "一次選擇的對象太多。"
+
+msgid "Viewer"
+msgstr "檢視者"
+
+msgid "What every document user may do in this folder, without being named one by one."
+msgstr "不必逐一指定，每位文件使用者在此資料夾可以做的事。"
+
+msgid "Woow User Can Share"
+msgstr "使用者可以分享"
+
+msgid "You cannot change who this document is shared with."
+msgstr "您無法變更這份文件的分享對象。"
