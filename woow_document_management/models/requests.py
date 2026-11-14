@@ -207,6 +207,9 @@ class WoowDocumentRequest(models.Model):
             raise AccessError(_('You cannot upload to this request.'))
         if not self._woow_is_pending_request():
             raise UserError(_('This file is not requested any more.'))
+        # the content is stored below with a write that skips ``write`` of the lock extension, so
+        # the lock of another user is judged here (the superuser and the lock holder pass)
+        self._woow_refuse_foreign_lock('write')
         policy = self.env['woow.document.upload.policy'].with_context(
             **{LEDGER_KEY: QuotaLedger()})
         stem, _dot, extension = policy._safe_name(filename).rpartition('.')
