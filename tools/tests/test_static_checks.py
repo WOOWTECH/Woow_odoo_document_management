@@ -979,12 +979,13 @@ class TestRepo(unittest.TestCase):
         cfg = _astlib.load_yaml_file(os.path.join(REPO, '.security/sweep.yaml'))
         expected = sorted(os.path.basename(p)[:-3] for p in cfg['verify']['regression_tests']
                           if p.startswith(W)) + ['test_perf', 'test_core_assumptions_http',
-                                                  'test_core_assumptions_access']
+                                                  'test_core_assumptions_access',
+                                                  'test_pdftools']
         tree = ast.parse(_read(os.path.join(REPO, W + 'tests/__init__.py')))
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 35 + 19)   # the nineteen tests/test_reg_<slug>.py files
+        self.assertEqual(len(imported), 35 + 19 + 1)   # the nineteen tests/test_reg_<slug>.py files, test_pdftools
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""
