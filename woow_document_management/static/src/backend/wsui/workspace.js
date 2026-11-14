@@ -11,6 +11,7 @@ import { browser } from "@web/core/browser/browser";
 import { useFileViewer } from "@web/core/file_viewer/file_viewer_hook";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
+import { user } from "@web/core/user";
 import { useBus, useService } from "@web/core/utils/hooks";
 import {
     DOCUMENT_MODEL,
@@ -100,7 +101,31 @@ class Workspace {
 
     // -- what is shown ---------------------------------------------------------------------
     get items() {
-        return this.adapter.records().map(toItem);
+        return this.adapter.records().map((record) => {
+            const item = toItem(record);
+            item.canUpload = (this.state.ranks[item.folderId] || 0) >= 2;
+            return item;
+        });
+    }
+
+    /** Reads the access level of the folders of the selection (the entry Duplicate needs it). */
+    async ensureRanks() {
+        const wanted = [
+            ...new Set(this.selectedItems.map((item) => item.folderId).filter(Boolean)),
+        ].filter((id) => !(id in this.state.ranks));
+        if (!wanted.length) {
+            return;
+        }
+        let rows = [];
+        try {
+            rows = await this.orm.read(FOLDER_MODEL, wanted, ["woow_user_rank"]);
+        } catch {
+            // the level stays unknown, and the entries that need it stay hidden
+            return;
+        }
+        for (const row of rows) {
+            this.state.ranks[row.id] = row.woow_user_rank;
+        }
     }
 
     get order() {
@@ -118,7 +143,9 @@ class Workspace {
     }
 
     get actions() {
-        return availableActions(this.selectedItems);
+        const entries = availableActions(this.selectedItems);
+        const extra = this.adapter.extraActions ? this.adapter.extraActions() : [];
+        return entries.concat(extra);
     }
 
     get download() {
@@ -169,7 +196,19 @@ class Workspace {
     // -- reload ----------------------------------------------------------------------------
     async reload() {
         await this.adapter.reload();
+        await this.refreshCounters();
         this.state.tick++;
+    }
+
+    /** The numbers of the folder tree follow what was uploaded, moved or put in the trash. */
+    async refreshCounters() {
+        const model = this.searchModel;
+        // the search model keeps no public call that reads the counters again without a new query
+        if (!model || typeof model._reloadSections !== "function") {
+            return;
+        }
+        await model._reloadSections();
+        await model.sectionsPromise;
     }
 
     // -- opening ---------------------------------------------------------------------------
@@ -197,20 +236,12 @@ class Workspace {
                 }
                 return;
             }
-            case "shortcut": {
-                const result = await this.orm.call(DOCUMENT_MODEL, "action_open_shortcut_target", [
-                    [item.id],
-                ]);
-                await this.runResult(result);
+            case "shortcut":
+                await this.callButton("action_open_shortcut_target", [item.id]);
                 return;
-            }
-            case "request": {
-                const result = await this.orm.call(DOCUMENT_MODEL, "action_open_fulfil_wizard", [
-                    [item.id],
-                ]);
-                await this.runResult(result);
+            case "request":
+                await this.callButton("action_open_fulfil_wizard", [item.id]);
                 return;
-            }
         }
     }
 
@@ -229,12 +260,33 @@ class Workspace {
         }
     }
 
-    async runResult(result) {
-        if (result && result.type) {
-            await this.action.doAction(result, { onClose: () => this.reload() });
-        } else {
-            await this.reload();
-        }
+    /**
+     * Runs a method of the server the way a button of type "object" does: through the button
+     * route, which completes the action the method returns (the plain call route leaves out the
+     * views a wizard needs, and the web client cannot open it). A method that returns nothing
+     * closes, and the screen is read again when the wizard is closed or the method is done.
+     */
+    async callButton(method, ids) {
+        await this.action.doActionButton({
+            type: "object",
+            name: method,
+            resModel: DOCUMENT_MODEL,
+            resIds: ids,
+            context: user.context,
+            onClose: () => this.reload(),
+        });
+    }
+
+    /** Opens an action that is bound to the documents (as the standard menu of a list does). */
+    async callAction(xmlId, ids) {
+        await this.action.doActionButton({
+            type: "action",
+            name: xmlId,
+            resModel: DOCUMENT_MODEL,
+            resIds: ids,
+            context: user.context,
+            onClose: () => this.reload(),
+        });
     }
 
     async share() {
@@ -242,14 +294,19 @@ class Workspace {
         if (!item) {
             return;
         }
-        const result = await this.orm.call(DOCUMENT_MODEL, "action_open_share_dialog", [[item.id]]);
-        await this.runResult(result);
+        await this.callButton("action_open_share_dialog", [item.id]);
     }
 
     async runAction(entry) {
         const ids = entry.ids || this.selectedIds;
         if (!ids.length) {
             return;
+        }
+        if (entry.run) {
+            return entry.run();
+        }
+        if (entry.action) {
+            return this.callAction(entry.action, ids);
         }
         if (entry.each) {
             for (const id of ids) {
@@ -258,11 +315,10 @@ class Workspace {
             await this.reload();
             return;
         }
-        const result = await this.orm.call(DOCUMENT_MODEL, entry.method, [ids]);
         if (entry.key === "trash") {
             this.clearSelection();
         }
-        await this.runResult(result);
+        await this.callButton(entry.method, ids);
     }
 
     // -- the folder chosen in the left panel -----------------------------------------------
@@ -356,8 +412,12 @@ class Workspace {
     }
 
     // -- dropping files from the computer --------------------------------------------------
-    async dropFiles(files, { skipped = 0 } = {}) {
-        const folderId = this.activeFolderId;
+    /**
+     * Uploads dropped files into a folder: the one under the pointer when it was dropped on a
+     * folder (a card or the tree), else the one chosen in the left panel.
+     */
+    async dropFiles(files, { skipped = 0, folderId = false } = {}) {
+        folderId = folderId || this.activeFolderId;
         if (!folderId) {
             this.notification.add(
                 _t("Choose a folder in the left panel, then drop the files again."),
@@ -377,7 +437,7 @@ class Workspace {
             });
             return;
         }
-        const [folder] = await this.orm.read(FOLDER_MODEL, [folderId], ["woow_user_rank"]);
+        const [folder] = await this.orm.read(FOLDER_MODEL, [folderId], ["name", "woow_user_rank"]);
         if (!folder || folder.woow_user_rank < 2) {
             this.notification.add(_t("You cannot add files to this folder."), { type: "warning" });
             return;
@@ -385,6 +445,7 @@ class Workspace {
         browser.clearTimeout(this._dismissTimer);
         this.state.upload = {
             total: files.length,
+            folderName: folder.name,
             done: 0,
             current: "",
             finished: false,
@@ -444,6 +505,7 @@ export function useWorkspace({ adapter, searchModel }) {
         dragIds: [],
         dropFolderId: false,
         upload: null,
+        ranks: {},
         tick: 0,
     });
     const { open, close } = useFileViewer();

@@ -39,6 +39,17 @@ export function droppedFiles(dataTransfer) {
 }
 
 /**
+ * The folder under the pointer: a folder card or a folder of the left panel carries its id in
+ * `data-woow-folder-id`. Anything else (the files, the empty area) is not a folder.
+ * @returns {number|false}
+ */
+export function folderUnder(target) {
+    const holder = target && target.closest ? target.closest("[data-woow-folder-id]") : null;
+    const id = holder ? Number.parseInt(holder.dataset.woowFolderId, 10) : NaN;
+    return Number.isInteger(id) && id > 0 ? id : false;
+}
+
+/**
  * Listens for dropped files on the element that `getElement()` returns.
  * @param {Object} workspace the workspace of the view (dropFiles, state.dropping)
  * @param {function(): HTMLElement|null} getElement
@@ -64,6 +75,8 @@ export function useDropZone(workspace, getElement) {
                 }
                 ev.preventDefault();
                 ev.dataTransfer.dropEffect = "copy";
+                // the folder under the pointer receives the files: show which one it is
+                workspace.state.dropFolderId = folderUnder(ev.target);
             };
             const onLeave = (ev) => {
                 if (!carriesFiles(ev)) {
@@ -72,6 +85,7 @@ export function useDropZone(workspace, getElement) {
                 depth = Math.max(0, depth - 1);
                 if (!depth) {
                     workspace.state.dropping = false;
+                    workspace.state.dropFolderId = false;
                 }
             };
             const onDrop = (ev) => {
@@ -81,8 +95,10 @@ export function useDropZone(workspace, getElement) {
                 ev.preventDefault();
                 depth = 0;
                 workspace.state.dropping = false;
+                const folderId = folderUnder(ev.target);
+                workspace.state.dropFolderId = false;
                 const { files, skipped } = droppedFiles(ev.dataTransfer);
-                workspace.dropFiles(files, { skipped });
+                workspace.dropFiles(files, { skipped, folderId });
             };
             element.addEventListener("dragenter", onEnter);
             element.addEventListener("dragover", onOver);

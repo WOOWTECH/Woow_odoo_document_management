@@ -22,8 +22,8 @@ registry.category("web_tour.tours").add("tour_woow_workspace_screen", {
             trigger: ".woow-folder-card:contains('Tour sub folder')",
         },
         {
-            content: "the picture of an image card comes from the preview route",
-            trigger: ".o_kanban_record:contains('tour-picture.png') img[loading='lazy'][src^='/woow_document/doc/']",
+            content: "the picture of an image card is a small copy from the core image route",
+            trigger: ".o_kanban_record:contains('tour-picture.png') img[loading='lazy'][src^='/web/image/woow.document/']",
         },
         {
             content: "one click selects a card",
@@ -55,6 +55,44 @@ registry.category("web_tour.tours").add("tour_woow_workspace_screen", {
         {
             content: "the star is on",
             trigger: ".o_kanban_record:contains('tour-notes.txt') .fa-star.text-warning",
+        },
+        {
+            content: "the Rename entry opens its wizard (an action the web client can show)",
+            trigger: ".woow-selection-bar .o_woow_actions",
+            run: "click",
+        },
+        {
+            content: "pick Rename",
+            trigger: ".o_woow_actions_menu .o_woow_action_rename",
+            run: "click",
+        },
+        {
+            content: "the wizard is a dialog with a form, not an error",
+            trigger: ".modal .o_form_view",
+        },
+        {
+            content: "close the wizard",
+            trigger: ".modal .modal-header .btn-close",
+            run: "click",
+        },
+        {
+            content: "the Create shortcut entry opens its wizard too",
+            trigger: ".woow-selection-bar .o_woow_actions",
+            run: "click",
+        },
+        {
+            content: "pick Create shortcut",
+            trigger: ".o_woow_actions_menu .o_woow_action_shortcut",
+            run: "click",
+        },
+        {
+            content: "the shortcut wizard is a dialog with a form",
+            trigger: ".modal .o_form_view",
+        },
+        {
+            content: "close the shortcut wizard",
+            trigger: ".modal .modal-header .btn-close",
+            run: "click",
         },
         {
             content: "a double click opens the file in the viewer",
@@ -100,6 +138,40 @@ registry.category("web_tour.tours").add("tour_woow_workspace_screen", {
         {
             content: "the folder card is shown again",
             trigger: ".woow-folder-card:contains('Tour projects')",
+            run: "click",
+        },
+        {
+            content: "back to the cards",
+            trigger: ".o_cp_switch_buttons .o_switch_view.o_kanban",
+            run: "click",
+        },
+        {
+            content: "a double click on a shortcut opens the file it points to",
+            trigger: ".o_kanban_record:has(.woow-kind-icon.fa-share-square-o)",
+            run: "dblclick",
+        },
+        {
+            content: "the target is shown as a form",
+            trigger: ".o_form_view .o_field_widget[name='name'] input:value('tour-target.txt')",
+        },
+        {
+            content: "go back to the screen",
+            trigger: ".o_control_panel .breadcrumb-item:first",
+            run: "click",
+        },
+        {
+            content: "a double click on a requested file opens the dialog to send it",
+            trigger: ".o_kanban_record:has(.woow-kind-icon.fa-inbox)",
+            run: "dblclick",
+        },
+        {
+            content: "the upload dialog is shown",
+            trigger: ".modal .o_form_view",
+        },
+        {
+            content: "close the dialog",
+            trigger: ".modal .modal-header .btn-close",
+            run: "click",
         },
     ],
 });

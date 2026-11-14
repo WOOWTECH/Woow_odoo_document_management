@@ -76,3 +76,5 @@
 | Move (to a folder) | 移動 |
 | Selection | 選取項目 |
 | Folder path (breadcrumb) | 資料夾路徑 |
+| Export (list selection) | 匯出 |
+| N files here (folder card) | 此處 N 個檔案 |

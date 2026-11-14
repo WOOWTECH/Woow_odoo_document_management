@@ -4,7 +4,7 @@
 
 // Small components of the workspace screen: the selection bar of the control panel, the folder
 // strip above the files, the upload status and the host of the details panel.
-import { Component, onWillStart, useEffect, useState } from "@odoo/owl";
+import { Component, onWillStart, useEffect, useRef, useState } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
@@ -25,6 +25,13 @@ export class WooSelectionBar extends Component {
 
     setup() {
         this.state = useState(this.props.ws.state);
+        // the entries that depend on the access level of a folder wait for its level to be read
+        useEffect(
+            () => {
+                this.props.ws.ensureRanks();
+            },
+            () => [this.props.ws.selectedItems.map((item) => item.folderId).join()]
+        );
     }
 
     get ws() {
@@ -55,7 +62,9 @@ export class WooFolderStrip extends Component {
 
     setup() {
         this.ws = this.env.wooWorkspace;
-        this.state = useState({ cards: [], names: {} });
+        this.state = useState({ cards: [], names: {}, more: false });
+        this.cardsRef = useRef("cards");
+        this.shownFolder = false;
         this.workspaceState = useState(this.ws.state);
         this.orm = useService("orm");
         this.token = 0;
@@ -70,6 +79,18 @@ export class WooFolderStrip extends Component {
                 this.render();
             });
         }
+        // another folder opens its sub-folders from the first one, not where the last row ended
+        useEffect(
+            () => {
+                const element = this.cardsRef.el;
+                if (element && this.shownFolder !== this.ws.activeFolderId) {
+                    element.scrollLeft = 0;
+                    element.scrollTop = 0;
+                }
+                this.shownFolder = this.ws.activeFolderId;
+            },
+            () => [this.state.cards, this.ws.activeFolderId]
+        );
         useEffect(
             () => {
                 this.loadCards();
@@ -89,6 +110,7 @@ export class WooFolderStrip extends Component {
         const parent = this.ws.activeFolderId;
         if (!this.ws.folderSection) {
             this.state.cards = [];
+            this.state.more = false;
             return;
         }
         const path = this.ws.pathIds;
@@ -104,7 +126,8 @@ export class WooFolderStrip extends Component {
             }
         }
         const fields = ["name", "document_count", "subfolder_count", "color"];
-        const options = { limit: FOLDER_CARD_LIMIT };
+        // one more than is shown tells that the folder holds more sub-folders than the cards
+        const options = { limit: FOLDER_CARD_LIMIT + 1 };
         let cards = await this.orm.searchRead(
             FOLDER_MODEL,
             [
@@ -124,7 +147,8 @@ export class WooFolderStrip extends Component {
             }
         }
         if (ticket === this.token) {
-            this.state.cards = cards;
+            this.state.more = cards.length > FOLDER_CARD_LIMIT;
+            this.state.cards = cards.slice(0, FOLDER_CARD_LIMIT);
         }
     }
 
@@ -154,6 +178,7 @@ export class WooFolderStrip extends Component {
     }
 
     onFolderDrop(ev, card) {
+        // dropped files are not a card: the zone of the screen uploads them into this folder
         if (!this.ws.isDragging) {
             return;
         }
@@ -162,9 +187,10 @@ export class WooFolderStrip extends Component {
     }
 
     countLabel(card) {
+        // the files that are in this folder itself; the area below also shows the sub-folders'
         return card.document_count === 1
-            ? _t("1 file")
-            : _t("%s files", card.document_count);
+            ? _t("1 file here")
+            : _t("%s files here", card.document_count);
     }
 
     choose(card) {

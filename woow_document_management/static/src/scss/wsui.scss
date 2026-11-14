@@ -56,6 +56,12 @@
             flex-shrink: 0;
             font-size: 0.9rem;
         }
+
+        // a long date (as written in Chinese) wraps to a second row; the owner stays on the card
+        .woow-card-footer > * {
+            white-space: nowrap;
+            min-width: 0;
+        }
     }
 }
 
@@ -71,9 +77,16 @@
         }
     }
 
+    // many sub-folders scroll inside the strip instead of pushing the files out of the screen
+    .woow-folder-cards {
+        max-height: 7.5rem;
+        overflow-y: auto;
+    }
+
     @include media-breakpoint-down(md) {
         // one scrolling row, so that the folders do not push the files out of the screen
         .woow-folder-cards {
+            max-height: none;
             flex-wrap: nowrap !important;
             overflow-x: auto;
             padding-bottom: 0.25rem;

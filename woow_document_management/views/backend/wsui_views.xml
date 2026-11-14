@@ -62,7 +62,7 @@
             </div>
             <field name="folder_id" class="text-muted text-truncate d-block small"/>
             <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color'}" class="mt-1"/>
-            <div class="woow-card-footer d-flex align-items-center gap-2 mt-1">
+            <div class="woow-card-footer d-flex flex-wrap align-items-center gap-2 mt-1">
               <field name="write_date" widget="date" class="text-muted small"/>
               <field name="file_size" options="{'human_readable': true}" class="text-muted small" invisible="document_type != 'binary'"/>
               <field name="activity_ids" widget="kanban_activity" class="ms-auto"/>
@@ -92,7 +92,8 @@
   </record>
 
   <!-- Every folder the user may open is in the folder tree, empty ones too, so that a folder card
-       or a drop can choose it. -->
+       or a drop can choose it. The core limit of the panel is 200 values and an expanded tree
+       refuses to show anything when it is reached, so it is raised well above the size of a site. -->
   <record id="view_woow_document_workspace_search_wsui" model="ir.ui.view">
     <field name="name">woow.document.workspace.search.wsui</field>
     <field name="model">woow.document</field>
@@ -101,6 +102,7 @@
     <field name="arch" type="xml">
       <xpath expr="//searchpanel/field[@name='folder_id']" position="attributes">
         <attribute name="expand">1</attribute>
+        <attribute name="limit">5000</attribute>
         <attribute name="comodel_domain">[('in_trash', '=', False)]</attribute>
       </xpath>
     </field>

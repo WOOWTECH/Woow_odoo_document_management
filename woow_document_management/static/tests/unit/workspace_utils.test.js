@@ -14,6 +14,7 @@ import {
     kindIcon,
     previewUrl,
     safeLinkUrl,
+    thumbnailUrl,
     toItem,
     uploadRefusal,
     viewerFile,
@@ -34,6 +35,7 @@ const doc = (values = {}) => ({
     lockedByOther: false,
     canWrite: true,
     canShare: false,
+    canUpload: true,
     versionCount: 0,
     ...values,
 });
@@ -70,6 +72,18 @@ test("the URLs are those of this module and encode the ids", () => {
     expect(previewUrl(12)).toBe("/woow_document/doc/12/preview");
     expect(previewUrl("1/../2")).toBe("/woow_document/doc/1%2F..%2F2/preview");
     expect(zipUrl([1, 2, 3])).toBe("/woow_document/zip?document_ids=1%2C2%2C3");
+});
+
+test("the picture of a card is a small copy through the core image route", () => {
+    expect(thumbnailUrl(12, "1700000000000")).toBe(
+        "/web/image/woow.document/12/datas/256x256?unique=1700000000000"
+    );
+    expect(thumbnailUrl(12)).toBe("/web/image/woow.document/12/datas/256x256");
+    expect(thumbnailUrl("1/../2", "a&b")).toBe(
+        "/web/image/woow.document/1%2F..%2F2/datas/256x256?unique=a%26b"
+    );
+    // never the audited viewer route, which writes a "Previewed" row for each request
+    expect(thumbnailUrl(12, "1")).not.toInclude("/woow_document/");
 });
 
 test("a link opens only when it is a plain web or mail address", () => {
@@ -145,8 +159,13 @@ test("a record becomes an item with plain values", () => {
         lockedByOther: false,
         canWrite: true,
         canShare: false,
+        canUpload: false,
         versionCount: 2,
+        writeStamp: "",
     });
+    // the write date of the record is the cache key of the picture
+    const stamped = toItem({ resId: 4, data: { write_date: { toMillis: () => 1700000000000 } } });
+    expect(stamped.writeStamp).toBe("1700000000000");
 });
 
 test("the download is the download route for one file and the ZIP route for several", () => {
@@ -175,6 +194,7 @@ test("one writable file offers the actions of a file", () => {
         "duplicate",
         "star",
         "shortcut",
+        "request",
         "new_version",
         "lock",
         "trash",
@@ -196,6 +216,11 @@ test("what the user may not do is not offered", () => {
         expect(readOnly).not.toInclude(key);
     }
     expect(readOnly).toInclude("duplicate");
+    // a copy is made in the same folder: the user needs the upload level there
+    expect(keysOf([doc({ canUpload: false })])).not.toInclude("duplicate");
+    expect(keysOf([doc({ id: 1 }), doc({ id: 2, canUpload: false })])).not.toInclude("duplicate");
+    // a shortcut is made in a folder that is chosen in the dialog: reading the file is enough
+    expect(keysOf([doc({ canUpload: false })])).toInclude("shortcut");
     const lockedByOther = keysOf([doc({ isLocked: true, lockedByOther: true })]);
     for (const key of ["rename", "move", "new_version", "lock", "trash"]) {
         expect(lockedByOther).not.toInclude(key);

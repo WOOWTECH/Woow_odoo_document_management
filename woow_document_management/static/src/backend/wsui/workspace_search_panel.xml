@@ -7,11 +7,23 @@
         <xpath expr="//t[@t-call='web.SearchPanel.Regular']" position="attributes">
             <attribute name="t-call">woow_document_management.SearchPanel.Regular</attribute>
         </xpath>
+        <xpath expr="//t[@t-call='web.SearchPanel.Small']" position="attributes">
+            <attribute name="t-call">woow_document_management.SearchPanel.Small</attribute>
+        </xpath>
+    </t>
+
+    <!-- On a phone the panel is one row of buttons; the Trash entry is the last of them. -->
+    <t t-name="woow_document_management.SearchPanel.Small" t-inherit="web.SearchPanel.Small" t-inherit-mode="primary">
+        <xpath expr="//div[hasclass('o_search_panel')]/div" position="inside">
+            <button type="button" class="btn btn-secondary my-2 mx-1 flex-shrink-0 woow-trash-entry-small" t-on-click="openTrash">
+                <i class="fa fa-trash-o me-2"/>Trash
+            </button>
+        </xpath>
     </t>
 
     <t t-name="woow_document_management.SearchPanel.Regular" t-inherit="web.SearchPanelContent" t-inherit-mode="primary">
         <xpath expr="//div[hasclass('o_search_panel')]" position="inside">
-            <div class="woow-panel-footer">
+            <div class="woow-panel-footer" t-att-data-woow-tick="workspaceTick">
                 <button type="button" class="btn btn-link woow-trash-entry w-100 text-start" t-on-click="openTrash">
                     <i class="fa fa-trash-o fa-fw me-2"/>Trash
                 </button>
@@ -28,6 +40,7 @@
             <attribute name="t-on-dragleave">() => this.onFolderDragLeave(section, value)</attribute>
             <attribute name="t-on-drop">(ev) => this.onFolderDrop(ev, section, value)</attribute>
             <attribute name="t-att-data-woow-drop">isDropTarget(section, value) ? 'true' : false</attribute>
+            <attribute name="t-att-data-woow-folder-id">section.fieldName === 'folder_id' ? value.id : false</attribute>
         </xpath>
         <xpath expr="//span[hasclass('o_search_panel_label_title')]" position="attributes">
             <attribute name="t-esc">shortName(section, value)</attribute>

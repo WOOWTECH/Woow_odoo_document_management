@@ -10,8 +10,8 @@ msgstr ""
 msgid "%(ok)s of %(total)s files uploaded"
 msgstr "已上傳 %(ok)s／%(total)s 個檔案"
 
-msgid "%s files"
-msgstr "%s 個檔案"
+msgid "%s files here"
+msgstr "此處 %s 個檔案"
 
 msgid "%s files uploaded"
 msgstr "已上傳 %s 個檔案"
@@ -19,11 +19,14 @@ msgstr "已上傳 %s 個檔案"
 msgid "%s selected"
 msgstr "已選取 %s 項"
 
-msgid "1 file"
-msgstr "1 個檔案"
+msgid "1 file here"
+msgstr "此處 1 個檔案"
 
 msgid "Actions"
 msgstr "動作"
+
+msgid "Ask for a file"
+msgstr "索取檔案"
 
 msgid "All folders"
 msgstr "所有資料夾"
@@ -141,3 +144,9 @@ msgstr "您無法在此資料夾加入檔案。"
 
 msgid "You cannot move this selection."
 msgstr "您無法移動這些選取項目。"
+
+msgid "Export"
+msgstr "匯出"
+
+msgid "More folders are in the left panel."
+msgstr "更多資料夾請從左側面板選取。"

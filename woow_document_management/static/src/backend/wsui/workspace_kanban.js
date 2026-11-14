@@ -19,7 +19,7 @@ import {
     WooSelectionBar,
     WooUploadStatus,
 } from "./workspace_components";
-import { documentKind, hasPicture, kindIcon, previewUrl, toItem } from "./workspace_utils";
+import { documentKind, hasPicture, kindIcon, thumbnailUrl, toItem } from "./workspace_utils";
 
 // What a click on these does not select the card: they have their own behaviour.
 const OWN_CLICK = "a, button, input, textarea, select, [data-bs-toggle], .o_dropdown_kanban";
@@ -45,7 +45,7 @@ export class WorkspaceKanbanRecord extends KanbanRecord {
         context.woo = {
             kind,
             icon: kindIcon(kind),
-            pictureUrl: hasPicture(item) ? previewUrl(item.id) : false,
+            pictureUrl: hasPicture(item) ? thumbnailUrl(item.id, item.writeStamp) : false,
         };
         return context;
     }

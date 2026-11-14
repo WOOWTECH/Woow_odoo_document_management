@@ -5,6 +5,7 @@
 // The workspace list: the rows keep their standard behaviour (a click opens the form, the check
 // box selects), and the strip of folders, the selection bar (with Open for the viewer) and the
 // dropped files work as in the kanban.
+import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { listView } from "@web/views/list/list_view";
 import { ListController } from "@web/views/list/list_controller";
@@ -51,6 +52,19 @@ export class WorkspaceListController extends ListController {
                     }
                 },
                 reload: () => this.model.load(),
+                // the standard menu of the selection is replaced by the Actions menu of the screen;
+                // what only that menu had stays reachable from it
+                extraActions: () =>
+                    this.isExportEnable
+                        ? [
+                              {
+                                  key: "export",
+                                  label: _t("Export"),
+                                  icon: "fa-upload",
+                                  run: () => this.onExportData(),
+                              },
+                          ]
+                        : [],
             },
         });
         useDropZone(this.ws, () => this.rootRef.el && this.rootRef.el.querySelector(".o_content"));

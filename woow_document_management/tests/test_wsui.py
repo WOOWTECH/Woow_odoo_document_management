@@ -6,8 +6,11 @@ The screen is a convenience; it adds no right. These tests pin what the server g
 views it is attached to, the folder tree, the fields it reads) and run the browser tests.
 """
 import base64
+import io
 import re
 from pathlib import Path
+
+from PIL import Image
 
 from lxml import etree
 
@@ -119,6 +122,31 @@ class TestWorkspaceBrowserViews(TransactionCase):
         self.assertNotIn(self.hidden.id, by_id)
         self.assertNotIn('Wsui hidden', repr(tree))
 
+    def test_a_site_with_many_folders_still_gets_its_folder_tree(self):
+        """An expanded tree gives nothing at all once it holds as many values as its limit.
+
+        The core panel stops at 200 values by default; a site with 200 readable folders (empty
+        ones count now) would get no tree, so no folder card and no drop would work.
+        """
+        search = etree.fromstring(self._views(self.admin)['search']['arch'].encode())
+        node = search.xpath("//searchpanel/field[@name='folder_id']")[0]
+        limit = int(node.get('limit'))
+        self.assertGreaterEqual(limit, 1000)
+        folders = self.env['woow.document.folder'].sudo()
+        folders.create([{'name': 'Many %03d' % number, 'owner_id': self.admin.id}
+                        for number in range(205)])
+        params = {'enable_counters': True, 'hierarchize': True, 'expand': True,
+                  'comodel_domain': [('in_trash', '=', False)]}
+        documents = self.documents.with_user(self.admin)
+        # a limit that the folders reach is refused by the core panel: the failure the view's
+        # limit prevents (the count of values returned is the limit when nothing is dropped)
+        total = folders.search_count([('in_trash', '=', False)])
+        refused = documents.search_panel_select_range('folder_id', limit=total, **params)
+        self.assertIn('error_msg', refused)
+        tree = documents.search_panel_select_range('folder_id', limit=limit, **params)
+        self.assertNotIn('error_msg', tree)
+        self.assertGreaterEqual(len(tree['values']), 205)
+
     def test_a_folder_in_the_trash_is_not_in_the_tree(self):
         self.empty.with_user(self.admin).action_trash()
         params = {'enable_counters': True, 'hierarchize': True, 'expand': True,
@@ -175,8 +203,8 @@ class TestWorkspaceBrowserViews(TransactionCase):
             calls.update(re.findall(r'["`](/[a-z_]+/[^"`$]*)', text))
         for call in calls:
             with self.subTest(call=call):
-                self.assertTrue(call.startswith(('/woow_document/', '/web/static/lib/pdfjs/')),
-                                call)
+                self.assertTrue(call.startswith((
+                    '/woow_document/', '/web/static/lib/pdfjs/', '/web/image/woow.document/')), call)
 
     def test_the_screen_builds_no_markup_from_data(self):
         patterns = (r'\.innerHTML', r'\.outerHTML', r'insertAdjacentHTML', r'\bmarkup\s*\(',
@@ -195,6 +223,50 @@ class TestWorkspaceBrowserViews(TransactionCase):
                 if re.search(r'`/woow_document/[^`]*\$\{', line):
                     with self.subTest(file=path.name, line=number):
                         self.assertIn('encodeURIComponent', line)
+
+
+@tagged('woow_docmgmt_core')
+class TestWorkspacePictureCards(HttpCase):
+    """A picture card loads a small copy and does not write an audit row for a file nobody opened."""
+
+    def test_the_picture_of_a_card_is_a_small_copy_and_the_viewer_route_stays_audited(self):
+        env = self.env
+        reader = new_test_user(env, login='wsui_thumb_reader', groups=_USER)
+        folder = env['woow.document.folder'].sudo().create({
+            'name': 'Wsui picture folder', 'owner_id': env.ref('base.user_admin').id,
+            'inherit_access': False})
+        env['woow.document.folder.access'].sudo().create({
+            'folder_id': folder.id, 'subject_type': 'user', 'user_id': reader.id, 'level': 'read'})
+        big = io.BytesIO()
+        Image.new('RGB', (900, 600), 'navy').save(big, format='PNG')
+        document = env['woow.document'].sudo().create({
+            'name': 'wsui-big.png', 'folder_id': folder.id,
+            'datas': base64.b64encode(big.getvalue())})
+        env.flush_all()
+        self.authenticate(reader.login, reader.login)
+        logs = env['woow.document.log'].sudo()
+        views = lambda: logs.search_count([('document_id', '=', document.id), ('event', '=', 'view')])
+        self.assertEqual(views(), 0)
+        card = self.url_open('/web/image/woow.document/%d/datas/256x256?unique=1' % document.id,
+                             allow_redirects=False)
+        self.assertEqual(card.status_code, 200)
+        self.assertEqual(card.headers['Content-Type'], 'image/png')
+        picture = Image.open(io.BytesIO(card.content))
+        self.assertLessEqual(max(picture.size), 256)
+        self.assertLess(len(card.content), len(big.getvalue()))
+        cache = card.headers.get('Cache-Control', '')
+        self.assertIn('private', cache)
+        self.assertNotIn('public', cache)
+        # the card is not a viewing of the file
+        self.assertEqual(views(), 0)
+        # the route of the viewer still writes the row, once per request
+        self.assertEqual(self.url_open('/woow_document/doc/%d/preview' % document.id).status_code, 200)
+        self.assertEqual(views(), 1)
+
+    def test_the_cards_do_not_use_the_audited_viewer_route(self):
+        source = (_SRC / 'workspace_kanban.js').read_text(encoding='utf-8')
+        self.assertIn('thumbnailUrl(', source)
+        self.assertNotIn('previewUrl', source)
 
 
 @tagged('-at_install', 'post_install', 'woow_docmgmt_wsui_js')
@@ -221,6 +293,18 @@ class TestWorkspaceBrowserTour(HttpCase):
                           'datas': base64.b64encode(_PNG)})
         documents.create({'name': 'tour-notes.txt', 'folder_id': top.id,
                           'datas': base64.b64encode(b'tour notes body')})
+        # a shortcut to a file and a requested file: the card of each opens a form or a dialog
+        target = documents.create({'name': 'tour-target.txt', 'folder_id': top.id,
+                                   'datas': base64.b64encode(b'tour target body')})
+        shortcut_wizard = self.env['woow.document.shortcut.wizard'].create({
+            'document_id': target.id, 'folder_id': top.id})
+        shortcut_wizard.action_create()
+        asked = new_test_user(self.env, login='wsui_tour_asked', groups=_USER)
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': top.id, 'subject_type': 'user', 'user_id': asked.id, 'level': 'upload'})
+        self.env.flush_all()
+        self.env.invalidate_all()
+        documents._woow_open_request(top, 'tour-request', asked, 7)
         self.start_tour(
             '/odoo/action-woow_document_management.action_woow_document_workspace',
             'tour_woow_workspace_screen', login='admin')

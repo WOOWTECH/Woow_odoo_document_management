@@ -56,6 +56,23 @@ async function settle() {
     }
 }
 
+// An entry that returns an action is run the way a button of type "object" runs: through the
+// action service, which asks the button route and so receives the action completed with its views
+// (the plain call route gives a wizard no views and the web client cannot open it).
+function mockButtons(steps = (params) => `${params.name} ${JSON.stringify(params.resIds)}`) {
+    mockService("action", {
+        doActionButton(params) {
+            expect.step(steps(params));
+            expect(params.type).toBe("object");
+            expect(params.resModel).toBe("woow.document");
+            expect(typeof params.onClose).toBe("function");
+        },
+        doAction() {
+            throw new Error("an entry must not hand a raw server action to doAction");
+        },
+    });
+}
+
 const cardOf = (name) =>
     queryAll(".o_kanban_record:not(.o_kanban_ghost)").find((el) => el.textContent.includes(name));
 const selectedNames = () =>
@@ -67,7 +84,11 @@ test("a card shows the picture of an image and the icon of the other kinds", asy
     expect(".o_kanban_record:not(.o_kanban_ghost)").toHaveCount(8);
     const images = queryAll(".woow-card-preview img");
     expect(images).toHaveCount(1);
-    expect(images[0].getAttribute("src")).toBe("/woow_document/doc/1/preview");
+    // a small copy through the core image route, not the audited viewer route of the full file
+    expect(images[0].getAttribute("src")).toMatch(
+        /^\/web\/image\/woow\.document\/1\/datas\/256x256(\?unique=\d+)?$/
+    );
+    expect(images[0].getAttribute("src")).not.toInclude("/preview");
     expect(images[0].getAttribute("loading")).toBe("lazy");
     expect(cardOf("contract.pdf").querySelector(".woow-kind-icon")).toHaveClass("fa-file-pdf-o");
     expect(cardOf("Company site").querySelector(".woow-kind-icon")).toHaveClass("fa-link");
@@ -92,14 +113,27 @@ test("a card carries the marks of a starred, a locked and a versioned file", asy
 test("the folder cards show the top folders, and a click chooses one", async () => {
     await mountKanban();
     expect(queryAllTexts(".woow-folder-card .woow-folder-name")).toEqual(["Projects", "Empty drawer"]);
-    expect(queryAllTexts(".woow-folder-card .woow-folder-count")).toEqual(["2 files", "0 files"]);
+    expect(queryAllTexts(".woow-folder-card .woow-folder-count")).toEqual(["2 files here", "0 files here"]);
     expect(queryAllTexts(".woow-crumb")).toEqual(["All folders"]);
     await click(".woow-folder-card:first");
     await settle();
     expect(queryAllTexts(".woow-folder-card .woow-folder-name")).toEqual(["Alpha", "Beta"]);
-    expect(queryAllTexts(".woow-folder-card .woow-folder-count")).toEqual(["1 file", "1 file"]);
+    expect(queryAllTexts(".woow-folder-card .woow-folder-count")).toEqual(["1 file here", "1 file here"]);
     expect(queryAllTexts(".woow-crumb")).toEqual(["All folders", "Projects"]);
     expect(".o_search_panel_category_value header.active").toHaveText(/Projects/);
+});
+
+test("the strip of folders starts at its first card when another folder is chosen", async () => {
+    await mountKanban();
+    // a phone shows the cards as one scrolling row: make it so here, and scroll to the end
+    const strip = queryOne(".woow-folder-cards");
+    strip.style.cssText = "flex-wrap: nowrap !important; overflow-x: auto; width: 80px;";
+    strip.scrollLeft = 500;
+    expect(strip.scrollLeft).toBeGreaterThan(0);
+    await click(".woow-folder-card:first");
+    await settle();
+    expect(queryAllTexts(".woow-folder-card .woow-folder-name")).toEqual(["Alpha", "Beta"]);
+    expect(queryOne(".woow-folder-cards").scrollLeft).toBe(0);
 });
 
 test("each part of the path is a way back", async () => {
@@ -186,7 +220,7 @@ test("the control panel shows Download and Share for one file that may be shared
 test("the Actions menu offers what applies to the selection", async () => {
     await mountKanban();
     await click(cardOf("photo.png"));
-    await animationFrame();
+    await settle();
     await click(".o_woow_actions");
     await animationFrame();
     expect(queryAllTexts(".o_woow_actions_menu .dropdown-item")).toEqual([
@@ -195,6 +229,7 @@ test("the Actions menu offers what applies to the selection", async () => {
         "Duplicate",
         "Star",
         "Create shortcut",
+        "Ask for a file",
         "New version",
         "Lock",
         "Move to trash",
@@ -204,31 +239,25 @@ test("the Actions menu offers what applies to the selection", async () => {
 test("the Actions menu does not offer what the user may not do", async () => {
     await mountKanban();
     await click(cardOf("notes.txt")); // read only
-    await animationFrame();
+    await settle();
     await click(".o_woow_actions");
     await animationFrame();
     const texts = queryAllTexts(".o_woow_actions_menu .dropdown-item");
-    for (const hidden of ["Rename", "Move", "Move to trash", "Lock", "New version"]) {
+    // the folder of this file (Beta) is read only for the user: no copy can be made in it either
+    for (const hidden of ["Rename", "Move", "Move to trash", "Lock", "New version", "Duplicate"]) {
         expect(texts).not.toInclude(hidden);
     }
-    expect(texts).toInclude("Duplicate");
+    expect(texts).toInclude("Star");
 });
 
 test("an entry calls the server action of the selected documents", async () => {
-    onRpc("woow.document", "action_duplicate", ({ args }) => {
-        expect.step("duplicate " + JSON.stringify(args[0]));
-        return true;
-    });
-    onRpc("woow.document", "action_trash", ({ args }) => {
-        expect.step("trash " + JSON.stringify(args[0]));
-        return true;
-    });
+    mockButtons();
     await mountKanban();
     await click(cardOf("photo.png"));
     await keyDown("ctrl");
     await click(cardOf("Company site"));
     await keyUp("ctrl");
-    await animationFrame();
+    await settle();
     await click(".o_woow_actions");
     await animationFrame();
     await click(".o_woow_action_duplicate");
@@ -237,21 +266,11 @@ test("an entry calls the server action of the selected documents", async () => {
     await animationFrame();
     await click(".o_woow_action_trash");
     await animationFrame();
-    expect.verifySteps(["duplicate [1,3]", "trash [1,3]"]);
+    expect.verifySteps(["action_duplicate [1,3]", "action_trash [1,3]"]);
 });
 
-test("an entry that opens a wizard hands the action of the server to the client", async () => {
-    onRpc("woow.document", "action_open_rename_wizard", () => ({
-        type: "ir.actions.act_window",
-        res_model: "woow.document.rename.wizard",
-        view_mode: "form",
-        target: "new",
-    }));
-    mockService("action", {
-        doAction(action) {
-            expect.step(action.res_model + " " + action.target);
-        },
-    });
+test("an entry that opens a wizard runs as a button of type object, so the wizard has its views", async () => {
+    mockButtons();
     await mountKanban();
     await click(cardOf("photo.png"));
     await animationFrame();
@@ -259,7 +278,42 @@ test("an entry that opens a wizard hands the action of the server to the client"
     await animationFrame();
     await click(".o_woow_action_rename");
     await animationFrame();
-    expect.verifySteps(["woow.document.rename.wizard new"]);
+    expect.verifySteps(["action_open_rename_wizard [1]"]);
+});
+
+test("the other wizard entries of the menu run as buttons of type object too", async () => {
+    mockButtons();
+    await mountKanban();
+    await click(cardOf("contract.pdf"));
+    await settle();
+    for (const key of ["move", "shortcut", "new_version", "pdf_split"]) {
+        await click(".o_woow_actions");
+        await animationFrame();
+        await click(".o_woow_action_" + key);
+        await animationFrame();
+    }
+    expect.verifySteps([
+        "action_open_move_wizard [2]",
+        "action_open_shortcut_wizard [2]",
+        "action_new_version [2]",
+        "action_open_pdf_split_wizard [2]",
+    ]);
+});
+
+test("Ask for a file opens the bound action of the documents", async () => {
+    mockService("action", {
+        doActionButton(params) {
+            expect.step(`${params.type} ${params.name} ${JSON.stringify(params.resIds)}`);
+        },
+    });
+    await mountKanban();
+    await click(cardOf("photo.png"));
+    await settle();
+    await click(".o_woow_actions");
+    await animationFrame();
+    await click(".o_woow_action_request");
+    await animationFrame();
+    expect.verifySteps(["action woow_document_management.action_woow_document_request_wizard [1]"]);
 });
 
 test("the star entry stars one document after the other", async () => {
@@ -310,21 +364,13 @@ test("Download goes to the download route for one file and to the ZIP route for 
 });
 
 test("Share calls the share dialog of the server for one document", async () => {
-    onRpc("woow.document", "action_open_share_dialog", ({ args }) => {
-        expect.step("share " + JSON.stringify(args[0]));
-        return { type: "ir.actions.act_window", res_model: "woow.document", target: "new" };
-    });
-    mockService("action", {
-        doAction(action) {
-            expect.step(action.target);
-        },
-    });
+    mockButtons();
     await mountKanban();
     await click(cardOf("photo.png"));
     await animationFrame();
     await click(".o_woow_share");
     await animationFrame();
-    expect.verifySteps(["share [1]", "new"]);
+    expect.verifySteps(["action_open_share_dialog [1]"]);
 });
 
 // -- opening ---------------------------------------------------------------------------------
@@ -360,40 +406,20 @@ test("a link opens in a new tab without an opener, and an unsafe one does not op
 });
 
 test("a shortcut opens its target through the method of the server", async () => {
-    onRpc("woow.document", "action_open_shortcut_target", ({ args }) => {
-        expect.step("target " + JSON.stringify(args[0]));
-        return { type: "ir.actions.act_window", res_model: "woow.document", res_id: 1 };
-    });
-    mockService("action", {
-        doAction(action) {
-            expect.step("action " + action.res_id);
-        },
-    });
+    mockButtons();
     await mountKanban();
     const shortcut = queryAll(".o_kanban_record").find((el) => el.querySelector(".fa-share-square-o"));
     await dblclick(shortcut);
     await animationFrame();
-    expect.verifySteps(["target [4]", "action 1"]);
+    expect.verifySteps(["action_open_shortcut_target [4]"]);
 });
 
 test("a requested file opens its upload wizard", async () => {
-    onRpc("woow.document", "action_open_fulfil_wizard", ({ args }) => {
-        expect.step("fulfil " + JSON.stringify(args[0]));
-        return {
-            type: "ir.actions.act_window",
-            res_model: "woow.document.request.fulfil.wizard",
-            target: "new",
-        };
-    });
-    mockService("action", {
-        doAction(action) {
-            expect.step(action.res_model);
-        },
-    });
+    mockButtons();
     await mountKanban();
     await dblclick(cardOf("Signed contract"));
     await animationFrame();
-    expect.verifySteps(["fulfil [5]", "woow.document.request.fulfil.wizard"]);
+    expect.verifySteps(["action_open_fulfil_wizard [5]"]);
 });
 
 // -- dropping files --------------------------------------------------------------------------
@@ -484,6 +510,97 @@ test("dropped files go to the chosen folder one by one and the refusals are show
     await click(".woow-upload-status .btn-close");
     await animationFrame();
     expect(".woow-upload-status").toHaveCount(0);
+});
+
+function dropOn(element, files) {
+    const transfer = new DataTransfer();
+    for (const file of files) {
+        transfer.items.add(file);
+    }
+    element.dispatchEvent(
+        new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true })
+    );
+}
+
+test("files dropped on a folder card go into that folder, not into the chosen one", async () => {
+    const calls = patchUpload({});
+    await mountKanban();
+    await click(".woow-folder-card:first"); // Projects is chosen; Alpha and Beta are its cards
+    await settle();
+    const alpha = queryAll(".woow-folder-card").find((el) => el.textContent.includes("Alpha"));
+    dropOn(alpha, [new File(["x"], "on-alpha.txt", { type: "text/plain" })]);
+    await settle();
+    await settle();
+    expect(calls.map((call) => `${call.name} ${call.folder}`)).toEqual(["on-alpha.txt 2"]);
+    // the banner names the folder that received the files
+    expect(".woow-upload-status .woow-upload-folder").toHaveText("Alpha");
+});
+
+test("files dropped on a folder of the tree go into that folder", async () => {
+    const calls = patchUpload({});
+    await mountKanban();
+    await click(".woow-folder-card:first");
+    await settle();
+    // the chosen folder opens its children in the tree on a second click
+    await click(".o_search_panel_category_value header.active");
+    await settle();
+    const alpha = queryAll(".o_search_panel_category_value header").find((el) =>
+        el.textContent.includes("Alpha")
+    );
+    dropOn(alpha, [new File(["x"], "on-tree.txt", { type: "text/plain" })]);
+    await settle();
+    await settle();
+    expect(calls.map((call) => `${call.name} ${call.folder}`)).toEqual(["on-tree.txt 2"]);
+});
+
+test("files dropped on a folder without upload level are refused, whatever folder is chosen", async () => {
+    mockService("notification", {
+        add(message) {
+            expect.step(String(message));
+        },
+    });
+    const calls = patchUpload({});
+    await mountKanban();
+    await click(".woow-folder-card:first");
+    await settle();
+    const beta = queryAll(".woow-folder-card").find((el) => el.textContent.includes("Beta"));
+    dropOn(beta, [new File(["x"], "on-beta.txt", { type: "text/plain" })]);
+    await settle();
+    expect.verifySteps(["You cannot add files to this folder."]);
+    expect(calls).toHaveLength(0);
+});
+
+test("a folder with more sub-folders than cards says so", async () => {
+    onRpc("woow.document.folder", "search_read", () =>
+        Array.from({ length: 61 }, (_, index) => ({
+            id: 100 + index,
+            name: "Folder " + index,
+            document_count: 0,
+            subfolder_count: 0,
+            color: 0,
+        }))
+    );
+    await mountKanban();
+    expect(".woow-folder-card").toHaveCount(60);
+    expect(".woow-folder-more").toHaveCount(1);
+});
+
+test("the numbers of the folder tree are read again after files were dropped", async () => {
+    patchUpload({});
+    const counted = [];
+    onRpc("woow.document", "search_panel_select_range", () => {
+        counted.push(1);
+    });
+    await mountKanban();
+    await click(".woow-folder-card:first");
+    await settle();
+    await click(".woow-folder-card:first"); // Alpha
+    await settle();
+    const before = counted.length;
+    dropFiles([new File(["x"], "count.txt", { type: "text/plain" })]);
+    await settle();
+    await settle();
+    expect(counted.length).toBeGreaterThan(before);
 });
 
 test("a drop that carries no file is ignored", async () => {
@@ -614,6 +731,23 @@ test("a click on a row of the list does not select it: the row keeps its standar
     await animationFrame();
     expect(".woow-selection-bar").toHaveCount(0);
     expect(".o_data_row.o_data_row_selected").toHaveCount(0);
+});
+
+test("the Actions menu of the list keeps what the standard menu of the selection had", async () => {
+    mockService("action", {
+        doActionButton(params) {
+            expect.step(`${params.type} ${params.name}`);
+        },
+    });
+    await mountList();
+    await click(".o_data_row:first .o_list_record_selector input");
+    await settle();
+    await click(".o_woow_actions");
+    await animationFrame();
+    expect(queryAllTexts(".o_woow_actions_menu .dropdown-item")).toInclude("Ask for a file");
+    await click(".o_woow_action_request");
+    await animationFrame();
+    expect.verifySteps(["action woow_document_management.action_woow_document_request_wizard"]);
 });
 
 test("the Open button of a selected row shows the file in the viewer", async () => {

@@ -18,6 +18,9 @@ export const DROP_MAX_FILES = 50;
 // Folder cards shown at once above the files.
 export const FOLDER_CARD_LIMIT = 60;
 
+// The action ("Ask for a file") that the standard list offers in its menu of the selection.
+export const REQUEST_ACTION = "woow_document_management.action_woow_document_request_wizard";
+
 // The types the preview route serves inline (the module's own list) and the viewer can show.
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 const PDF_TYPE = "application/pdf";
@@ -112,6 +115,20 @@ export function hasPicture(doc) {
 }
 
 // -- URLs of this module's routes -------------------------------------------------------------
+// The size of the picture on a card: the core image route sends a small copy, so a card does not
+// load the whole original (and the audited viewer route is only used when a file is opened).
+export const THUMB_SIZE = "256x256";
+
+/**
+ * The small picture of a card. It goes through the core image route, which the module guards
+ * for its own files (the caller's rights, the stored type, a private cache); `unique` is the
+ * write date of the record, so a replaced file shows its new picture and a cached one stays.
+ */
+export function thumbnailUrl(id, unique = "") {
+    const base = `/web/image/woow.document/${encodeURIComponent(id)}/datas/${THUMB_SIZE}`;
+    return unique ? `${base}?unique=${encodeURIComponent(unique)}` : base;
+}
+
 export function previewUrl(id) {
     return `/woow_document/doc/${encodeURIComponent(id)}/preview`;
 }
@@ -161,6 +178,17 @@ export function safeLinkUrl(value) {
 }
 
 // -- the items the screen works with ----------------------------------------------------------
+/** The write date of a record as a short stamp for a cache key ("" when it is not known). */
+function writeStamp(value) {
+    if (!value) {
+        return "";
+    }
+    if (typeof value.toMillis === "function") {
+        return String(value.toMillis());
+    }
+    return String(value);
+}
+
 /**
  * The facts of one record that the screen needs, from the data of a web-client record.
  * @param {{resId: number, data: Object}} record
@@ -180,7 +208,10 @@ export function toItem(record) {
         lockedByOther: Boolean(data.woow_locked_by_other),
         canWrite: Boolean(data.woow_user_can_write),
         canShare: Boolean(data.woow_user_can_share),
+        // the upload level of the folder is read apart (see Workspace.items); unknown is "no"
+        canUpload: false,
         versionCount: data.version_count || 0,
+        writeStamp: writeStamp(data.write_date),
     };
 }
 
@@ -239,8 +270,8 @@ export function downloadOf(items) {
  * The entries of the Actions menu that apply to the items. An entry that does not apply is not
  * returned, so the menu never offers it. The server checks every call again.
  * @param {Array} items values of toItem()
- * @returns {Array<{key: string, label: string, icon: string, method: string, each?: boolean,
- *     ids?: number[]}>}
+ * @returns {Array<{key: string, label: string, icon: string, method?: string, action?: string,
+ *     each?: boolean, ids?: number[]}>}
  */
 export function availableActions(items) {
     const entries = [];
@@ -266,7 +297,7 @@ export function availableActions(items) {
             method: "action_open_move_wizard",
         });
     }
-    if (items.length <= DUPLICATE_MAX && items.every(isFileOrLink)) {
+    if (items.length <= DUPLICATE_MAX && items.every((item) => isFileOrLink(item) && item.canUpload)) {
         entries.push({
             key: "duplicate",
             label: _t("Duplicate"),
@@ -292,6 +323,12 @@ export function availableActions(items) {
             method: "action_open_shortcut_wizard",
         });
     }
+    entries.push({
+        key: "request",
+        label: _t("Ask for a file"),
+        icon: "fa-inbox",
+        action: REQUEST_ACTION,
+    });
     if (single && isFile(first) && first.canWrite && !first.lockedByOther) {
         entries.push({
             key: "new_version",

@@ -43,13 +43,14 @@
                     </button>
                 </t>
             </nav>
-            <div t-if="state.cards.length" class="woow-folder-cards d-flex flex-wrap gap-2 mt-2">
-                <button t-foreach="state.cards" t-as="card" t-key="card.id" type="button" class="woow-folder-card" t-att-class="{'woow-drop-target': workspaceState.dropFolderId === card.id}" t-on-click="() => this.choose(card)" t-on-dragover="(ev) => this.onFolderDragOver(ev, card)" t-on-dragleave="() => this.onFolderDragLeave(card)" t-on-drop="(ev) => this.onFolderDrop(ev, card)">
+            <div t-if="state.cards.length" t-ref="cards" class="woow-folder-cards d-flex flex-wrap gap-2 mt-2">
+                <button t-foreach="state.cards" t-as="card" t-key="card.id" type="button" class="woow-folder-card" t-att-data-woow-folder-id="card.id" t-att-class="{'woow-drop-target': workspaceState.dropFolderId === card.id}" t-on-click="() => this.choose(card)" t-on-dragover="(ev) => this.onFolderDragOver(ev, card)" t-on-dragleave="() => this.onFolderDragLeave(card)" t-on-drop="(ev) => this.onFolderDrop(ev, card)">
                     <i class="fa fa-folder fa-lg woow-folder-icon"/>
                     <span class="woow-folder-name text-truncate" t-out="card.name"/>
                     <span class="woow-folder-count text-muted small" t-out="countLabel(card)"/>
                 </button>
             </div>
+            <div t-if="state.more" class="woow-folder-more text-muted small mt-1">More folders are in the left panel.</div>
         </div>
     </t>
 
@@ -59,6 +60,7 @@
                 <div class="d-flex align-items-center gap-2">
                     <i t-if="!state.upload.finished" class="fa fa-circle-o-notch fa-spin"/>
                     <strong t-out="title"/>
+                    <span t-if="state.upload.folderName" class="woow-upload-folder text-muted text-truncate"><i class="fa fa-folder-o me-1"/><t t-out="state.upload.folderName"/></span>
                     <span t-if="!state.upload.finished and state.upload.current" class="text-truncate text-muted" t-out="state.upload.current"/>
                     <button t-if="state.upload.finished" type="button" class="btn-close ms-auto" aria-label="Close" t-on-click="dismiss"/>
                 </div>

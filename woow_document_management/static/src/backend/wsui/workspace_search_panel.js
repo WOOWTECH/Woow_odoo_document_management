@@ -25,7 +25,14 @@ export class WooSearchPanel extends SearchPanel {
         // shows the plain name of each folder, read as the user.
         this.shortNames = useState({});
         onWillStart(() => this.loadShortNames());
+        // the counters are read again after an upload, a move or a trash (see Workspace.reload):
+        // the panel follows the tick of the workspace, which its footer reads
+        this.wooState = this.env.wooWorkspace ? useState(this.env.wooWorkspace.state) : null;
         useBus(this.env.searchModel, "update", () => this.loadShortNames());
+    }
+
+    get workspaceTick() {
+        return this.wooState ? this.wooState.tick : 0;
     }
 
     async loadShortNames() {
