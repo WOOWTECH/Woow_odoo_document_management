@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <!-- document form: the "Shared with" tab and the Share button -->
+  <record id="view_woow_document_document_form_sharing" model="ir.ui.view">
+    <field name="name">woow.document.form.sharing</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_open_share_dialog" string="Share" type="object"
+                invisible="not woow_user_can_share"/>
+      </xpath>
+      <xpath expr="//sheet" position="inside">
+        <field name="woow_user_can_share" invisible="1"/>
+        <notebook>
+          <page string="Shared with" name="woow_shared_with">
+            <field name="share_ids" readonly="not woow_user_can_share">
+              <list editable="bottom">
+                <field name="subject_type"/>
+                <field name="user_id" invisible="subject_type != 'user'"
+                       required="subject_type == 'user'" domain="[('share', '=', False)]"
+                       options="{'no_create': True}"/>
+                <field name="partner_id" invisible="subject_type != 'partner'"
+                       required="subject_type == 'partner'"
+                       domain="[('user_ids.share', '=', True)]" options="{'no_create': True}"/>
+                <field name="role" readonly="subject_type == 'partner'"/>
+                <field name="expiry_date"/>
+              </list>
+            </field>
+          </page>
+        </notebook>
+      </xpath>
+    </field>
+  </record>
+
+  <!-- the dialog of a document: the record itself, with only the list of people -->
+  <record id="view_woow_document_share_dialog" model="ir.ui.view">
+    <field name="name">woow.document.share.dialog</field>
+    <field name="model">woow.document</field>
+    <field name="priority">99</field>
+    <field name="arch" type="xml">
+      <form string="Share">
+        <field name="woow_user_can_share" invisible="1"/>
+        <group><field name="name" readonly="1"/></group>
+        <field name="share_ids" readonly="not woow_user_can_share">
+          <list editable="bottom">
+            <field name="subject_type"/>
+            <field name="user_id" invisible="subject_type != 'user'"
+                   required="subject_type == 'user'" domain="[('share', '=', False)]"
+                   options="{'no_create': True}"/>
+            <field name="partner_id" invisible="subject_type != 'partner'"
+                   required="subject_type == 'partner'"
+                   domain="[('user_ids.share', '=', True)]" options="{'no_create': True}"/>
+            <field name="role" readonly="subject_type == 'partner'"/>
+            <field name="expiry_date"/>
+          </list>
+        </field>
+        <footer>
+          <button string="Save" special="save" class="btn-primary"
+                  invisible="not woow_user_can_share"/>
+          <button string="Close" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <!-- the member list of a folder: it shows who, which level and until when -->
+  <record id="view_woow_document_folder_form_sharing" model="ir.ui.view">
+    <field name="name">woow.document.folder.form.sharing</field>
+    <field name="model">woow.document.folder</field>
+    <field name="inherit_id" ref="view_woow_document_folder_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_open_share_dialog" string="Share" type="object"
+                invisible="woow_user_rank != 4"/>
+      </xpath>
+      <xpath expr="//field[@name='access_ids']" position="inside">
+        <list editable="bottom">
+          <field name="subject_type"/>
+          <field name="user_id" invisible="subject_type != 'user'"
+                 required="subject_type == 'user'"/>
+          <field name="group_id" invisible="subject_type != 'group'"
+                 required="subject_type == 'group'"/>
+          <field name="partner_id" invisible="subject_type != 'partner'"
+                 required="subject_type == 'partner'"/>
+          <field name="level"/>
+          <field name="expiry_date"/>
+        </list>
+      </xpath>
+    </field>
+  </record>
+
+  <!-- the dialog of a folder: the choice for every document user, then the members -->
+  <record id="view_woow_folder_share_dialog" model="ir.ui.view">
+    <field name="name">woow.document.folder.share.dialog</field>
+    <field name="model">woow.document.folder</field>
+    <field name="priority">99</field>
+    <field name="arch" type="xml">
+      <form string="Share">
+        <field name="woow_user_rank" invisible="1"/>
+        <group>
+          <field name="name" readonly="1"/>
+          <field name="woow_all_users_level" readonly="woow_user_rank != 4"/>
+        </group>
+        <field name="access_ids" readonly="woow_user_rank != 4">
+          <list editable="bottom">
+            <field name="subject_type"/>
+            <field name="user_id" invisible="subject_type != 'user'"
+                   required="subject_type == 'user'"/>
+            <field name="group_id" invisible="subject_type != 'group'"
+                   required="subject_type == 'group'"/>
+            <field name="partner_id" invisible="subject_type != 'partner'"
+                   required="subject_type == 'partner'"/>
+            <field name="level"/>
+            <field name="expiry_date"/>
+          </list>
+        </field>
+        <footer>
+          <button string="Save" special="save" class="btn-primary"
+                  invisible="woow_user_rank != 4"/>
+          <button string="Close" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>

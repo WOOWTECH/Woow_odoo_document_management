@@ -36,7 +36,9 @@ class WoowDocument(models.Model):
         # computed from the file and the folder, and the chatter of the record
         'attachment_id', 'checksum', 'file_size', 'company_id', 'folder_in_trash',
         'woow_user_can_write', 'source_display', 'activity_ids',
-        'message_follower_ids', 'message_ids', 'website_message_ids'})
+        'message_follower_ids', 'message_ids', 'website_message_ids',
+        # the people the document is shared with (rows, and the lists that follow them)
+        'share_ids', 'shared_editor_user_ids', 'woow_user_can_share'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,
