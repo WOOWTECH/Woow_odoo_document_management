@@ -1,0 +1,81 @@
+# Lane docactions: lock, duplicate, rename
+
+## What it adds for users
+
+- **Lock / Unlock.** A user who works on a file can lock it. While another user holds the lock
+  nobody else can change the document's name, file, link, folder, tags, description, type, owner,
+  contact, properties or archived state, and nobody else can move, trash, restore or delete that one
+  document. Favourites, chatter, activities and sharing keep working. The holder, a manager of the
+  folder (manage level) and a document administrator can unlock. The form shows the buttons, a
+  banner when someone else holds the lock, and the holder and date; the document list has a
+  "Locked" column and the search has the filters "Locked" and "Locked by me".
+- **Duplicate.** A button (and a method for lists) that copies files and links into the same
+  folder. The copy is named "<name> (copy).<extension>" (the suffix is translated; links get the
+  suffix at the end), is owned by the caller and keeps the tags and description. Shares, lock, legal
+  hold, chatter and contact are not copied. At most 20 documents per call.
+- **Rename.** A small wizard for one document or one folder (button on both forms). It only
+  performs a normal `write` as the user, so the existing rules apply (file name policy, folder
+  name uniqueness, edit level, locks).
+
+## Data model
+
+- `woow.document.lock_uid` (many2one `res.users`, readonly, not copied, `ondelete='set null'`),
+  `lock_date` (datetime, readonly, not copied), `is_locked` (computed, searchable) and
+  `woow_locked_by_other` (computed for the current user, used by the form). All four are limited to
+  internal users (`groups='base.group_user'`); portal users cannot read or search them.
+- `woow.document.rename.wizard` (transient): `document_id`, `folder_id`, `name`. ACL: document users
+  and administrators, no portal access. Declared server-field free (`_woow_own_default_fields`
+  is empty); it inherits `woow.document.server.fields.mixin` like the other models.
+- No new persistent model, no new record rule, no new route, no cron, no sudo, no raw SQL.
+
+## Public methods (all in `tools/public_methods.txt`)
+
+| Method | First check |
+|---|---|
+| `woow.document::action_lock` | `check_access('write')`, then per document: unavailable (trashed) and held-by-other refusals |
+| `woow.document::action_unlock` | `check_access('read')`, then holder / folder manage / administrator per document |
+| `woow.document::action_duplicate` | `check_access('read')`, internal users only, folder upload rank per source |
+| `woow.document::action_open_rename_wizard` | `check_access('write')` |
+| `woow.document.folder::action_open_rename_wizard` | edit rank on the folder |
+| `woow.document.rename.wizard::action_rename` | `check_access('write')`, the target is searched under the caller's rules |
+
+`action_trash` and `action_restore` of documents are overridden only to refuse while another user
+holds a lock (then they call the existing method). `write` and `unlink` of `woow.document` are
+extended the same way; `woow.document.restore.wizard.action_restore_to` is extended because it
+moves a document without going through `write`.
+
+## Security notes
+
+- The lock fields are server-only: they are added to the guard lists of `models/document.py`
+  (`_woow_own_default_fields`, and the "protected" sets of `create` and `write`). An RPC `create` or
+  `write` that names any of them is refused, for every user except the superuser; a stored default or
+  a `default_*` context key cannot set them. `action_lock` and `action_unlock` write them with the
+  parent class `write` (the same way the trash actions write their server columns), after their own
+  checks.
+- A lock never gives access: locking needs write access, unlocking needs a right to the document
+  and, in the end, write access to it (the ORM write); a lock never hides or reveals anything. The
+  refusal message names neither the holder nor any hidden record.
+- Portal users cannot read or search the lock fields, and cannot lock, unlock, duplicate or rename.
+- Folder operations (trash, restore, move) are not stopped by locks of documents inside them. The
+  deletion of a trashed folder removes the documents in it, locked or not: the folder purge marks
+  its own call with an in-process object (a context value that is that very Python object, which
+  an RPC context cannot carry); no other path switches the lock check off. The superuser and crons are
+  never held back.
+- Duplicate goes through the normal `create`: upload policy, quota, the file-count cap, owner
+  checks and the `upload` audit row apply; a `duplicate` row (source id only) is added per copy.
+  The whole call is one savepoint, so a refused file leaves no copy. The quota measurement is
+  shared between the copies of one call (`QuotaLedger`), as in the attachment import.
+- Audit: `lock`, `unlock` (`forced` is true when released by someone else) and `duplicate`; details
+  hold ids and flags only.
+
+## Deployment notes
+
+- Upgrade is an in-place `-u`: two nullable columns are added to `woow_document`. Nothing to migrate;
+  existing documents are unlocked.
+- A user who is archived or whose rights changed can leave a lock behind. A manager of the folder or
+  a document administrator releases it with Unlock. Deleting a user clears the locks he held.
+- A holder who lost write access to the document cannot unlock it himself (the ORM write is refused);
+  a folder manager or an administrator can.
+- The limits (20 documents per duplicate call, 200 per lock or unlock call) are constants in
+  `models/docactions.py`.
+- Translations of the new strings are in `dev/i18n/docactions.zh_TW.po`; the integrator merges them.

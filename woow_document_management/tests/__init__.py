@@ -55,3 +55,4 @@ from . import test_reg_folder_stored_state
 from . import test_reg_inbound_mail_replies
 from . import test_reg_many2one_typed_values
 from . import test_reg_document_owner_typed_values
+from . import test_docactions

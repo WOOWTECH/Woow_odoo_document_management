@@ -33,6 +33,8 @@
         'views/wizards/add_attachment_wizard_views.xml',
         'views/wizards/notify_wizard_views.xml',
         'views/portal_templates.xml',
+        'views/backend/docactions_views.xml',
+        'views/wizards/docactions_wizard_views.xml',
         'views/menus.xml',
     ],
     'assets': {

@@ -25,6 +25,7 @@ acl:
   woow.document.purge.wizard: {user: '1110', manager: '1110'}
   woow.document.add.attachment.wizard: {user: '1110', manager: '1110'}
   woow.document.notify.wizard: {user: '1110', manager: '1110'}
+  woow.document.rename.wizard: {user: '1110', manager: '1110'}
 hd07: [woow.document.folder, portal]
 rules:
 - id: rule_woow_document_folder_company
