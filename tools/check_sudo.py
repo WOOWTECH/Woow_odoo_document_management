@@ -8,16 +8,18 @@ Allowlist (file, model, function -> count):
   S4  models/mailin.py         woow.document.mail.intake _woow_sender_documents 1 with_user (# sudo-ok: S4)
   A1  models/autofile.py       woow.document.auto.rule _woow_elevated        1  (# sudo-ok: A1)
   S5  models/sharing.py        woow.document          _woow_release_lost_locks 1 sudo + 1 with_user (# sudo-ok: S5)
+  A2  models/autofile.py       woow.document.auto.rule _woow_creator_readable 1 with_user (# sudo-ok: A2)
 
 Every other escalation in non-test code is a violation: any ``sudo`` attribute except the
 literal ``sudo(False)``, ``with_user(``, ``with_env(``, ``env(su=...|user=...)`` except
 ``env(su=False)``, any ``su=True`` keyword, ``api.Environment(``, ``SUPERUSER_ID``,
 ``request.update_env(user=...)``, ``_get_param(``, ``getattr(x, 'sudo')``, and explicit
-``compute_sudo=True`` / ``related_sudo=True``. ``with_user(`` is never allowed, except the one
-call that S4 registers (the document model in the environment of the person who e-mailed a file
-to a folder: it lowers the rights of the mail gateway to the sender's own) and the one that S5
-registers (a document in the environment of the person who holds its lock, to see whether that
-person can still write it).
+``compute_sudo=True`` / ``related_sudo=True``. ``with_user(`` is never allowed, except the
+calls that S4, A2 and S5 register: S4 (the document model in the environment of the person who
+e-mailed a file to a folder: it lowers the rights of the mail gateway to the sender's own), A2 (a
+record in the environment of the person who made a filing rule, to see whether they can read it) and
+S5 (a document in the environment of the person who holds its lock, to see whether that person can
+still write it).
 
 The model of a class is its ``_name`` literal, else its single string ``_inherit`` (ER-44).
 Counts are "<=" by default and "==" with --g1. Also enforced: no ``<name>_sudo.env`` anywhere
@@ -43,6 +45,8 @@ ALLOW = {
            '_woow_elevated', {'sudo': 1}),
     'S5': ('woow_document_management/models/sharing.py', 'woow.document',
            '_woow_release_lost_locks', {'sudo': 1, 'with_user': 1}),
+    'A2': ('woow_document_management/models/autofile.py', 'woow.document.auto.rule',
+           '_woow_creator_readable', {'with_user': 1}),
 }
 SU_CHECKED_PREFIXES = ('_cron_',)
 

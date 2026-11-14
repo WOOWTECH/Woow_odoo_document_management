@@ -950,3 +950,100 @@ class TestReviewFixes(_Fixture, TransactionCase):
             self.env.ref('woow_document_management.view_woow_document_auto_rule_search').id,
             'search')
         self.assertNotIn('name="model_id"', search['arch'])
+
+
+@tagged('woow_docmgmt_autofile')
+class TestLiveFilingChecksTheRecord(_Fixture, TransactionCase):
+    """The live path judges every record as the backfill does: it must be readable by the maker of
+    the rule. And the quota is measured once per transaction, however many files are filed."""
+
+    def setUp(self):
+        super().setUp()
+        self._fixture()
+        self.hidden = self.env['res.partner'].create({'name': 'Live hidden partner'})
+        self.env['ir.rule'].sudo().create({
+            'name': 'Autofile live test: no hidden partner', 'model_id': self.kind.id,
+            'domain_force': "[('id', '!=', %d)]" % self.hidden.id,
+            'groups': [Command.link(self.env.ref(_MANAGER).id)]})
+        self.env.cr.cache.pop(quota_module._USAGE_CACHE_KEY, None)
+
+    def _on(self, record, name):
+        return self.attachments.sudo().create({
+            'name': name, 'raw': b'plain text of ' + name.encode(), 'type': 'binary',
+            'res_model': record._name, 'res_id': record.id})
+
+    def _filed(self, record):
+        return self.env['woow.document'].with_context(active_test=False).search([
+            ('source_res_model', '=', record._name),
+            ('source_res_id', '=', record.id)]).mapped('name')
+
+    def test_a_record_that_the_maker_cannot_read_is_not_filed(self):
+        self._rule()
+        self._on(self.hidden, 'hidden.txt')
+        self.assertEqual(self._filed(self.hidden), [])
+
+    def test_a_record_that_the_maker_can_read_is_filed(self):
+        self._rule()
+        self._on(self.partner, 'visible.txt')
+        self.assertEqual(self._filed(self.partner), ['visible.txt'])
+
+    def test_one_call_files_the_readable_ones_and_skips_the_others(self):
+        self._rule()
+        self.attachments.sudo().create([
+            {'name': 'a.txt', 'raw': b'plain text of the first file', 'type': 'binary',
+             'res_model': 'res.partner', 'res_id': self.hidden.id},
+            {'name': 'b.txt', 'raw': b'plain text of the second file', 'type': 'binary',
+             'res_model': 'res.partner', 'res_id': self.partner.id}])
+        self.assertEqual(self._filed(self.hidden), [])
+        self.assertEqual(self._filed(self.partner), ['b.txt'])
+
+    def test_an_attachment_moved_onto_an_unreadable_record_is_not_filed(self):
+        self._rule()
+        free = self.attachments.sudo().create({'name': 'moved.txt', 'raw': b'plain text of the moved file', 'type': 'binary'})
+        free.write({'res_model': 'res.partner', 'res_id': self.hidden.id})
+        self.assertEqual(self._filed(self.hidden), [])
+        # moved onto a readable record, the same file is filed
+        other = self.attachments.sudo().create({'name': 'moved2.txt', 'raw': b'plain text of the second moved file', 'type': 'binary'})
+        other.write({'res_model': 'res.partner', 'res_id': self.partner.id})
+        self.assertEqual(self._filed(self.partner), ['moved2.txt'])
+
+    def test_a_rule_of_a_maker_who_is_archived_files_nothing(self):
+        self._rule()
+        self.manager.sudo().active = False
+        self._on(self.partner, 'gone-maker.txt')
+        self.assertEqual(self._filed(self.partner), [])
+
+    # -- the quota is measured once per transaction -------------------------------------------------
+    def test_several_files_of_one_transaction_measure_the_stored_bytes_once(self):
+        self._rule()
+        self.env['ir.config_parameter'].set_param('woow_document_management.quota_mb', '100000')
+        model = type(self.env['woow.document.quota'])
+        with patch.object(model, '_usage_bytes', autospec=True, return_value=1024) as measure:
+            self.attachments.sudo().create([
+                {'name': 'q%d.txt' % i, 'raw': b'plain text of the file %d' % i, 'type': 'binary',
+                 'res_model': 'res.partner', 'res_id': self.partner.id} for i in range(3)])
+            self._on(self.partner, 'q-later.txt')
+            self.assertEqual(len(self._filed(self.partner)), 4)
+            self.assertEqual(measure.call_count, 1)
+
+    def test_a_full_quota_still_refuses_the_filing_with_the_cached_measure(self):
+        self._rule()
+        self.env['ir.config_parameter'].set_param('woow_document_management.quota_mb', '1')
+        model = type(self.env['woow.document.quota'])
+        with patch.object(model, '_usage_bytes', autospec=True,
+                          return_value=10 * 1024 * 1024) as measure:
+            self._on(self.partner, 'full1.txt')
+            self._on(self.partner, 'full2.txt')
+            self.assertEqual(self._filed(self.partner), [])
+            self.assertEqual(measure.call_count, 1)
+
+    def test_a_busy_connection_pool_is_logged_at_warning_level(self):
+        from ..services.locks import LockBusy
+        self._rule()
+        self.env['ir.config_parameter'].set_param('woow_document_management.quota_mb', '100000')
+        model = type(self.env['woow.document.quota'])
+        with patch.object(model, '_usage_bytes', autospec=True, side_effect=LockBusy('quota')), \
+                self.assertLogs(autofile._logger.name, level='WARNING'):
+            attachment = self._on(self.partner, 'busy.txt')
+        self.assertTrue(attachment.exists())
+        self.assertEqual(self._filed(self.partner), [])

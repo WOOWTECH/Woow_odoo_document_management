@@ -6,3 +6,6 @@ class WoowDocumentAutoRule(models.Model):
 
     def _woow_elevated(self):
         return self.sudo().with_context(x=1)  # sudo-ok: A1
+
+    def _woow_creator_readable(self):
+        return self.env['res.partner'].with_user(self.create_uid)  # sudo-ok: A2
