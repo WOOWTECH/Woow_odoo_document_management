@@ -60,3 +60,4 @@ from . import test_docactions
 from . import test_versions
 from . import test_shortcuts
 from . import test_requests
+from . import test_sharing

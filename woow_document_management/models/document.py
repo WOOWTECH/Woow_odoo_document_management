@@ -41,7 +41,8 @@ class WoowDocument(models.Model):
         'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other',
         'version_ids', 'version_count',
         'shortcut_target_id', 'shortcut_target_available',
-        'request_user_id', 'request_deadline', 'request_note', 'request_activity_id', 'request_last_reminder'})
+        'request_user_id', 'request_deadline', 'request_note', 'request_activity_id', 'request_last_reminder',
+        'share_ids', 'shared_editor_user_ids', 'woow_user_can_share'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,

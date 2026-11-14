@@ -33,6 +33,13 @@
 | Ask for a file | 索取檔案 |
 | Reminder | 提醒 |
 | Due date | 到期日 |
+| Share | 分享 |
+| Shared with | 分享對象 |
+| Viewer | 檢視者 |
+| Editor | 編輯者 |
+| Access ends | 存取結束日 |
+| All document users | 所有文件使用者 |
+| Portal contact | 入口網站聯絡人 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
 

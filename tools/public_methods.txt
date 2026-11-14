@@ -48,6 +48,8 @@ woow.document::action_open_fulfil_wizard
 woow.document::action_send_reminder
 woow.document.request.wizard::action_create
 woow.document.request.fulfil.wizard::action_fulfil
+woow.document::action_open_share_dialog
+woow.document.folder::action_open_share_dialog
 
 [override]
 *::create

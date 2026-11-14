@@ -50,6 +50,8 @@ def _fixture(env, suffix, password=None):
         'woow.document.version': env['woow.document.version'].sudo().create({
             'document_id': document.id, 'number': 1, 'name': 'notify.txt',
             'datas': base64.b64encode(b'EARLIER')})}
+    records['woow.document.share'] = env['woow.document.share'].sudo().create({
+        'document_id': document.id, 'subject_type': 'user', 'user_id': users['reader'].id})
     assert set(records) == set(WOOW_MODELS)
     env.flush_all()
     return records, users

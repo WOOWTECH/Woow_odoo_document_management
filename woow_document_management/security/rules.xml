@@ -131,7 +131,7 @@
     <record id="rule_woow_document_user_write" model="ir.rule">
         <field name="name">R-D2 rule_woow_document_user_write</field>
         <field name="model_id" ref="model_woow_document" />
-        <field name="domain_force">['&amp;', ('folder_in_trash', '=', False), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&amp;', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="domain_force">['&amp;', ('folder_in_trash', '=', False), '|', '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&amp;', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)]), '&amp;', ('active', '=', True), ('shared_editor_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
         <field name="perm_read" eval="False" />
         <field name="perm_write" eval="True" />

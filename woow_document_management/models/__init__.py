@@ -9,4 +9,5 @@ from . import (
     versions, versions_binary,
     shortcuts,
     requests,
+    share, sharing,
 )
