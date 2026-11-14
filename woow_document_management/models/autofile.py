@@ -22,6 +22,7 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 
 from ..services.constants import (
     AUTO_FILE_BACKFILL_BATCH, CTX_AUTO_FILE, MIB, WOOW_MODELS)
+from ..services.locks import LockBusy
 from .document import SOURCE_CTX_KEY, _SOURCE_SENTINEL
 from .quota import LEDGER_KEY, UNCHARGED_KEY, UNCHARGED_SENTINEL, QuotaLedger
 
@@ -351,8 +352,44 @@ class WoowDocumentAutoRule(models.Model):
         """
         try:
             self._woow_auto_file_checked(attachments, unfiled)
+        except LockBusy:
+            # no connection to measure with: the files stay unfiled and the backfill picks them up
+            _logger.warning('Filing skipped (no connection to measure the quota); '
+                            'the backfill of the rule files them later')
         except Exception as error:  # noqa: BLE001 - filing must never break an attachment
             _logger.info('Filing skipped (%s)', type(error).__name__)
+
+    @api.model
+    def _woow_creator_readable(self, work, attachments):
+        """``work`` ((attachment id, rule id) pairs) without the files of records that the maker
+        of the rule cannot read.
+
+        The same test as the backfill, which asks the caller: a rule never files what the record
+        rules deny its maker. The maker is the user who created the rule (``create_uid``); one who
+        is gone (archived; the superuser account is always archived and always allowed) or who cannot read the kind files nothing. The records are searched in
+        the maker's own environment, with the companies the maker works in (a record of another
+        company than the one of the person who attached the file is still judged as the maker).
+        """
+        elevated = self._woow_elevated()
+        kept = []
+        for rule_id in dict.fromkeys(item[1] for item in work):
+            rule = elevated.browse(rule_id)
+            maker = rule.create_uid
+            if not maker or not (maker.active or maker._is_superuser()):
+                continue
+            items = [item[0] for item in work if item[1] == rule_id]
+            res_ids = {attachment.res_id for attachment in
+                       elevated.env['ir.attachment'].browse(items)}
+            try:
+                records = self.env[rule.res_model].with_user(maker).with_context(  # sudo-ok: A2
+                    active_test=False, allowed_company_ids=maker.company_ids.ids)
+                readable = set(records.search([('id', 'in', list(res_ids))]).ids)
+            except AccessError:
+                continue
+            attached = {a.id: a.res_id for a in elevated.env['ir.attachment'].browse(items)}
+            kept.extend(item for item in work
+                        if item[1] == rule_id and attached.get(item[0]) in readable)
+        return [item for item in work if item in kept]
 
     @api.model
     def _woow_auto_file_checked(self, attachments, unfiled):
@@ -373,6 +410,9 @@ class WoowDocumentAutoRule(models.Model):
         work = [(attachment.id, rule_id) for attachment, rule_id, company_id in candidates
                 if attachment.id in scope
                 and (not company_id or not scope[attachment.id] or scope[attachment.id] == company_id)]
+        if work:
+            # the record must be readable by the maker of the rule, as in the backfill
+            work = self._woow_creator_readable(work, attachments)
         if work and unfiled:
             with self.env.cr.savepoint():
                 done = {

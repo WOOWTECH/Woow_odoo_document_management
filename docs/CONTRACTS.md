@@ -267,7 +267,9 @@
 | S4 | `W/models/mailin.py` | `_name='woow.document.mail.intake'` | `_woow_sender_documents` | 1：`self.env['woow.document'].with_user(user)`（`with_user`；來信者本人的環境，收信閘道是 superuser，檔案以寄件者自己的權限建立；release 18.0.2） |
 | A1 | `W/models/autofile.py` | `_name='woow.document.auto.rule'` | `_woow_elevated` | 1：`self.sudo().with_context(...)`（自動歸檔：建立規則的文件管理員就是授權；建立歸檔文件、讀取要補歸檔的附件、把原附件刪除後的歸檔文件丟進回收桶，都經過這一處） |
 
-- 非測試程式裡，`with_user(` 只有 S4 登記的那一次，其他是 0 次。
+| A2 | `W/models/autofile.py` | `_name='woow.document.auto.rule'`（`_inherit`） | `_woow_creator_readable` | 1：`self.env[kind].with_user(maker)`（`with_user`；即時歸檔先以規則建立者自己的環境確認該筆記錄讀得到，與補歸檔相同；只讀、不提權） |
+
+- 非測試程式裡，`with_user(` 只有 S4、A2 各登記的那一次，其他是 0 次。
 - 整個 repo 不准出現 `<名稱以 _sudo 結尾>.env`（T-STAT-19）。
 - 每個 `_cron_*` 的第一個陳述句都必須檢查 `self.env.su`。
 

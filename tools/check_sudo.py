@@ -12,8 +12,8 @@ Every other escalation in non-test code is a violation: any ``sudo`` attribute e
 literal ``sudo(False)``, ``with_user(``, ``with_env(``, ``env(su=...|user=...)`` except
 ``env(su=False)``, any ``su=True`` keyword, ``api.Environment(``, ``SUPERUSER_ID``,
 ``request.update_env(user=...)``, ``_get_param(``, ``getattr(x, 'sudo')``, and explicit
-``compute_sudo=True`` / ``related_sudo=True``. ``with_user(`` is never allowed, except the one
-call that S4 registers (the document model in the environment of the person who e-mailed a file
+``compute_sudo=True`` / ``related_sudo=True``. ``with_user(`` is never allowed, except the
+calls that S4 and A2 register (the document model in the environment of the person who e-mailed a file
 to a folder: it lowers the rights of the mail gateway to the sender's own).
 
 The model of a class is its ``_name`` literal, else its single string ``_inherit`` (ER-44).
@@ -38,6 +38,8 @@ ALLOW = {
            '_woow_sender_documents', {'with_user': 1}),
     'A1': ('woow_document_management/models/autofile.py', 'woow.document.auto.rule',
            '_woow_elevated', {'sudo': 1}),
+    'A2': ('woow_document_management/models/autofile.py', 'woow.document.auto.rule',
+           '_woow_creator_readable', {'with_user': 1}),
 }
 SU_CHECKED_PREFIXES = ('_cron_',)
 

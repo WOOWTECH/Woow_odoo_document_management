@@ -24,6 +24,8 @@ LEDGER_KEY = 'woow_quota_ledger'
 # stored (the filing rules). A context sent by a client never holds the marker.
 UNCHARGED_KEY = 'woow_quota_uncharged'
 UNCHARGED_SENTINEL = object()
+# Key, in the cache of the cursor, of the stored bytes that ``_check_uncharged`` measured.
+_USAGE_CACHE_KEY = 'woow_quota_usage_bytes'
 
 
 class QuotaLedger:
@@ -97,8 +99,19 @@ class WoowDocumentQuota(models.AbstractModel):
         the lock that ``_check_many`` holds until the end of the caller's transaction is not taken.
         """
         settings = self.env['woow.document.settings']._get_settings()
-        if settings.quota_mb and self._usage_bytes() * 100 > (
-                settings.quota_mb * MIB * settings.quota_block_pct):
+        if not settings.quota_mb:
+            return
+        # The stored bytes are measured once per transaction (the cursor's own cache, which the
+        # end of the transaction clears): a filing adds no bytes, so a second measurement of the
+        # same transaction would only repeat the scan and take one more connection. A request
+        # that stores bytes with ``_check_many`` measures on its own and never reads this value.
+        cache = getattr(self.env.cr, 'cache', None)
+        used = cache.get(_USAGE_CACHE_KEY) if cache is not None else None
+        if used is None:
+            used = self._usage_bytes()
+            if cache is not None:
+                cache[_USAGE_CACHE_KEY] = used
+        if used * 100 > settings.quota_mb * MIB * settings.quota_block_pct:
             raise WoowUploadRejected('quota')
 
     def _check(self, checksum, size) -> None:
