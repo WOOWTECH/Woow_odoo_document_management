@@ -8,14 +8,15 @@ expired folder members and shares, the two sharing dialogs and the upgrade from 
 """
 import base64
 import importlib.util
+import secrets
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from odoo import Command, fields
 from odoo.exceptions import AccessError, UserError, ValidationError
-from odoo.tests import Form, TransactionCase, tagged
-from odoo.tests.common import new_test_user
+from odoo.tests import Form, HttpCase, TransactionCase, tagged
+from odoo.tests.common import JsonRpcException, new_test_user
 
 from ..models import share as share_module
 from ..models import sharing as sharing_module
@@ -929,3 +930,71 @@ class TestUpgradeFrom18_0_1(_SharingCase):
         spec.loader.exec_module(module)
         module.migrate(self.env.cr, None)
         self.assertFalse(self.shares.sudo().search([]))
+
+
+@tagged('woow_docmgmt_http')
+class TestSharingOverRpc(HttpCase):
+    """What a signed-in client can and cannot do to shares through ``call_kw``."""
+
+    def setUp(self):
+        super().setUp()
+        env = self.env
+        self.password = secrets.token_urlsafe(16)
+        self.owner = new_test_user(env, login='shr_rpc_owner', groups=_USER, password=self.password)
+        self.member = new_test_user(env, login='shr_rpc_member', groups=_USER,
+                                    password=self.password)
+        self.target = new_test_user(env, login='shr_rpc_target', groups=_USER)
+        self.folder = env['woow.document.folder'].sudo().create({
+            'name': 'Sharing rpc folder', 'owner_id': self.owner.id})
+        env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': self.member.id,
+            'level': 'edit'})
+        self.document = env['woow.document'].sudo().create({
+            'name': 'rpc.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(b'sharing over rpc')})
+        env.flush_all()
+
+    def _call(self, user, model, method, args, **kwargs):
+        self.authenticate(user.login, self.password)
+        return self.make_jsonrpc_request('/web/dataset/call_kw/%s/%s' % (model, method), {
+            'model': model, 'method': method, 'args': args, 'kwargs': kwargs})
+
+    def test_the_manager_of_the_folder_shares_and_an_editor_member_does_not(self):
+        values = {'document_id': self.document.id, 'subject_type': 'user',
+                  'user_id': self.target.id, 'role': 'editor'}
+        with self.assertRaises(JsonRpcException):
+            self._call(self.member, 'woow.document.share', 'create', [[values]])
+        self.assertFalse(self.env['woow.document.share'].sudo().search([]))
+        row_id = self._call(self.owner, 'woow.document.share', 'create', [[values]])[0]
+        self.assertEqual(self.document.sudo().shared_editor_user_ids, self.target)
+        with self.assertRaises(JsonRpcException):
+            self._call(self.member, 'woow.document.share', 'write', [[row_id], {'role': 'viewer'}])
+        with self.assertRaises(JsonRpcException):
+            self._call(self.member, 'woow.document.share', 'unlink', [[row_id]])
+        self._call(self.owner, 'woow.document.share', 'write', [[row_id], {'role': 'viewer'}])
+        self.assertFalse(self.document.sudo().shared_editor_user_ids)
+
+    def test_a_flag_in_the_context_is_not_the_marker_of_the_server(self):
+        values = {'document_id': self.document.id, 'subject_type': 'user',
+                  'user_id': self.target.id}
+        for flag in (True, 1, 'true', 'woow_share_sync'):
+            with self.subTest(flag=flag), self.assertRaises(JsonRpcException):
+                self._call(self.member, 'woow.document.share', 'create', [[values]],
+                           context={'woow_share_sync': flag})
+        with self.assertRaises(JsonRpcException):
+            self._call(self.member, 'woow.document.share', 'create', [[dict(
+                values, user_id=self.owner.id)]], context={'woow_share_sync': True})
+        self.assertFalse(self.env['woow.document.share'].sudo().search([]))
+
+    def test_the_editor_list_and_the_columns_of_a_row_are_not_writable(self):
+        for user in (self.owner, self.member):
+            with self.subTest(user=user.login), self.assertRaises(JsonRpcException):
+                self._call(user, 'woow.document', 'write', [
+                    [self.document.id], {'shared_editor_user_ids': [[6, 0, [self.target.id]]]}])
+        row_id = self._call(self.owner, 'woow.document.share', 'create', [[{
+            'document_id': self.document.id, 'subject_type': 'user',
+            'user_id': self.target.id}]])[0]
+        for column in ('company_id', 'folder_id'):
+            with self.subTest(column=column), self.assertRaises(JsonRpcException):
+                self._call(self.owner, 'woow.document.share', 'write', [[row_id], {column: False}])
+        self.assertFalse(self.document.sudo().shared_editor_user_ids)

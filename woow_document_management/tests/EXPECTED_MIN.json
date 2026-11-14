@@ -52,7 +52,7 @@
     "test_rpc_exposure.py": 3,
     "test_security_acl.py": 8,
     "test_settings_bounds.py": 12,
-    "test_sharing.py": 48,
+    "test_sharing.py": 51,
     "test_trash_lifecycle.py": 29,
     "test_uninstall.py": 4,
     "test_upload_policy.py": 32,
