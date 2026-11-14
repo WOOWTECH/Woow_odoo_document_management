@@ -28,6 +28,10 @@ woow.document.add.attachment.wizard::action_add
 ir.attachment::action_woow_open_source
 ir.attachment::action_woow_download
 woow.document.notify.wizard::action_send
+woow.document::action_open_pdf_split_wizard
+woow.document::action_open_pdf_merge_wizard
+woow.document.pdf.split.wizard::action_split
+woow.document.pdf.merge.wizard::action_merge
 
 [override]
 *::create

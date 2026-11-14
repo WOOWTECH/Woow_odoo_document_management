@@ -25,6 +25,9 @@ acl:
   woow.document.purge.wizard: {user: '1110', manager: '1110'}
   woow.document.add.attachment.wizard: {user: '1110', manager: '1110'}
   woow.document.notify.wizard: {user: '1110', manager: '1110'}
+  woow.document.pdf.split.wizard: {user: '1110', manager: '1110'}
+  woow.document.pdf.merge.wizard: {user: '1110', manager: '1110'}
+  woow.document.pdf.merge.line: {user: '1111', manager: '1111'}
 hd07: [woow.document.folder, portal]
 rules:
 - id: rule_woow_document_folder_company
@@ -204,3 +207,22 @@ rules:
   groups: []
   perms: '1111'
   domain: "[(1, '=', 1)] if not user.share else [('model', 'not in', ['woow.document', 'woow.document.folder'])]"
+# R-P1, R-P2: the PDF split and merge wizards (and the lines of a merge) belong to their creator.
+- id: rule_woow_document_pdf_split_wizard_owner
+  ref: R-P1
+  model: woow.document.pdf.split.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_pdf_merge_wizard_owner
+  ref: R-P2
+  model: woow.document.pdf.merge.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_pdf_merge_line_owner
+  ref: R-P3
+  model: woow.document.pdf.merge.line
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"

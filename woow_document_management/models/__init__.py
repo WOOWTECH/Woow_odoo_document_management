@@ -5,3 +5,4 @@ from . import (
     document, document_log, ir_attachment, ir_binary, mail_thread_guard,
     res_config_settings, trash_actions, cron_jobs, zip_actions, backend_actions,
 )
+from . import pdftools

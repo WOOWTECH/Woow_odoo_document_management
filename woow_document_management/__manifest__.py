@@ -33,6 +33,9 @@
         'views/wizards/add_attachment_wizard_views.xml',
         'views/wizards/notify_wizard_views.xml',
         'views/portal_templates.xml',
+        'security/pdftools_rules.xml',
+        'views/wizards/pdftools_wizard_views.xml',
+        'views/backend/pdftools_views.xml',
         'views/menus.xml',
     ],
     'assets': {
