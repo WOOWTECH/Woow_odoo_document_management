@@ -63,7 +63,10 @@ class TestRestoreWizardOnlyRestores(_Round1Case):
         child = self.env['woow.document.folder'].sudo().create({
             'name': 'Round one live child', 'parent_id': self.folder.id,
             'owner_id': self.owner.id})
-        wizard = self._wizard(self.owner, folders=[child], target=self.other_folder)
+        self.env.flush_all()      # the stored access sets of the new folder, before a user looks for it
+        # a member who can see the folder and may move it: the refusal is the wizard's own one
+        # (the check of the names in the wizard row refuses what the caller cannot see)
+        wizard = self._wizard(self.edit_member, folders=[child], target=self.other_folder)
         with self.assertRaises(AccessError):
             wizard.action_restore_to()
         self.env.invalidate_all()

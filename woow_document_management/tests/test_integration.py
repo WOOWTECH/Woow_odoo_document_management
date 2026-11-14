@@ -335,6 +335,12 @@ class TestAContentReplacementByWriteKeepsAVersionAndRespectsTheLock(_Case):
         self._replace(outsider, self.doc)
         self.assertEqual(base64.b64decode(self.doc.sudo().datas), b'replaced content')
         self.assertEqual(self.doc.sudo().version_count, 1)
-        # the editor by share still cannot read, change or remove the history
-        versions = self.env['woow.document.version'].with_user(outsider)
-        self.assertFalse(versions.search([('document_id', '=', self.doc.id)]))
+        # the editor by share reads the history like any reader of the document, but cannot
+        # change or remove it
+        versions = self.env['woow.document.version'].with_user(outsider).search(
+            [('document_id', '=', self.doc.id)])
+        self.assertEqual(len(versions), 1)
+        with self.assertRaises(UserError):
+            versions.action_delete()
+        with self.assertRaises(UserError):
+            versions.unlink()
