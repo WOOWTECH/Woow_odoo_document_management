@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Woow Document Management 18.0.2.0.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 18:46+0000\n"
-"PO-Revision-Date: 2026-11-14 18:46+0000\n"
+"POT-Creation-Date: 2026-11-14 19:58+0000\n"
+"PO-Revision-Date: 2026-11-14 19:58+0000\n"
 "Last-Translator: \n"
 "Language-Team: WoowTech\n"
 "MIME-Version: 1.0\n"
@@ -3600,6 +3600,14 @@ msgstr ""
 #. odoo-python
 #: code:addons/woow_document_management/models/share.py:0
 msgid "The document of a share cannot be changed."
+msgstr ""
+
+#. module: woow_document_management
+#. odoo-javascript
+#: code:addons/woow_document_management/static/src/backend/wsui/workspace.js:0
+msgid ""
+"The download failed. The file may have been moved or removed, or you may no "
+"longer have access to it."
 msgstr ""
 
 #. module: woow_document_management
