@@ -65,3 +65,4 @@ from . import test_mailin
 from . import test_autofile
 from . import test_pdftools
 from . import test_integration
+from . import test_inspector

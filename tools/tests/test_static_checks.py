@@ -972,7 +972,7 @@ class TestRepo(unittest.TestCase):
         for path in data:
             self.assertTrue(os.path.isfile(os.path.join(REPO, W, path)), path)
         self.assertEqual(set(manifest['assets']), {'web.assets_backend', 'web.assets_frontend',
-                                                   'web.assets_tests'})
+                                                   'web.assets_tests', 'web.assets_unit_tests'})
 
     def test_tests_init_day0(self):
         """IF-SKEL 2.3: tests/__init__.py imports the regression test files of sweep.yaml and the others."""
@@ -987,12 +987,13 @@ class TestRepo(unittest.TestCase):
                                                   'test_sharing',
                                                   'test_mailin',
                                                   'test_pdftools',
+                                                  'test_inspector',
                                                   'test_integration']
         tree = ast.parse(_read(os.path.join(REPO, W + 'tests/__init__.py')))
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 35 + 19 + 10)   # the nineteen tests/test_reg_<slug>.py files, plus test_requests and test_autofile (listed by sweep.yaml) and one test_<lane>.py per other merged lane (workspace, docactions, versions, shortcuts, sharing, mailin, pdftools, integration)
+        self.assertEqual(len(imported), 35 + 19 + 11)   # the nineteen tests/test_reg_<slug>.py files, plus test_requests and test_autofile (listed by sweep.yaml) and one test_<lane>.py per other merged lane (workspace, docactions, versions, shortcuts, sharing, mailin, pdftools, inspector, integration)
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""
