@@ -50,8 +50,14 @@ msgstr "與我共用"
 msgid "Recent"
 msgstr "最近"
 
-msgid "Icon"
-msgstr "圖示"
+msgid "File kind icon"
+msgstr "檔案種類圖示"
+
+msgid "File kind"
+msgstr "檔案種類"
+
+msgid "Too many dialogs at once."
+msgstr "一次開啟的上傳視窗太多。"
 
 msgid "This filter cannot be combined that way."
 msgstr "此篩選不能這樣組合。"
@@ -187,3 +193,6 @@ msgstr "加入您的第一份文件"
 
 msgid "Use Upload to add files to a folder, or New link to keep the address of a web page."
 msgstr "用「上傳」把檔案加到資料夾，或用「新增連結」保存網頁的位址。"
+
+msgid "The upload is unavailable."
+msgstr "此上傳無法使用。"
