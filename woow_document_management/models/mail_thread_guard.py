@@ -176,7 +176,9 @@ class WoowDocumentThreadGuard(models.Model):
 
     def message_update(self, msg_dict, update_vals=None):
         """An email reaches a document only from an internal user who can read it (policy B)."""
-        if not self.env.su or not _sender_reads_all(self, msg_dict):
+        # core runs a reply route (it has no alias) in the caller's environment from 18.0-20260810 on:
+        # the superuser (fetchmail) or a system administrator (gateway script, "fetch now")
+        if not (self.env.su or self.env.user._is_system()) or not _sender_reads_all(self, msg_dict):
             raise AccessError(_('Documents and folders do not accept this email.'))
         return super().message_update(msg_dict, update_vals=update_vals)
 
@@ -282,7 +284,7 @@ class WoowDocumentFolderThreadGuard(models.Model):
 
     def message_update(self, msg_dict, update_vals=None):
         """An email reaches a folder only from an internal user who can read it (policy B)."""
-        if not self.env.su or not _sender_reads_all(self, msg_dict):
+        if not (self.env.su or self.env.user._is_system()) or not _sender_reads_all(self, msg_dict):
             raise AccessError(_('Documents and folders do not accept this email.'))
         return super().message_update(msg_dict, update_vals=update_vals)
 
