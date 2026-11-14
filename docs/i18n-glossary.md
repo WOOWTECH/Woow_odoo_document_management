@@ -64,3 +64,13 @@
 | Recent | 最近 |
 | New link | 新增連結 |
 | Contact | 聯絡人 |
+
+## 18.0.2 inspector
+
+| English | 繁體中文 |
+|---|---|
+| Details (panel of a document) | 詳細資料 |
+| Came from (the source of a file) | 來源 |
+| Points to (target of a shortcut) | 指向 |
+| Asked of (person who is asked for a file) | 索取對象 |
+| Restricted (a name the reader may not see) | 受限 |
