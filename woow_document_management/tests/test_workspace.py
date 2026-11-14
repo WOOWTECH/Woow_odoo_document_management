@@ -580,9 +580,8 @@ class TestUploadWizard(_WorkspaceCase):
         # the folder of another company or one the user cannot see is refused alike
         hidden = self.env['woow.document.folder'].sudo().create({
             'name': 'Not for the uploader', 'owner_id': self.admin.id, 'inherit_access': False})
-        wizard = self._wizard(self.uploader, [('hidden.txt', b'x')], folder=hidden)
         with self.assertRaises(AccessError):
-            wizard.action_upload()
+            self._wizard(self.uploader, [('hidden.txt', b'x')], folder=hidden)
         self.assertFalse(self.documents.sudo().search([('name', '=', 'hidden.txt')]))
 
     def test_a_folder_in_the_trash_is_refused(self):
@@ -658,13 +657,10 @@ class TestUploadWizard(_WorkspaceCase):
         other = self.env['res.company'].sudo().create({'name': 'Upload company B'})
         tag = self.env['woow.document.tag'].sudo().create({
             'name': 'Foreign tag', 'company_id': other.id})
-        wizard = self._wizard(self.uploader, [('tag.txt', b'tag')], tags=tag)
-        try:
-            wizard.action_upload()
-        except AccessError:
-            pass
-        # refused, or made without the tag that the user cannot see: never with it
-        self.assertNotIn(tag, self._made('tag.txt').tag_ids)
+        # a tag that the user cannot see is refused with the wizard row itself
+        with self.assertRaises(AccessError):
+            self._wizard(self.uploader, [('tag.txt', b'tag')], tags=tag)
+        self.assertFalse(self._made('tag.txt'))
 
     def test_a_wizard_and_its_files_belong_to_their_creator(self):
         wizard = self._wizard(self.uploader, [('mine.txt', b'mine')])

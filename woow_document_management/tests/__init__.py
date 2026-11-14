@@ -68,3 +68,4 @@ from . import test_integration
 from . import test_wsui
 from . import test_inspector
 from . import test_reg_sharing_round1
+from . import test_wizard_refs

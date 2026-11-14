@@ -7,13 +7,19 @@ from odoo.exceptions import AccessError, UserError
 
 class WoowDocumentRenameWizard(models.TransientModel):
     _name = 'woow.document.rename.wizard'
-    _inherit = ['woow.document.server.fields.mixin']
+    _inherit = ['woow.document.wizard.refs.mixin', 'woow.document.server.fields.mixin']
     _description = 'Rename a document or folder'
     _woow_own_default_fields = frozenset()
 
     document_id = fields.Many2one('woow.document', ondelete='cascade')
     folder_id = fields.Many2one('woow.document.folder', ondelete='cascade')
     name = fields.Char(string='New name', required=True)
+
+    def _woow_visible_refs(self):
+        return {
+            'document_id': ('woow.document', _('This item is unavailable.')),
+            'folder_id': ('woow.document.folder', _('This item is unavailable.')),
+        }
 
     @api.model
     def default_get(self, fields_list):

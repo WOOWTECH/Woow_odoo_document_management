@@ -56,7 +56,7 @@
     "test_reg_sharing_round1.py": 21,
     "test_reg_typed_boolean_flags.py": 8,
     "test_reg_wizard_owner_scope.py": 2,
-    "test_requests.py": 49,
+    "test_requests.py": 50,
     "test_rpc_exposure.py": 3,
     "test_security_acl.py": 8,
     "test_settings_bounds.py": 12,
@@ -67,6 +67,7 @@
     "test_upload_policy.py": 32,
     "test_url_policy.py": 4,
     "test_versions.py": 56,
+    "test_wizard_refs.py": 10,
     "test_workspace.py": 58,
     "test_wsui.py": 16,
     "test_zip_builder.py": 5

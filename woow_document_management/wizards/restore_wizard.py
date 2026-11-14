@@ -10,11 +10,19 @@ from ..models.document_folder import WoowDocumentFolder
 
 class WoowDocumentRestoreWizard(models.TransientModel):
     _name = 'woow.document.restore.wizard'
+    _inherit = ['woow.document.wizard.refs.mixin']
     _description = 'Restore to another folder'
 
     document_ids = fields.Many2many('woow.document')
     folder_ids = fields.Many2many('woow.document.folder')
     target_folder_id = fields.Many2one('woow.document.folder')
+
+    def _woow_visible_refs(self):
+        return {
+            'document_ids': ('woow.document', _('One or more selected items are unavailable.')),
+            'folder_ids': ('woow.document.folder', _('One or more selected items are unavailable.')),
+            'target_folder_id': ('woow.document.folder', _('The target folder is unavailable.')),
+        }
 
     def action_restore_to(self):
         """Restore the selected items into the chosen folder."""

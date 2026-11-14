@@ -141,6 +141,11 @@ class TestBackendWizards(TransactionCase):
         self.env['woow.document.folder.access'].sudo().create({
             'folder_id': source.id, 'subject_type': 'user',
             'user_id': user.id, 'level': 'edit'})
+        # the target is one that the user can see (a hidden one is refused earlier, by the wizard
+        # row itself) but not one that the user may add to
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': target.id, 'subject_type': 'user',
+            'user_id': user.id, 'level': 'read'})
         document = self.env['woow.document'].sudo().create({
             'name': 'move.txt', 'folder_id': source.id,
             'datas': base64.b64encode(b'data')})

@@ -272,16 +272,19 @@ class WoowDocumentRequest(models.Model):
             pinned = bool(activity) and bool(self.env['mail.activity'].search_count([
                 ('id', '=', activity.id), ('res_model', '=', self._name),
                 ('res_id', '=', self.id), ('user_id', '=', self.request_user_id.id)]))
+            note = _('The requested file was uploaded.')
+            if pinned:
+                # the task is completed while the record is still a placeholder: core reads the
+                # task of another person only with write access on its record, and the requester
+                # has it through rule R-Q3, which covers a placeholder and not a file
+                activity.with_context(**{CTX_REQUEST_DONE: _DONE_SENTINEL})._action_done(
+                    feedback=note)
             super(WoowDocument, self.with_context(tracking_disable=True, **{
                 NO_INDEX_CTX_KEY: True})).write({
                     'document_type': 'binary', 'datas': base64.b64encode(data),
                     'name': checked.name, 'mimetype': checked.mimetype,
                     'request_activity_id': False})
-            note = _('The requested file was uploaded.')
-            if pinned:
-                activity.with_context(**{CTX_REQUEST_DONE: _DONE_SENTINEL})._action_done(
-                    feedback=note)
-            else:
+            if not pinned:
                 self.message_post(body=note, subtype_xmlid='mail.mt_note')
             self.env['woow.document.log']._log_event(
                 'request_done', channel=self._woow_log_channel(), document_id=self.id,

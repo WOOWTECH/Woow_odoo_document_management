@@ -989,12 +989,13 @@ class TestRepo(unittest.TestCase):
                                                   'test_pdftools',
                                                   'test_integration',
                                                   'test_wsui',
-                                                  'test_inspector']
+                                                  'test_inspector',
+                                                  'test_wizard_refs']
         tree = ast.parse(_read(os.path.join(REPO, W + 'tests/__init__.py')))
         imported = sorted(alias.name for node in tree.body if isinstance(node, ast.ImportFrom)
                           for alias in node.names)
         self.assertEqual(imported, sorted(expected))
-        self.assertEqual(len(imported), 35 + 20 + 12)   # the twenty tests/test_reg_<slug>.py files, plus test_requests and test_autofile (listed by sweep.yaml) and one test_<lane>.py per other merged lane (workspace, docactions, versions, shortcuts, sharing, mailin, pdftools, integration) and test_wsui and test_inspector of the second wave
+        self.assertEqual(len(imported), 35 + 20 + 13)   # the twenty tests/test_reg_<slug>.py files, plus test_requests and test_autofile (listed by sweep.yaml) and one test_<lane>.py per other merged lane (workspace, docactions, versions, shortcuts, sharing, mailin, pdftools, integration) and test_wsui, test_inspector of the second wave and test_wizard_refs of the first fix round
 
     def test_repo_passes_every_tool(self):
         """T-SEC-75: the repository itself passes the 8 tools (exit 0) without --g1."""

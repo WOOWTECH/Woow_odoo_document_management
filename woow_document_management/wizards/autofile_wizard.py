@@ -7,6 +7,7 @@ from odoo.exceptions import UserError
 
 class WoowDocumentAutofileWizard(models.TransientModel):
     _name = 'woow.document.autofile.wizard'
+    _inherit = ['woow.document.wizard.refs.mixin']
     _description = 'File existing attachments'
 
     rule_id = fields.Many2one('woow.document.auto.rule', string='Filing rule', required=True,
@@ -17,6 +18,11 @@ class WoowDocumentAutofileWizard(models.TransientModel):
     skipped = fields.Integer(string='Left out', readonly=True)
     left = fields.Integer(string='Still to look at', readonly=True)
     ran = fields.Boolean(readonly=True)
+
+    def _woow_visible_refs(self):
+        return {
+            'rule_id': ('woow.document.auto.rule', _('This item is unavailable.')),
+        }
 
     def _woow_reopen(self):
         """The action that shows this wizard (again) with its counts."""
