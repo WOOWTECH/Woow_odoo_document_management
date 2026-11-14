@@ -18,6 +18,7 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import Form, HttpCase, TransactionCase, tagged
 from odoo.tests.common import JsonRpcException, new_test_user
 
+from .common import plant_default
 from ..models import share as share_module
 from ..models.document import WoowDocument
 from ..models import sharing as sharing_module
@@ -247,10 +248,9 @@ class TestShareRows(_SharingCase):
                         'user_id': self.outsider.id})
 
     def test_a_stored_default_does_not_choose_the_role_or_the_end_date(self):
-        defaults = self.env['ir.default'].with_user(self.owner)
-        defaults.set('woow.document.share', 'role', 'editor', user_id=True)
-        defaults.set('woow.document.share', 'expiry_date',
-                     str(fields.Date.today() + timedelta(days=9)), user_id=True)
+        plant_default(self.env, 'woow.document.share', 'role', 'editor', user=self.owner)
+        plant_default(self.env, 'woow.document.share', 'expiry_date',
+                      str(fields.Date.today() + timedelta(days=9)), user=self.owner)
         row = self.shares.with_user(self.owner).create({
             'document_id': self.document.id, 'subject_type': 'user', 'user_id': self.target.id})
         self.assertEqual((row.role, row.expiry_date), ('viewer', False))
@@ -623,9 +623,8 @@ class TestEndDates(_SharingCase):
         self.assertEqual(line.expiry_date, today)
 
     def test_a_stored_default_gives_no_end_date_to_a_member(self):
-        self.env['ir.default'].with_user(self.owner).set(
-            'woow.document.folder.access', 'expiry_date',
-            str(fields.Date.today() + timedelta(days=3)), user_id=True)
+        plant_default(self.env, 'woow.document.folder.access', 'expiry_date',
+                      str(fields.Date.today() + timedelta(days=3)), user=self.owner)
         line = self.env['woow.document.folder.access'].with_user(self.owner).create({
             'folder_id': self.folder.id, 'subject_type': 'user', 'user_id': self.viewer.id,
             'level': 'read'})
@@ -1178,8 +1177,8 @@ class TestReviewedSharing(_SharingCase):
     # -- the choice of all document users is not a default -------------------------------------
     def test_a_stored_default_does_not_give_a_folder_to_all_document_users(self):
         group = self.env.ref(_USER)
-        self.env['ir.default'].with_user(self.owner).set(
-            'woow.document.folder', 'woow_all_users_level', 'edit', user_id=True)
+        plant_default(self.env, 'woow.document.folder', 'woow_all_users_level', 'edit',
+                      user=self.owner)
         folders = self.env['woow.document.folder']
         under = {'parent_id': self.folder.id}
         made = folders.with_user(self.owner).create(dict(under, name='Review default folder'))

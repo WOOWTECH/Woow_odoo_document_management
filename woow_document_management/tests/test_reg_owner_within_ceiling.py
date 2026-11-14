@@ -22,6 +22,8 @@ from odoo.exceptions import AccessError, ValidationError
 from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
+from .common import plant_default
+
 _USER = 'woow_document_management.group_woow_document_user'
 _CEILING = 'A member cannot be granted more access than on the parent folder.'
 _NOT_A_USER = 'Choose a document user.'
@@ -400,8 +402,11 @@ class TestOwnerStaysWithinTheCeiling(TransactionCase):
         """A default owner that a caller stored is checked as an owner that the call names."""
         caller = self.callers['manage']
         folders = self.folders.with_user(caller)
-        defaults = self.env['ir.default'].with_user(caller)
-        defaults.set('woow.document.folder', 'owner_id', self.outsider.id, user_id=True)
+
+        def defaults(owner):
+            plant_default(self.env, 'woow.document.folder', 'owner_id', owner.id, user=caller)
+
+        defaults(self.outsider)
         self._refused(lambda: folders.create({
             'name': 'Ceiling default restricted', 'parent_id': self.parent.id,
             'inherit_access': False}))
@@ -409,16 +414,16 @@ class TestOwnerStaysWithinTheCeiling(TransactionCase):
         created = folders.create({'name': 'Ceiling default inheriting',
                                   'parent_id': self.parent.id})
         self.assertEqual(created.owner_id, self.outsider)
-        defaults.set('woow.document.folder', 'owner_id', self.plain.id, user_id=True)
+        defaults(self.plain)
         self._refused(lambda: folders.create({
             'name': 'Ceiling default plain', 'parent_id': self.parent.id}), _NOT_A_USER)
-        defaults.set('woow.document.folder', 'owner_id', self.sibling.id, user_id=True)
+        defaults(self.sibling)
         created = folders.create({'name': 'Ceiling default sibling', 'parent_id': self.parent.id,
                                   'inherit_access': False})
         self.assertEqual(created.owner_id, self.sibling)
         # an editor never chooses the owner, a stored default included
-        self.env['ir.default'].with_user(self.editor).set(
-            'woow.document.folder', 'owner_id', self.outsider.id, user_id=True)
+        plant_default(self.env, 'woow.document.folder', 'owner_id', self.outsider.id,
+                      user=self.editor)
         child = self.folders.with_user(self.editor).create({
             'name': 'Ceiling default editor', 'parent_id': self.parent.id})
         self.assertEqual(child.owner_id, self.parent_owner)

@@ -12,6 +12,7 @@ from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
+from .common import plant_default
 from ..services import locks
 from ..services.constants import MIB, RECENT_DAYS
 
@@ -144,8 +145,8 @@ class TestFavorites(_WorkspaceCase):
             self.favorites.with_user(self.reader).create({'document_id': self.document.id})
 
     def test_a_stored_default_does_not_choose_the_user(self):
-        self.env['ir.default'].with_user(self.reader).set(
-            'woow.document.favorite', 'user_id', self.editor.id, user_id=True)
+        plant_default(self.env, 'woow.document.favorite', 'user_id', self.editor.id,
+                      user=self.reader)
         self._star(self.reader)
         self.assertEqual(self.favorites.sudo().search([]).user_id, self.reader)
 

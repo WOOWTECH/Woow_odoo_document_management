@@ -16,7 +16,7 @@ from odoo.exceptions import AccessError, UserError
 from odoo.tests import HttpCase, tagged
 from odoo.tests.common import new_test_user
 
-from .common import csrf_token
+from .common import csrf_token, plant_default
 
 _USER = 'woow_document_management.group_woow_document_user'
 _OVERVIEW = 'woow_document_management.group_woow_document_attachment_overview'
@@ -67,12 +67,10 @@ class TestStoredDefaultsDoNotFillServerFields(HttpCase):
         return body['result']
 
     def _store(self, model, defaults, scope):
-        """Store defaults as the signed-in uploader (personal) or as the administrator (site)."""
+        """Store defaults as the signed-in uploader (personal) or for the whole site (a row made with superuser rights)."""
         for name, value in defaults.items():
-            if scope == 'personal':
-                self._rpc('ir.default', 'set', [model, name, value], {'user_id': True})
-            else:
-                self.env['ir.default'].with_user(self.admin).set(model, name, value)
+            plant_default(self.env, model, name, value,
+                          user=self.uploader if scope == 'personal' else None)
 
     def _forget_defaults(self):
         self.env['ir.default'].sudo().search([
