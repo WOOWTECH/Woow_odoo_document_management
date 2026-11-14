@@ -102,9 +102,14 @@ expected_sql_errors = {
     'test_timeout_keeps_transaction_usable':
         'canceling statement due to lock timeout',
 }
+# While core `mail` installs on a fresh database, docutils prints one line of its own, outside
+# Odoo's log format. It is allowed only in that exact shape and only before the first test starts.
+docutils_noise = re.compile(r'<string>:[0-9]+: \(ERROR/3\) Unexpected indentation\.')
 current_test = None
 pending_sql_error = False
 for line in log.splitlines():
+    if current_test is None and docutils_noise.fullmatch(line.rstrip()):
+        continue
     start = re.search(r': Starting [A-Za-z_][A-Za-z0-9_]*\.(test_[A-Za-z0-9_]+)', line)
     if start:
         current_test = start.group(1)
