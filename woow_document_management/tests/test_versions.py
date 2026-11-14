@@ -15,6 +15,7 @@ from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import new_test_user
 from odoo.tools import mute_logger
 
+from ..hooks import uninstall_hook
 from ..models.upload_policy import WoowUploadRejected
 from ..services import locks
 from ..services.constants import MAX_VERSIONS_PER_DOCUMENT, WOOW_MODELS
@@ -637,6 +638,16 @@ class TestVersionFiles(_Fixture, TransactionCase):
         with self.assertRaises(UserError):
             other.with_user(self.docmgr).unlink()
         self.assertEqual(len(self._versions(other)), 1)
+
+    def test_the_uninstall_removes_the_versions_and_their_files(self):
+        params = self.env['ir.config_parameter'].sudo()
+        params.set_param('woow_document_management.uninstall_confirm',
+                         params.get_param('database.uuid'))
+        row_ids = self._rows().ids
+        self.assertEqual(len(row_ids), 1)
+        uninstall_hook(self.env)
+        self.assertFalse(self.version.exists())
+        self.assertFalse(self.env['ir.attachment'].sudo().browse(row_ids).exists())
 
     def test_the_wizard_row_of_a_user_is_not_visible_to_another_user(self):
         wizard = self.env['woow.document.version.wizard'].with_user(self.editor).create({

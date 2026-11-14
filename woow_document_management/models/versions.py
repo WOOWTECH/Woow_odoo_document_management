@@ -33,7 +33,7 @@ class WoowDocumentVersion(models.Model):
     _name = 'woow.document.version'
     _inherit = ['woow.document.guard.mixin']
     _description = 'Document version'
-    _order = 'document_id, number desc, id desc'
+    _order = 'number desc, id desc'
     # Only the server fills in a version: no column takes a stored default.
     _woow_own_default_fields = frozenset({
         'document_id', 'number', 'name', 'mimetype', 'datas', 'file_size', 'checksum',
@@ -152,15 +152,16 @@ class WoowDocumentVersions(models.Model):
                 'res_model': 'woow.document.version.wizard', 'view_mode': 'form',
                 'target': 'new', 'context': {'default_document_id': self.id}}
 
-    def unlink(self):
-        """A permanent deletion takes the versions of the documents, and their files, with it."""
-        self._require_manager()
-        if any(doc.legal_hold for doc in self):
-            return super().unlink()     # the refusal of the document itself
-        versions = self.env['woow.document.version'].search([('document_id', 'in', self.ids)])
-        with self.env.cr.savepoint():
-            _swap(versions).unlink()
-            return super().unlink()
+    @api.ondelete(at_uninstall=True)
+    def _unlink_versions(self):
+        """A permanent deletion takes the versions of the documents, and their files, with it.
+
+        Core runs this before it deletes the rows, and after the guards of ``unlink`` have judged
+        the call (administrator, trash, legal hold): a refused purge keeps every version. The
+        database would remove the rows alone (``ondelete='cascade'``) and leave their files.
+        """
+        _swap(self.env['woow.document.version'].search(
+            [('document_id', 'in', self.ids)])).unlink()
 
     def _woow_lock_holder(self):
         """The user who holds the lock of this file, or nobody (the lock is a separate feature)."""
