@@ -64,3 +64,15 @@
 | Recent | 最近 |
 | New link | 新增連結 |
 | Contact | 聯絡人 |
+
+## 18.0.2 workspace screen (browser)
+
+| English | 繁體中文 |
+|---|---|
+| Open (a file) | 開啟 |
+| Download | 下載 |
+| Actions (menu of the selection) | 動作 |
+| Details (side panel) | 詳細資料 |
+| Move (to a folder) | 移動 |
+| Selection | 選取項目 |
+| Folder path (breadcrumb) | 資料夾路徑 |

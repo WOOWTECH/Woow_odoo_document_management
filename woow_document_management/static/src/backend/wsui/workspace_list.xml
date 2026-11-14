@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<templates xml:space="preserve">
+
+    <t t-name="woow_document_management.WorkspaceListView" t-inherit="web.ListView" t-inherit-mode="primary">
+        <xpath expr="//t[@t-set-slot='control-panel-navigation-additional']" position="inside">
+            <button t-if="ws.inspector" type="button" class="btn btn-secondary o_woow_info_toggle" t-att-class="{'active': ws.state.showInfo}" title="Details" t-on-click="() => ws.toggleInfo()">
+                <i class="fa fa-info-circle"/>
+            </button>
+        </xpath>
+        <xpath expr="//div[hasclass('o_list_selection_container')]//t[@t-if='props.info.actionMenus']" position="replace"/>
+        <xpath expr="//div[hasclass('o_list_selection_container')]" position="inside">
+            <WooSelectionBar ws="ws" selection="ws.selectedIds" showCount="false"/>
+        </xpath>
+        <xpath expr="//t[@t-component='props.Renderer']" position="after">
+            <WooInspectorPane ws="ws" selection="ws.selectedIds"/>
+            <div t-if="ws.state.dropping" class="woow-drop-overlay" aria-hidden="true">
+                <div class="woow-drop-message"><i class="fa fa-cloud-upload fa-2x"/><div>Drop the files to upload them to this folder</div></div>
+            </div>
+        </xpath>
+    </t>
+
+    <t t-name="woow_document_management.WorkspaceListRenderer" t-inherit="web.ListRenderer" t-inherit-mode="primary">
+        <xpath expr="//t[@t-if='showNoContentHelper']" position="before">
+            <WooUploadStatus/>
+            <WooFolderStrip/>
+        </xpath>
+    </t>
+
+    <t t-name="woow_document_management.ListRenderer.RecordRow" t-inherit="web.ListRenderer.RecordRow" t-inherit-mode="primary">
+        <xpath expr="//tr[hasclass('o_data_row')]" position="attributes">
+            <attribute name="t-on-dblclick">(ev) => this.onRowDoubleClick(record, ev)</attribute>
+        </xpath>
+    </t>
+
+</templates>

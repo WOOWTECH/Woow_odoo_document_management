@@ -59,6 +59,7 @@
         'views/wizards/autofile_wizard_views.xml',
         'views/wizards/pdftools_wizard_views.xml',
         'views/backend/pdftools_views.xml',
+        'views/backend/wsui_views.xml',
         'views/menus.xml',
     ],
     'assets': {
@@ -71,6 +72,9 @@
         ],
         'web.assets_tests': [
             'woow_document_management/static/tests/tours/**/*',
+        ],
+        'web.assets_unit_tests': [
+            'woow_document_management/static/tests/unit/**/*',
         ],
     },
     'application': True,

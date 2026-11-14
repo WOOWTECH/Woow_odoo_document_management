@@ -66,6 +66,7 @@
     "test_url_policy.py": 4,
     "test_versions.py": 43,
     "test_workspace.py": 49,
+    "test_wsui.py": 14,
     "test_zip_builder.py": 5
   },
   "required_ca_methods": {

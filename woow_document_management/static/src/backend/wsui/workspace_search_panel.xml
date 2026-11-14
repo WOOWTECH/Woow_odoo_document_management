@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<templates xml:space="preserve">
+
+    <t t-name="woow_document_management.SearchPanel" t-inherit="web.SearchPanel" t-inherit-mode="primary">
+        <xpath expr="//t[@t-call='web.SearchPanel.Regular']" position="attributes">
+            <attribute name="t-call">woow_document_management.SearchPanel.Regular</attribute>
+        </xpath>
+    </t>
+
+    <t t-name="woow_document_management.SearchPanel.Regular" t-inherit="web.SearchPanelContent" t-inherit-mode="primary">
+        <xpath expr="//div[hasclass('o_search_panel')]" position="inside">
+            <div class="woow-panel-footer">
+                <button type="button" class="btn btn-link woow-trash-entry w-100 text-start" t-on-click="openTrash">
+                    <i class="fa fa-trash-o fa-fw me-2"/>Trash
+                </button>
+            </div>
+        </xpath>
+    </t>
+
+    <t t-name="woow_document_management.SearchPanel.Category" t-inherit="web.SearchPanel.Category" t-inherit-mode="primary">
+        <xpath expr="//div[hasclass('o_search_panel_label')]" position="attributes">
+            <attribute name="t-att-data-tooltip">shortName(section, value)</attribute>
+        </xpath>
+        <xpath expr="//header[hasclass('list-group-item')]" position="attributes">
+            <attribute name="t-on-dragover">(ev) => this.onFolderDragOver(ev, section, value)</attribute>
+            <attribute name="t-on-dragleave">() => this.onFolderDragLeave(section, value)</attribute>
+            <attribute name="t-on-drop">(ev) => this.onFolderDrop(ev, section, value)</attribute>
+            <attribute name="t-att-data-woow-drop">isDropTarget(section, value) ? 'true' : false</attribute>
+        </xpath>
+        <xpath expr="//span[hasclass('o_search_panel_label_title')]" position="attributes">
+            <attribute name="t-esc">shortName(section, value)</attribute>
+        </xpath>
+    </t>
+
+</templates>
