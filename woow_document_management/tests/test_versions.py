@@ -490,10 +490,35 @@ class TestShareEditorReplacement(_Fixture, TransactionCase):
                 'document_id': self.doc.id, 'number': 9, 'name': 'x.txt'})
         self.assertEqual(self._versions(self.doc), versions)
 
-    def test_at_the_limit_a_share_editor_is_refused_and_nothing_is_lost(self):
+    def test_at_the_limit_a_share_editor_replaces_and_the_oldest_version_is_dropped(self):
+        with patch(_CAP, 2):
+            doc = self.doc.with_user(self.sharer)
+            doc.write({'datas': base64.b64encode(b'second content')})
+            doc.write({'datas': base64.b64encode(b'third content')})
+            self.assertEqual(self._versions(self.doc).mapped('number'), [1, 2])
+            doc.write({'datas': base64.b64encode(b'fourth content')})
+        self.assertEqual(self._content(self.doc), b'fourth content')
+        versions = self._versions(self.doc)
+        self.assertEqual(versions.mapped('number'), [2, 3])
+        self.assertEqual(base64.b64decode(versions[-1].datas), b'third content')
+        self.assertEqual(len(self.env['woow.document.log'].sudo().search([
+            ('event', '=', 'version_delete'), ('document_id', '=', self.doc.id)])), 1)
+
+    def test_at_the_limit_a_share_editor_still_cannot_delete_history_directly(self):
+        with patch(_CAP, 2):
+            doc = self.doc.with_user(self.sharer)
+            doc.write({'datas': base64.b64encode(b'second content')})
+            doc.write({'datas': base64.b64encode(b'third content')})
+        versions = self._versions(self.doc)
+        with self.assertRaises(UserError):
+            versions.with_user(self.sharer).action_delete()
+        self.assertEqual(self._versions(self.doc), versions)
+
+    def test_at_the_limit_under_legal_hold_a_share_editor_is_refused_and_nothing_is_lost(self):
         with patch(_CAP, 1):
             doc = self.doc.with_user(self.sharer)
             doc.write({'datas': base64.b64encode(b'second content')})
+            self.doc.with_user(self.docmgr).action_set_legal_hold(True)
             with self.assertRaises(UserError):
                 doc.write({'datas': base64.b64encode(b'third content')})
         self.assertEqual(self._content(self.doc), b'second content')

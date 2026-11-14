@@ -9,6 +9,7 @@ Allowlist (file, model, function -> count):
   A1  models/autofile.py       woow.document.auto.rule _woow_elevated        1  (# sudo-ok: A1)
   S5  models/sharing.py        woow.document          _woow_release_lost_locks 1 sudo + 1 with_user (# sudo-ok: S5)
   A2  models/autofile.py       woow.document.auto.rule _woow_creator_readable 1 with_user (# sudo-ok: A2)
+  S6  models/versions.py       woow.document.version  _woow_server_scope      1  (# sudo-ok: S6)
 
 Every other escalation in non-test code is a violation: any ``sudo`` attribute except the
 literal ``sudo(False)``, ``with_user(``, ``with_env(``, ``env(su=...|user=...)`` except
@@ -47,6 +48,8 @@ ALLOW = {
            '_woow_release_lost_locks', {'sudo': 1, 'with_user': 1}),
     'A2': ('woow_document_management/models/autofile.py', 'woow.document.auto.rule',
            '_woow_creator_readable', {'with_user': 1}),
+    'S6': ('woow_document_management/models/versions.py', 'woow.document.version',
+           '_woow_server_scope', {'sudo': 1}),
 }
 SU_CHECKED_PREFIXES = ('_cron_',)
 

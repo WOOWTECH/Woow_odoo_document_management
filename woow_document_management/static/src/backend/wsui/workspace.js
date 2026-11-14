@@ -43,14 +43,54 @@ export function displayedRecords(root) {
     return root.records || [];
 }
 
-/** Starts the download of a file or of a ZIP of this module; the answer is an attachment. */
-export function startDownload(url) {
+/** The file name that the server proposes in the answer, or a plain fallback. */
+export function downloadFilename(response) {
+    const header = (response.headers && response.headers.get("Content-Disposition")) || "";
+    const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+    if (encoded) {
+        try {
+            return decodeURIComponent(encoded[1].trim());
+        } catch {
+            // fall through to the plain name
+        }
+    }
+    const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(header);
+    return plain ? plain[1].trim() : "download";
+}
+
+/**
+ * Downloads a file or a ZIP of this module. The route is asked first (as the logged-in user,
+ * through fetch) and the file is saved only when the answer is a success: a refusal or a failure
+ * shows a notification and the screen stays, instead of the whole web client navigating to a
+ * bare error page.
+ * @returns {Promise<boolean>} whether the download was started
+ */
+export async function startDownload(url, notification) {
+    let blob;
+    let filename;
+    try {
+        const response = await browser.fetch(url, { credentials: "same-origin" });
+        if (!response.ok) {
+            throw new Error("refused");
+        }
+        filename = downloadFilename(response);
+        blob = await response.blob();
+    } catch {
+        notification.add(_t("The download failed. The file may have been moved or removed, or you may no longer have access to it."), {
+            type: "danger",
+        });
+        return false;
+    }
+    const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
+    link.href = objectUrl;
+    link.download = filename;
     link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
     link.remove();
+    browser.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    return true;
 }
 
 /**
@@ -223,7 +263,7 @@ class Workspace {
                     const current = files.find((candidate) => candidate.id === item.id);
                     this.viewer.open(current, files);
                 } else {
-                    startDownload(downloadUrl(item.id));
+                    await startDownload(downloadUrl(item.id), this.notification);
                 }
                 return;
             }
@@ -253,10 +293,10 @@ class Workspace {
     }
 
     // -- the control panel -----------------------------------------------------------------
-    downloadSelection() {
+    async downloadSelection() {
         const target = this.download;
         if (target) {
-            startDownload(target.url);
+            await startDownload(target.url, this.notification);
         }
     }
 

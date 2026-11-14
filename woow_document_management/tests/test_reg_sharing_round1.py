@@ -287,12 +287,13 @@ class TestLocksOfPeopleWhoLostAccess(_Round1Case):
         self.env.invalidate_all()
         self.assertFalse(document.lock_uid)
 
-    def test_the_owner_releases_a_lock_of_someone_else_on_the_own_document(self):
+    def test_the_owner_cannot_release_a_lock_of_someone_else_on_the_own_document(self):
         self._lock_as(self.edit_member)
         self.assertEqual(self.document.owner_id, self.upload_owner)
-        self.assertTrue(self.document.with_user(self.upload_owner).action_unlock())
-        self.assertFalse(self.document.lock_uid)
-        self.assertEqual(self._events('unlock').detail, {'forced': True})
+        with self.assertRaises(AccessError):
+            self.document.with_user(self.upload_owner).action_unlock()
+        self.assertEqual(self.document.lock_uid, self.edit_member)
+        self.assertFalse(self._events('unlock'))
 
     def test_someone_who_is_neither_holder_owner_nor_manager_cannot_release(self):
         self._lock_as(self.edit_member)

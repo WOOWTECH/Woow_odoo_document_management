@@ -308,6 +308,13 @@ class TestInspectorLock(InspectorCase):
                 # nobody but the holder is offered a lock button
                 self.assertFalse(data['can_lock'])
 
+    def test_the_owner_who_is_not_the_holder_is_not_offered_unlock(self):
+        # the server refuses the owner (see action_unlock), so the panel does not offer the button
+        doc = self._document('owned.txt', b'owned', owner=self.uploader)
+        doc.with_user(self.editor).action_lock()
+        self.assertTrue(doc.with_user(self.uploader).has_access('write'))
+        self.assertFalse(self._data(self.uploader, doc)['can_unlock'])
+
     def test_another_editor_cannot_unlock(self):
         second = new_test_user(self.env, login='ins_editor2', groups=_USER)
         self.env['woow.document.folder.access'].sudo().create({
