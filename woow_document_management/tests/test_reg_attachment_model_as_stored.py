@@ -53,7 +53,7 @@ def foreign_overrides(env):
     instead of the access error of this module. The write is refused either way.
     """
     module = env['ir.module.module'].sudo().search([('name', '=', 'woow_document_management')])
-    own = set(module.upstream_dependencies(exclude_states=())
+    own = set(module.upstream_dependencies(exclude_states=('uninstallable',))
               .mapped('name')) | {'woow_document_management', 'base'}
     found = set()
     for klass in type(env['ir.attachment']).__mro__:
