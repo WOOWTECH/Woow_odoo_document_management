@@ -1,12 +1,13 @@
 {
   "batches": {
-    "core": 385,
+    "core": 397,
     "files": 126,
     "portal": 3
   },
   "files": {
     "test_add_attachment.py": 4,
     "test_attachment_guard.py": 13,
+    "test_attachment_overview.py": 12,
     "test_audit_log.py": 13,
     "test_backend_views.py": 2,
     "test_backend_wizards.py": 5,
