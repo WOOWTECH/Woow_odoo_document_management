@@ -19,6 +19,12 @@ _EVENT_LABELS = {
     'restore': 'Restored', 'purge': 'Deleted permanently', 'move': 'Moved',
     'access_change': 'Members changed', 'legal_hold': 'Legal hold changed',
     'settings_change': 'Settings changed',
+    'lock': 'Locked', 'unlock': 'Unlocked', 'duplicate': 'Duplicated',
+    'version_add': 'Version added', 'version_restore': 'Version restored',
+    'version_delete': 'Version deleted', 'request_create': 'File requested',
+    'request_done': 'Request fulfilled', 'access_expire': 'Access expired',
+    'auto_file': 'Filed automatically', 'mail_in': 'Received by email',
+    'pdf_split': 'PDF split', 'pdf_merge': 'PDF merged',
 }
 
 

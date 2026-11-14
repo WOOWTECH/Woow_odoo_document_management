@@ -959,7 +959,7 @@ class TestRepo(unittest.TestCase):
             manifest = ast.literal_eval(fh.read())
         self.assertEqual(manifest['name'], 'Woow Document Management')
         self.assertEqual(manifest['license'], 'LGPL-3')
-        self.assertEqual(manifest['version'], '18.0.1.0.0')
+        self.assertEqual(manifest['version'], '18.0.2.0.0')
         self.assertEqual(manifest['depends'], ['mail', 'portal'])
         for key in ('external_dependencies', 'post_init_hook', 'pre_init_hook'):
             self.assertNotIn(key, manifest)
