@@ -673,13 +673,27 @@ class StubInspector extends Component {
         </div>`;
 }
 
+// The lane of the details panel registers the real component in the same category; these tests
+// stand for the cases with and without it, so they start from an empty category (the registries
+// of a test are its own, nothing leaks into the next test).
+function useDetailsPanel(component) {
+    const category = registry.category("woow_document_components");
+    if (category.contains("inspector")) {
+        category.remove("inspector");
+    }
+    if (component) {
+        category.add("inspector", component);
+    }
+}
+
 test("without a details panel there is no info button", async () => {
+    useDetailsPanel(null);
     await mountKanban();
     expect(".o_woow_info_toggle").toHaveCount(0);
 });
 
 test("the info button shows the details panel with the selected record", async () => {
-    registry.category("woow_document_components").add("inspector", StubInspector);
+    useDetailsPanel(StubInspector);
     await mountKanban();
     expect(".stub-inspector").toHaveCount(0);
     await click(".o_woow_info_toggle");
@@ -699,7 +713,7 @@ test("the info button shows the details panel with the selected record", async (
 });
 
 test("a change made in the details panel reloads the records", async () => {
-    registry.category("woow_document_components").add("inspector", StubInspector);
+    useDetailsPanel(StubInspector);
     onRpc("woow.document", "web_search_read", () => {
         expect.step("load");
     });
