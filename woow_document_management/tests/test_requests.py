@@ -66,6 +66,11 @@ class RequestsCase(TransactionCase):
         return self.env['woow.document.log'].sudo().search([
             ('document_id', '=', doc.id), ('event', '=', event)])
 
+    def _cold(self):
+        """What a real RPC call starts with: nothing of an earlier call in the cache."""
+        self.env.flush_all()
+        self.env.invalidate_all()
+
     def _activities(self, doc):
         return self.env['mail.activity'].sudo().search([
             ('res_model', '=', 'woow.document'), ('res_id', '=', doc.id)])
@@ -116,16 +121,46 @@ class TestRequestCreate(RequestsCase):
         doc = self._ask()
         self.assertTrue(doc.with_user(self.asked)._filtered_access('write'))
         doc.with_user(self.asked).write({'description': '<p>on it</p>'})
-        # the requester and a reader do not get the write right from the request
-        self.assertFalse(doc.with_user(self.requester)._filtered_access('write'))
-        self.assertTrue(doc.with_user(self.requester)._filtered_access('read'))
+        # a reader does not get the write right from the request
         self.assertFalse(doc.with_user(self.reader)._filtered_access('write'))
+        self.assertFalse(doc.with_user(self.stranger)._filtered_access('write'))
+        self.assertTrue(doc.with_user(self.requester)._filtered_access('read'))
         # an editor of the folder writes it anyway
         self.assertTrue(doc.with_user(self.editor)._filtered_access('write'))
         # no grant is added: the person asked has no access to a folder without a grant
         other = self._folder('Other folder', {})
         self.assertFalse(self.env['woow.document.folder'].with_user(self.asked).search([
             ('id', '=', other.id)]))
+
+    def test_the_requester_writes_the_pending_placeholder_through_rule_r_q3(self):
+        doc = self._ask()
+        asker = doc.with_user(self.requester)
+        self.assertEqual(doc.sudo().owner_id, self.asked)       # not through ownership
+        self.assertTrue(asker._filtered_access('write'))
+        asker.write({'description': '<p>by the requester</p>'})
+        # the rule reaches the placeholder only: not the request fields, not the type, not a file
+        for vals in ({'request_user_id': self.stranger.id}, {'request_last_reminder': False},
+                     {'request_deadline': '2030-01-01'}):
+            with self.assertRaises(AccessError):
+                asker.write(vals)
+        for vals in ({'document_type': 'binary'}, {'datas': base64.b64encode(_TEXT)}):
+            with self.assertRaises(UserError):
+                asker.write(vals)
+        self.assertEqual(doc.sudo().document_type, 'request')
+        # it needs the upload level: a requester who lost the grant, and others, do not write
+        self.assertFalse(doc.with_user(self.stranger)._filtered_access('write'))
+        self.env['woow.document.folder.access'].sudo().search([
+            ('folder_id', '=', self.folder.id), ('user_id', '=', self.requester.id)]).unlink()
+        self.env.flush_all()
+        self.assertFalse(doc.with_user(self.requester)._filtered_access('write'))
+
+    def test_the_requester_loses_the_write_right_when_the_file_arrives(self):
+        doc = self._ask()
+        doc.with_user(self.asked)._woow_fulfil_request('a.txt', _TEXT)
+        self.assertEqual(doc.sudo().document_type, 'binary')
+        self.assertFalse(doc.with_user(self.requester)._filtered_access('write'))
+        with self.assertRaises(AccessError):
+            doc.with_user(self.requester).write({'description': '<p>no</p>'})
 
     def test_who_may_request(self):
         for user in (self.reader, self.stranger, self.plain):
@@ -219,6 +254,28 @@ class TestRequestCreate(RequestsCase):
                     doc.with_user(self.asked).write(vals)
         self.assertEqual(doc.sudo().document_type, 'request')
 
+    def test_the_note_is_never_cut_by_the_wizard(self):
+        wizard = self.env['woow.document.request.wizard'].with_user(self.requester)
+        exact = wizard.create({'name': 'Exact note', 'folder_id': self.folder.id,
+                               'request_user_id': self.asked.id, 'note': 'n' * 500})
+        exact.action_create()
+        self.assertEqual(len(self.model.sudo().search([('name', '=', 'Exact note')]).request_note), 500)
+        long = wizard.create({'name': 'Long note', 'folder_id': self.folder.id,
+                              'request_user_id': self.asked.id, 'note': 'n' * 501})
+        self.assertEqual(len(long.note), 501)
+        with self.assertRaises(UserError):
+            long.action_create()
+        self.assertFalse(self.model.sudo().search([('name', '=', 'Long note')]))
+
+    def test_the_type_of_a_new_document_cannot_be_set_to_request_on_the_form(self):
+        record = self.model.with_user(self.editor).new({'document_type': 'request'})
+        result = record._onchange_document_type_request()
+        self.assertEqual(record.document_type, 'binary')
+        self.assertIn('warning', result)
+        existing = self._ask()
+        self.assertEqual(existing.with_user(self.asked)._onchange_document_type_request(), None)
+        self.assertEqual(existing.sudo().document_type, 'request')
+
     def test_the_wizard_creates_the_request(self):
         wizard = self.env['woow.document.request.wizard'].with_user(self.requester).create({
             'name': 'Passport copy', 'folder_id': self.folder.id,
@@ -287,13 +344,18 @@ class TestRequestFulfil(RequestsCase):
         self._assert_fulfilled()
         self.assertEqual(self._events(self.doc, 'request_done').user_id, self.editor)
 
+    def test_the_requester_may_send_the_file_too(self):
+        # the requester can write the pending placeholder (R-Q3) and has upload level anyway
+        self.assertTrue(self._fulfil(self.requester))
+        self._assert_fulfilled()
+
     def test_a_document_administrator_fulfils_it(self):
         self.assertTrue(self._fulfil(self.admin))
         self._assert_fulfilled()
 
     def test_others_cannot_fulfil_it(self):
         portal = new_test_user(self.env, login='req_portal3', groups='base.group_portal')
-        for user in (self.requester, self.reader, self.stranger, self.plain, portal):
+        for user in (self.reader, self.stranger, self.plain, portal):
             with self.subTest(user=user.login):
                 with self.assertRaises(AccessError):
                     self._fulfil(user)
@@ -373,6 +435,61 @@ class TestRequestFulfil(RequestsCase):
         with self.assertRaises(AccessError):
             wizard.with_user(self.asked).read(['filename'])      # not the creator's row
 
+    def test_a_retargeted_task_posts_nothing_on_another_record(self):
+        hidden_folder = self._folder('Hidden folder', {})
+        hidden = self.model.sudo().create({
+            'name': 'hidden.txt', 'folder_id': hidden_folder.id,
+            'datas': base64.b64encode(_TEXT)})
+        self.env.flush_all()
+        self._cold()
+        # the requester made the task and may write it; the new target is not checked by core
+        self.activity.with_user(self.requester).write({'res_id': hidden.id})
+        self.env.flush_all()
+        before = self.env['mail.message'].sudo().search_count([
+            ('model', '=', 'woow.document'), ('res_id', '=', hidden.id)])
+        self._cold()
+        self.assertTrue(self._fulfil(self.asked))
+        after = self.env['mail.message'].sudo().search_count([
+            ('model', '=', 'woow.document'), ('res_id', '=', hidden.id)])
+        self.assertEqual(after, before)
+        doc = self.doc.sudo()
+        self.assertEqual(doc.document_type, 'binary')
+        self.assertFalse(doc.request_activity_id)
+        self.assertEqual(len(self._events(self.doc, 'request_done')), 1)
+        note = self.env['mail.message'].sudo().search([
+            ('model', '=', 'woow.document'), ('res_id', '=', self.doc.id),
+            ('body', 'ilike', 'requested file was uploaded')])
+        self.assertEqual(len(note), 1)
+
+    def test_the_core_upload_button_and_mark_done_do_not_end_the_task(self):
+        attachment = self.env['ir.attachment'].with_user(self.asked).create({
+            'name': 'run.exe', 'raw': b'MZ', 'res_model': 'mail.compose.message', 'res_id': 0})
+        self._cold()
+        with self.assertRaises(UserError):
+            self.activity.with_user(self.asked).action_feedback(
+                feedback='done', attachment_ids=[attachment.id])
+        with self.assertRaises(UserError):
+            self.activity.with_user(self.asked).action_done()
+        with self.assertRaises(UserError):
+            self.activity.with_user(self.editor).action_feedback(feedback='done')
+        doc = self.doc.sudo()
+        self.assertEqual((doc.document_type, doc.request_activity_id), ('request', self.activity))
+        self.assertTrue(self.activity.exists())
+        self.assertEqual(attachment.res_model, 'mail.compose.message')   # nothing was re-parented
+        self.assertTrue(self._fulfil(self.asked))
+
+    def test_an_ordinary_task_on_a_document_is_completed_as_before(self):
+        plain = self.model.with_user(self.editor).create({
+            'name': 'plain.txt', 'folder_id': self.folder.id,
+            'datas': base64.b64encode(_TEXT)})
+        task = plain.activity_schedule(_UPLOAD_TYPE, summary='bring it', user_id=self.editor.id)
+        self.assertTrue(task.action_feedback(feedback='ok') is not None)
+        self.assertFalse(task.exists())
+        other = self.env['res.partner'].sudo().create({'name': 'Task partner'})
+        todo = other.sudo().activity_schedule(_UPLOAD_TYPE, user_id=self.plain.id)
+        todo.with_user(self.plain).action_feedback(feedback='ok')      # no access to documents
+        self.assertFalse(todo.exists())
+
     def test_a_document_that_is_not_a_request_has_no_fulfil_path(self):
         plain = self.model.with_user(self.editor).create({
             'name': 'plain.txt', 'folder_id': self.folder.id,
@@ -415,15 +532,59 @@ class TestRequestReminderAndCancel(RequestsCase):
         self.assertEqual(len(self._mails()), 1)
         # just inside the limit it is still refused, just past it it goes out again
         now = fields.Datetime.now()
-        activity = self.doc.sudo().request_activity_id
-        activity.woow_request_last_reminder = now - timedelta(
+        self.doc.sudo().request_last_reminder = now - timedelta(
             hours=REQUEST_REMINDER_MIN_HOURS - 1)
         with self.assertRaises(UserError):
             self.doc.with_user(self.requester).action_send_reminder()
-        activity.woow_request_last_reminder = now - timedelta(
+        self.doc.sudo().request_last_reminder = now - timedelta(
             hours=REQUEST_REMINDER_MIN_HOURS + 1)
         self.assertTrue(self.doc.with_user(self.requester).action_send_reminder())
         self.assertEqual(len(self._mails()), 2)
+
+    def test_a_reminder_works_on_a_cold_cache_for_a_requester_with_upload_level_only(self):
+        # core reads an activity that the user is not assigned to only with write access on its
+        # record: the requester has it through rule R-Q3 (a warm cache hid this once)
+        self.assertEqual(self.folder.with_user(self.requester).woow_user_rank, 2)
+        self._cold()
+        self.assertTrue(self.doc.with_user(self.requester).action_send_reminder())
+        self.assertEqual(len(self._mails()), 1)
+        self._cold()
+        with self.assertRaises(UserError):
+            self.doc.with_user(self.requester).action_send_reminder()
+        self.assertEqual(len(self._mails()), 1)
+        activity = self._activities(self.doc)
+        self._cold()
+        self.assertTrue(activity.with_user(self.requester).has_access('read'))
+        self.assertEqual(activity.with_user(self.requester).user_id, self.asked)
+
+    def test_the_limit_is_not_in_a_field_that_the_two_users_can_write(self):
+        self.assertNotIn('woow_request_last_reminder', self.env['mail.activity']._fields)
+        self.assertTrue(self.doc.with_user(self.requester).action_send_reminder())
+        stamp = self.doc.sudo().request_last_reminder
+        self.assertTrue(stamp)
+        far = fields.Datetime.now() + timedelta(days=3650)
+        for user in (self.requester, self.asked, self.editor, self.stranger):
+            for value in (False, far):
+                with self.subTest(user=user.login, value=bool(value)):
+                    self._cold()
+                    with self.assertRaises(AccessError):
+                        self.doc.with_user(user).write({'request_last_reminder': value})
+        self.assertEqual(self.doc.sudo().request_last_reminder, stamp)
+        self._cold()
+        with self.assertRaises(UserError):
+            self.doc.with_user(self.requester).action_send_reminder()
+        self.assertEqual(len(self._mails()), 1)
+
+    def test_a_removed_task_is_scheduled_again_by_the_reminder(self):
+        activity = self.doc.sudo().request_activity_id
+        activity.unlink()
+        self.assertFalse(self.doc.sudo().request_activity_id)
+        self._cold()
+        self.assertTrue(self.doc.with_user(self.requester).action_send_reminder())
+        new = self.doc.sudo().request_activity_id
+        self.assertTrue(new)
+        self.assertEqual((new.user_id, new.res_id), (self.asked, self.doc.id))
+        self.assertEqual(len(self._mails()), 1)
 
     def test_a_folder_manager_sends_a_reminder_and_others_cannot(self):
         manager = new_test_user(self.env, login='req_fmanager', groups=_USER)
@@ -469,15 +630,49 @@ class TestRequestReminderAndCancel(RequestsCase):
             self.doc.with_user(self.asked).action_open_fulfil_wizard()
 
     def test_who_may_cancel(self):
-        # the existing write rule decides: a reader, a stranger and the requester (who only
-        # uploads to the folder and does not own the placeholder) do not write it
-        for user in (self.reader, self.stranger, self.plain, self.requester):
+        # the write rules decide: a reader and a stranger do not write the placeholder
+        for user in (self.reader, self.stranger, self.plain):
             with self.subTest(user=user.login):
                 with self.assertRaises(AccessError):
                     self.doc.with_user(user).action_trash()
         self.assertTrue(self.doc.sudo().active)
         self.assertTrue(self.doc.sudo().request_activity_id.exists())
         self.assertTrue(self.doc.with_user(self.admin).action_trash())
+
+    def test_the_requester_with_upload_level_cancels_the_request(self):
+        activity = self.doc.sudo().request_activity_id
+        self._cold()
+        self.assertTrue(self.doc.with_user(self.requester).action_trash())
+        doc = self.doc.sudo().with_context(active_test=False)
+        self.assertFalse(doc.active)
+        self.assertEqual(doc.trashed_by_id, self.requester)
+        self.assertFalse(activity.exists())
+        self.assertTrue(self._events(self.doc, 'trash'))
+
+    def test_restoring_a_cancelled_request_gives_the_person_asked_a_task_again(self):
+        self.doc.with_user(self.asked).action_trash()
+        self.assertFalse(self._activities(self.doc))
+        self.assertTrue(self.doc.with_user(self.editor).action_restore())
+        doc = self.doc.sudo()
+        self.assertTrue(doc.active)
+        task = self._activities(doc)
+        self.assertEqual(len(task), 1)
+        self.assertEqual((task.user_id, doc.request_activity_id), (self.asked, task))
+        self.assertGreaterEqual(task.date_deadline, fields.Date.context_today(doc))
+        self.assertEqual(task.activity_type_id, self.env.ref(_UPLOAD_TYPE))
+        self._cold()
+        self.assertTrue(self.doc.with_user(self.requester).action_send_reminder())
+        self.assertEqual(len(self._activities(doc)), 1)       # no second task
+        self.assertTrue(self.doc.with_user(self.asked)._woow_fulfil_request('a.txt', _TEXT))
+
+    def test_restoring_does_not_ask_someone_who_cannot_store_the_file(self):
+        self.doc.with_user(self.asked).action_trash()
+        self.env['woow.document.folder.access'].sudo().search([
+            ('folder_id', '=', self.folder.id), ('user_id', '=', self.asked.id)]).unlink()
+        self.env.flush_all()
+        self.assertTrue(self.doc.with_user(self.editor).action_restore())
+        self.assertTrue(self.doc.sudo().active)
+        self.assertFalse(self._activities(self.doc))
 
     def test_the_person_asked_trashes_it_and_the_activity_goes_too(self):
         activity = self.doc.sudo().request_activity_id

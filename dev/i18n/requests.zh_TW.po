@@ -137,9 +137,6 @@ msgstr "這個檔案已不在索取中。"
 msgid "This person cannot add files to this folder."
 msgstr "這個人無法在此資料夾新增檔案。"
 
-msgid "This request has no open task any more."
-msgstr "這項索取已沒有進行中的待辦。"
-
 msgid "Upload"
 msgstr "上傳"
 
@@ -157,3 +154,9 @@ msgstr "您無法索取檔案。"
 
 msgid "You cannot upload to this request."
 msgstr "您無法上傳到這項索取。"
+
+msgid "Use \"Ask for a file\" to request a file from a colleague."
+msgstr "請用「索取檔案」向同事索取檔案。"
+
+msgid "Send the requested file with \"Upload the file\" on the request."
+msgstr "請在這項索取上用「上傳檔案」送出所索取的檔案。"

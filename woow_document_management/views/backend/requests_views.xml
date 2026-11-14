@@ -29,7 +29,8 @@
                 invisible="document_type != 'request' or not woow_user_can_write"/>
       </xpath>
       <xpath expr="//sheet" position="before">
-        <div class="alert alert-info" role="alert" invisible="document_type != 'request'">
+        <div class="alert alert-info" role="alert" groups="base.group_user"
+             invisible="document_type != 'request'">
           A file is requested here. Asked of: <field name="request_user_id" readonly="1" options="{'no_open': True}"/>
           <span invisible="not request_deadline"> Due: <field name="request_deadline" readonly="1"/></span>
           <div invisible="not request_note"><field name="request_note" readonly="1"/></div>

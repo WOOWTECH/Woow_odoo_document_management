@@ -8,7 +8,8 @@ of documents (R-D2: the owner of a document in a folder where the user may uploa
 that person store the file, so no right is ever added. The requester needs the same rule while
 the activity is scheduled (core asks for write access on the document), so the placeholder is
 created in the requester's name and handed over to the person asked, in this order, by the
-server, in one transaction.
+server, in one transaction. The requester keeps the right to act on a pending placeholder they
+made (rule R-Q3: read, rename, cancel, remind), as the owner of any document does.
 """
 import base64
 from datetime import timedelta
@@ -17,7 +18,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
 from odoo.tools import plaintext2html
 
-from ..services.constants import REQUEST_REMINDER_MIN_HOURS
+from ..services.constants import CTX_REQUEST_DONE, REQUEST_REMINDER_MIN_HOURS
 from ..services.naming import sanitize_filename
 from .document import WoowDocument
 from .ir_attachment import NO_INDEX_CTX_KEY
@@ -33,6 +34,8 @@ _REMINDER_TEMPLATE = 'woow_document_management.mail_template_woow_document_reque
 # send a Python object, so no RPC call can reach the creation path.
 REQUEST_CTX_KEY = 'woow_request_create'
 _REQUEST_SENTINEL = object()
+# The same for the completion of the activity of a request: only ``_woow_fulfil_request`` sets it.
+_DONE_SENTINEL = object()
 
 REQUEST_DAYS_MAX = 365
 REQUEST_NOTE_MAX = 500
@@ -60,11 +63,9 @@ class WoowDocumentRequest(models.Model):
     request_activity_id = fields.Many2one(
         'mail.activity', string='Request activity', ondelete='set null', copy=False,
         groups='base.group_user')
-    # Kept on the activity: the requester does not write the placeholder (the person asked owns
-    # it), but wrote the activity and may write it again.
-    request_last_reminder = fields.Datetime(
-        related='request_activity_id.woow_request_last_reminder', string='Last reminder',
-        groups='base.group_user')
+    # Server-only (see REQUEST_SERVER_FIELDS): set by ``action_send_reminder`` after its checks.
+    request_last_reminder = fields.Datetime(string='Last reminder', copy=False,
+                                            groups='base.group_user')
 
     # ------------------------------------------------------------------ guards
     @api.model_create_multi
@@ -123,6 +124,51 @@ class WoowDocumentRequest(models.Model):
         self.ensure_one()
         return self.document_type == 'request' and self.active and not self.folder_in_trash
 
+    @api.onchange('document_type')
+    def _onchange_document_type_request(self):
+        """A request is made with "Ask for a file", never by picking its type on a new document."""
+        if self.document_type == 'request' and not self._origin:
+            self.document_type = 'binary'
+            return {'warning': {
+                'title': _('Requested file'),
+                'message': _('Use "Ask for a file" to request a file from a colleague.')}}
+
+    def _woow_schedule_request_activity(self, deadline):
+        """Schedule the to-do of the person asked and link it; the caller may write ``self``."""
+        self.ensure_one()
+        note = self.request_note
+        activity = self.activity_schedule(
+            _ACTIVITY_TYPE, date_deadline=deadline, summary=self.name,
+            note=plaintext2html(note) if note else False, user_id=self.request_user_id.id)
+        super(WoowDocument, self.with_context(tracking_disable=True)).write({
+            'request_activity_id': activity.id})
+        return activity
+
+    def _woow_reopen_request_activity(self):
+        """Give a pending request that has no to-do any more (restored, or the task was removed) a new one.
+
+        Skipped when the person asked could not store a file in the folder any more. The deadline is
+        the stored one, or today when that is past.
+        """
+        self.ensure_one()
+        if not self._woow_is_pending_request() or self.request_activity_id.exists():
+            return False
+        asked = self.request_user_id
+        if not asked or not self._woow_user_can_store(self.folder_id, asked):
+            return False
+        today = fields.Date.context_today(self)
+        with self.env.cr.savepoint():
+            return self._woow_schedule_request_activity(max(self.request_deadline or today, today))
+
+    def action_restore(self):
+        """Restore; a restored request that lost its task gets a new one."""
+        self.with_context(active_test=False).check_access('write')
+        result = super().action_restore()
+        for doc in self.with_context(active_test=False).filtered(
+                lambda d: d.document_type == 'request' and d.active):
+            if doc._filtered_access('write'):
+                doc._woow_reopen_request_activity()
+        return result
 
     # ------------------------------------------------------------------ request
     @api.model
@@ -132,8 +178,9 @@ class WoowDocumentRequest(models.Model):
         The caller needs upload level in the folder. The person asked must be able to store a file
         there under the existing rules (``_woow_user_can_store``); otherwise the request is refused.
         The placeholder is created in the caller's name, the activity is scheduled while the caller
-        may write it, and then the placeholder is handed over to the person asked: the owner of a
-        document in a folder where the owner may upload can write it (rule R-D2).
+        owns it, and then the placeholder is handed over to the person asked: the owner of a
+        document in a folder where the owner may upload can write it (rule R-D2). The caller keeps
+        the right to act on the pending request through rule R-Q3.
         """
         user = self.env.user
         if not self.env.su and not (user._is_internal() and user.has_group(_USER)):
@@ -169,13 +216,11 @@ class WoowDocumentRequest(models.Model):
             'request_deadline': deadline, 'request_note': note or False})
         doc = documents.browse(doc.id)      # without the marker
         with self.env.cr.savepoint():
-            activity = doc.activity_schedule(
-                _ACTIVITY_TYPE, date_deadline=deadline, summary=clean,
-                note=plaintext2html(note) if note else False, user_id=asked.id)
-            # the person asked becomes the owner: from here only that person (and an editor of
-            # the folder) writes the placeholder
+            doc._woow_schedule_request_activity(deadline)
+            # the person asked becomes the owner: from here the person asked (rule R-D2), the
+            # requester (rule R-Q3) and an editor of the folder write the placeholder
             super(WoowDocument, doc.with_context(tracking_disable=True)).write({
-                'owner_id': asked.id, 'request_activity_id': activity.id})
+                'owner_id': asked.id})
         self.env['woow.document.log']._log_event(
             'request_create', channel=doc._woow_log_channel(), document_id=doc.id,
             folder_id=folder.id, company_id=folder.company_id.id, detail={'days': days})
@@ -222,14 +267,20 @@ class WoowDocumentRequest(models.Model):
         with self.env.cr.savepoint():
             checked = policy._validate(name, data)
             activity = self.request_activity_id
+            # the task counts only while it still belongs to this placeholder and its person: its
+            # creator may write it, and a retargeted task must not post on another record
+            pinned = bool(activity) and bool(self.env['mail.activity'].search_count([
+                ('id', '=', activity.id), ('res_model', '=', self._name),
+                ('res_id', '=', self.id), ('user_id', '=', self.request_user_id.id)]))
             super(WoowDocument, self.with_context(tracking_disable=True, **{
                 NO_INDEX_CTX_KEY: True})).write({
                     'document_type': 'binary', 'datas': base64.b64encode(data),
                     'name': checked.name, 'mimetype': checked.mimetype,
                     'request_activity_id': False})
             note = _('The requested file was uploaded.')
-            if activity.exists():
-                activity.action_feedback(feedback=note)
+            if pinned:
+                activity.with_context(**{CTX_REQUEST_DONE: _DONE_SENTINEL})._action_done(
+                    feedback=note)
             else:
                 self.message_post(body=note, subtype_xmlid='mail.mt_note')
             self.env['woow.document.log']._log_event(
@@ -242,9 +293,10 @@ class WoowDocumentRequest(models.Model):
     def action_send_reminder(self):
         """Notify the person asked again (the requester or a folder manager); once per period.
 
-        The time of the last reminder is kept on the activity of the request. Cancelling a request
-        is trashing the placeholder (``action_trash``): core removes the activities of an archived
-        record, so the activity of the request goes with it.
+        The time of the last reminder is kept on the placeholder in a field that only the server
+        writes, after the checks below. A pending request that lost its task (restored from the
+        trash, or the task was removed) gets a new one. Cancelling a request is trashing the
+        placeholder (``action_trash``): core removes the activities of an archived record.
         """
         self.check_access('read')
         self.ensure_one()
@@ -252,9 +304,6 @@ class WoowDocumentRequest(models.Model):
             raise UserError(_('This file is not requested any more.'))
         if self.create_uid != self.env.user and not self.folder_id._woow_has_rank(4):
             raise AccessError(_('Only the requester or a folder manager can send a reminder.'))
-        activity = self.request_activity_id
-        if not activity.exists():
-            raise UserError(_('This request has no open task any more.'))
         asked = self.request_user_id
         if not asked or not asked.partner_id.email:
             raise UserError(_('The person asked cannot be reached by email.'))
@@ -264,14 +313,16 @@ class WoowDocumentRequest(models.Model):
         if not sender:
             raise UserError(_('Set a sender email address before sending a reminder.'))
         now = fields.Datetime.now()
-        last = activity.woow_request_last_reminder
+        last = self.request_last_reminder
         if last and now - last < timedelta(hours=REQUEST_REMINDER_MIN_HOURS):
             raise UserError(_('A reminder was sent recently. Try again later.'))
         base = self.env['woow.document.notify.wizard'].new(
             {'folder_id': self.folder_id.id})._base_url()
         # the limit is stored first: a second reminder that runs at the same time fails here
-        activity.write({'woow_request_last_reminder': now})
+        super(WoowDocument, self.with_context(tracking_disable=True)).write({
+            'request_last_reminder': now})
         self.env.flush_all()
+        self._woow_reopen_request_activity()
         template = self.env.ref(_REMINDER_TEMPLATE)
         template.with_context(
             woow_notice_url='%s/web#id=%d&model=woow.document&view_type=form' % (base, self.id)
@@ -284,4 +335,16 @@ class WoowDocumentRequest(models.Model):
 class MailActivityRequest(models.Model):
     _inherit = 'mail.activity'
 
-    woow_request_last_reminder = fields.Datetime(copy=False)
+    def _action_done(self, feedback=False, attachment_ids=None):
+        """The task of a request is completed by sending the file, not by marking it done.
+
+        Core's "Upload Document" button and "Mark as done" would end the task and leave the
+        placeholder pending (and the first would store a file outside the upload policy).
+        ``_woow_fulfil_request`` is the only caller that passes the in-process marker.
+        """
+        documents = self.env['woow.document']
+        if (not self.env.su and self.env.context.get(CTX_REQUEST_DONE) is not _DONE_SENTINEL
+                and documents.has_access('read')
+                and documents.search_count([('request_activity_id', 'in', self.ids)])):
+            raise UserError(_('Send the requested file with "Upload the file" on the request.'))
+        return super()._action_done(feedback=feedback, attachment_ids=attachment_ids)

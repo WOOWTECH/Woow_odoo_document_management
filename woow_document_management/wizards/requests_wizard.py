@@ -7,7 +7,6 @@ import binascii
 from odoo import _, fields, models
 from odoo.exceptions import AccessError, UserError
 
-from ..models.requests import REQUEST_NOTE_MAX
 from ..models.upload_policy import WoowUploadRejected
 
 
@@ -25,7 +24,8 @@ class WoowDocumentRequestWizard(models.TransientModel):
     days = fields.Integer(string='Days until due', default=7, required=True)
     tag_ids = fields.Many2many('woow.document.tag', 'woow_document_request_wizard_tag_rel',
                                'wizard_id', 'tag_id', string='Tags')
-    note = fields.Char(string='Note', size=REQUEST_NOTE_MAX)
+    # no size: a longer note is refused with a message by the request itself, never cut
+    note = fields.Char(string='Note')
 
     def action_create(self):
         """Create the placeholder and schedule the activity of the person asked."""

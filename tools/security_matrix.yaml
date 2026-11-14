@@ -302,6 +302,13 @@ rules:
   groups: []
   perms: '1111'
   domain: "[(1, '=', 1)] if not user.share else [('document_type', '!=', 'request')]"
+# R-Q3: the requester of a pending request may write the placeholder (the owner is the person asked).
+- id: rule_woow_document_request_creator_write
+  ref: R-Q3
+  model: woow.document
+  groups: [user]
+  perms: '0100'
+  domain: "['&', ('document_type', '=', 'request'), '&', ('create_uid', '=', user.id), '&', ('folder_in_trash', '=', False), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])]"
 # R-Q1, R-Q2: a wizard row is its creator's alone.
 - id: rule_woow_document_request_wizard_owner
   ref: R-Q1
