@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech; License LGPL-3.0 or later. -->
+<odoo>
+    <!-- R-W7: like R-W2..R-W6 (security/rules.xml), a rename wizard row is its creator's alone.
+         Core has no owner rule for transient models, and the rename action runs under the rights
+         of whoever clicks it on the stored row. -->
+    <record id="rule_woow_document_rename_wizard_owner" model="ir.rule">
+        <field name="name">R-W7 rule_woow_document_rename_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_rename_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+</odoo>

@@ -12,7 +12,7 @@
 - **Duplicate.** A button (and a method for lists) that copies files and links into the same
   folder. The copy is named "<name> (copy).<extension>" (the suffix is translated; links get the
   suffix at the end), is owned by the caller and keeps the tags and description. Shares, lock, legal
-  hold, chatter and contact are not copied. At most 20 documents per call.
+  hold, chatter and contact are not copied. At most 20 documents per call (fewer when the "files per upload" setting is lower).
 - **Rename.** A small wizard for one document or one folder (button on both forms). It only
   performs a normal `write` as the user, so the existing rules apply (file name policy, folder
   name uniqueness, edit level, locks).
@@ -26,15 +26,17 @@
 - `woow.document.rename.wizard` (transient): `document_id`, `folder_id`, `name`. ACL: document users
   and administrators, no portal access. Declared server-field free (`_woow_own_default_fields`
   is empty); it inherits `woow.document.server.fields.mixin` like the other models.
-- No new persistent model, no new record rule, no new route, no cron, no sudo, no raw SQL.
+- One new record rule, R-W7 (`security/docactions_rules.xml`): a rename wizard row is its creator's
+  alone (`create_uid = user.id`, document users, all four operations), like R-W2..R-W6 of the
+  other wizards. No new persistent model, no new route, no cron, no sudo, no raw SQL.
 
 ## Public methods (all in `tools/public_methods.txt`)
 
 | Method | First check |
 |---|---|
 | `woow.document::action_lock` | `check_access('write')`, then per document: unavailable (trashed) and held-by-other refusals |
-| `woow.document::action_unlock` | `check_access('read')`, then holder / folder manage / administrator per document |
-| `woow.document::action_duplicate` | `check_access('read')`, internal users only, folder upload rank per source |
+| `woow.document::action_unlock` | `check_access('read')`, then holder / folder manage / administrator per document, then write access to it |
+| `woow.document::action_duplicate` | `check_access('read')`, internal users only, call size (20 and the files-per-upload setting), folder upload rank per source |
 | `woow.document::action_open_rename_wizard` | `check_access('write')` |
 | `woow.document.folder::action_open_rename_wizard` | edit rank on the folder |
 | `woow.document.rename.wizard::action_rename` | `check_access('write')`, the target is searched under the caller's rules |
@@ -83,8 +85,13 @@ therefore in the first file, and the overrides that must be asked before the tra
   existing documents are unlocked.
 - A user who is archived or whose rights changed can leave a lock behind. A manager of the folder or
   a document administrator releases it with Unlock. Deleting a user clears the locks he held.
-- A holder who lost write access to the document cannot unlock it himself (the ORM write is refused);
-  a folder manager or an administrator can.
+- A holder who lost write access to the document cannot unlock it himself, and a folder manager
+  cannot unlock a document inside a trashed folder: the release is an ordinary write with no
+  elevation, so both get a short refusal ("This lock cannot be released from your account now. Ask a
+  document administrator."). A document administrator can release it; a folder manager can once
+  the folder is restored or the holder's access is back.
 - The limits (20 documents per duplicate call, 200 per lock or unlock call) are constants in
-  `models/docactions.py`.
+  `models/docactions.py`. A duplicate call is also held to the "files per upload" setting (1 to 20,
+  default 10), whichever is smaller; the total size of the copies is bounded by the quota and the
+  upload policy, as for every file.
 - Translations of the new strings are in `dev/i18n/docactions.zh_TW.po`; the integrator merges them.

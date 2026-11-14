@@ -124,6 +124,12 @@ class WoowDocumentLock(models.Model):
             holder = doc.lock_uid.id == uid
             if not (holder or administrator or doc.folder_id._woow_has_rank(4)):
                 raise AccessError(_('You cannot unlock this document.'))
+            if not doc.has_access('write'):
+                # The release is an ordinary write of the two lock columns (no elevation), so a
+                # holder who lost write access, or a folder manager facing a trashed folder, gets
+                # a clear answer here instead of the generic one from the ORM.
+                raise UserError(_('This lock cannot be released from your account now. '
+                                  'Ask a document administrator.'))
         for doc in self.with_context(active_test=False):
             if not doc.lock_uid:
                 continue
@@ -144,9 +150,15 @@ class WoowDocumentLock(models.Model):
             raise AccessError(_('You cannot duplicate documents.'))
         if not self:
             raise UserError(_('Select at least one document.'))
-        if len(self) > DUPLICATE_MAX_PER_CALL:
+        # The administrator's "files per upload" setting bounds a duplicate call as well: a copy is
+        # one `create` per document, so the cap of `create` would never see more than one file.
+        limit = DUPLICATE_MAX_PER_CALL
+        if not self.env.su:
+            limit = min(limit, self.env['woow.document.settings']._get_settings()
+                        .max_files_per_upload)
+        if len(self) > limit:
             raise UserError(_('Select at most %(count)s documents to duplicate at once.',
-                              count=DUPLICATE_MAX_PER_CALL))
+                              count=limit))
         for doc in self:
             if not doc.active or doc.folder_in_trash:
                 raise AccessError(_('This document is unavailable.'))

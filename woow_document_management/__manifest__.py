@@ -35,6 +35,7 @@
         'views/portal_templates.xml',
         'views/backend/docactions_views.xml',
         'views/wizards/docactions_wizard_views.xml',
+        'security/docactions_rules.xml',
         'views/menus.xml',
     ],
     'assets': {

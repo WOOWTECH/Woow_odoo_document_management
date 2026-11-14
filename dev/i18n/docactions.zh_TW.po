@@ -53,6 +53,9 @@ msgstr "這份文件已被其他使用者鎖定。"
 msgid "This document is locked by another user. Its details cannot be changed until it is unlocked."
 msgstr "這份文件已被其他使用者鎖定，解除鎖定前無法變更內容。"
 
+msgid "This lock cannot be released from your account now. Ask a document administrator."
+msgstr "目前無法以您的帳號解除這個鎖定，請洽文件管理員。"
+
 msgid "Select fewer documents."
 msgstr "請選擇較少的文件。"
 

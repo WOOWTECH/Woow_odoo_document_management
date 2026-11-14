@@ -57,7 +57,7 @@
     "test_upload_policy.py": 32,
     "test_url_policy.py": 4,
     "test_zip_builder.py": 5,
-    "test_docactions.py": 67
+    "test_docactions.py": 72
   },
   "required_ca_methods": {
     "01": "test_ca01_attachment_check_rejects_portal",
