@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright 2026 WoowTech; License LGPL-3.0 or later. -->
 <odoo>
-    <!-- R-S1: share (portal / public) users never see a shortcut. Global rule, in the style of R-M0:
+    <!-- R-SC1: share (portal / public) users never see a shortcut. Global rule, in the style of R-M0:
          internal users are not restricted by it; it is combined with the rules above. -->
     <record id="rule_woow_document_shortcut_share_users" model="ir.rule">
-        <field name="name">R-S1 rule_woow_document_shortcut_share_users</field>
+        <field name="name">R-SC1 rule_woow_document_shortcut_share_users</field>
         <field name="model_id" ref="model_woow_document" />
         <field name="domain_force">[(1, '=', 1)] if not user.share else [('document_type', '!=', 'shortcut')]</field>
         <field name="perm_read" eval="True" />
@@ -12,9 +12,9 @@
         <field name="perm_create" eval="True" />
         <field name="perm_unlink" eval="True" />
     </record>
-    <!-- R-W7: a wizard row belongs to the user who created it (as R-W2..R-W6). -->
+    <!-- R-W9: a wizard row belongs to the user who created it (as R-W2..R-W6). -->
     <record id="rule_woow_document_shortcut_wizard_owner" model="ir.rule">
-        <field name="name">R-W7 rule_woow_document_shortcut_wizard_owner</field>
+        <field name="name">R-W9 rule_woow_document_shortcut_wizard_owner</field>
         <field name="model_id" ref="model_woow_document_shortcut_wizard" />
         <field name="domain_force">[('create_uid', '=', user.id)]</field>
         <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />

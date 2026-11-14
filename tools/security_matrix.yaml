@@ -212,15 +212,15 @@ rules:
   groups: [user]
   perms: '1111'
   domain: "[('create_uid', '=', user.id)]"
-# R-V0, R-V1: a favourite is its user's alone. R-W7, R-W8: an upload wizard and its files are their creator's alone.
+# R-FV0, R-FV1: a favourite is its user's alone. R-W7, R-W8: an upload wizard and its files are their creator's alone.
 - id: rule_woow_document_favorite_company
-  ref: R-V0
+  ref: R-FV0
   model: woow.document.favorite
   groups: []
   perms: '1111'
   domain: "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]"
 - id: rule_woow_document_favorite_owner
-  ref: R-V1
+  ref: R-FV1
   model: woow.document.favorite
   groups: [user]
   perms: '1111'
@@ -284,13 +284,13 @@ rules:
   perms: '1111'
   domain: "[('create_uid', '=', user.id)]"
 - id: rule_woow_document_shortcut_share_users
-  ref: R-S1
+  ref: R-SC1
   model: woow.document
   groups: []
   perms: '1111'
   domain: "[(1, '=', 1)] if not user.share else [('document_type', '!=', 'shortcut')]"
 - id: rule_woow_document_shortcut_wizard_owner
-  ref: R-W7
+  ref: R-W9
   model: woow.document.shortcut.wizard
   groups: [user]
   perms: '1111'
@@ -404,9 +404,9 @@ rules:
   groups: [user]
   perms: '1111'
   domain: "[('create_uid', '=', user.id)]"
-# R-W7 (docactions lane): the rename wizard row is its creator's alone, like R-W2..R-W6.
+# R-W10 (docactions lane): the rename wizard row is its creator's alone, like R-W2..R-W6.
 - id: rule_woow_document_rename_wizard_owner
-  ref: R-W7
+  ref: R-W10
   model: woow.document.rename.wizard
   groups: [user]
   perms: '1111'

@@ -61,8 +61,8 @@ A document user can put a pointer to a file or a link into another folder withou
   order string is covered), grouping, aggregating or exporting by the target is refused for everyone who is
   not a document administrator (an administrator reads every document anyway), so a search cannot be used
   to guess which document a shortcut points to.
-- Record rule `R-S1` (global, `security/shortcuts_rules.xml`): share users get `document_type != 'shortcut'`.
-  `R-W7`: a shortcut wizard row belongs to its creator.
+- Record rule `R-SC1` (global, `security/shortcuts_rules.xml`): share users get `document_type != 'shortcut'`.
+  `R-W9`: a shortcut wizard row belongs to its creator.
 - Every content path already answers "no file" for a document that is not of type `binary`
   (`_document`, `serve`, `_record_to_stream`, the ZIP loop, the quota that sums attachments); the tests
   pin this for shortcuts. The audit event of a created shortcut is `upload` with detail

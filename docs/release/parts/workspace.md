@@ -39,7 +39,7 @@
 
 ## Security notes
 
-- Rules: R-V0 (company), R-V1 (a favourite is its user's alone, every operation), R-W7 and R-W8 (the
+- Rules: R-FV0 (company), R-FV1 (a favourite is its user's alone, every operation), R-W7 and R-W8 (the
   upload wizard and its lines are their creator's alone). ACL: favourites read/create/delete for document
   users (no write: a star is made or removed, never edited); no ACL for portal or public users. Portal
   users cannot even search by `is_favorite`, `woow_section` or `favorite_ids` (field groups).

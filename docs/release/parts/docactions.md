@@ -26,7 +26,7 @@
 - `woow.document.rename.wizard` (transient): `document_id`, `folder_id`, `name`. ACL: document users
   and administrators, no portal access. Declared server-field free (`_woow_own_default_fields`
   is empty); it inherits `woow.document.server.fields.mixin` like the other models.
-- One new record rule, R-W7 (`security/docactions_rules.xml`): a rename wizard row is its creator's
+- One new record rule, R-W10 (`security/docactions_rules.xml`): a rename wizard row is its creator's
   alone (`create_uid = user.id`, document users, all four operations), like R-W2..R-W6 of the
   other wizards. No new persistent model, no new route, no cron, no sudo, no raw SQL.
 
