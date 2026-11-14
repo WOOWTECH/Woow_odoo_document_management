@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+    <!-- R-Q0: share (portal / public) users never see a placeholder of a requested file;
+         internal users are unaffected. Global rule, in the style of R-M0. -->
+    <record id="rule_woow_document_request_share_users" model="ir.rule">
+        <field name="name">R-Q0 rule_woow_document_request_share_users</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">[(1, '=', 1)] if not user.share else [('document_type', '!=', 'request')]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <!-- R-Q1, R-Q2: a wizard row belongs to the user who created it (as R-W2..R-W6). -->
+    <record id="rule_woow_document_request_wizard_owner" model="ir.rule">
+        <field name="name">R-Q1 rule_woow_document_request_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_request_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_request_fulfil_wizard_owner" model="ir.rule">
+        <field name="name">R-Q2 rule_woow_document_request_fulfil_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_request_fulfil_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+</odoo>

@@ -28,6 +28,10 @@ woow.document.add.attachment.wizard::action_add
 ir.attachment::action_woow_open_source
 ir.attachment::action_woow_download
 woow.document.notify.wizard::action_send
+woow.document::action_open_fulfil_wizard
+woow.document::action_send_reminder
+woow.document.request.wizard::action_create
+woow.document.request.fulfil.wizard::action_fulfil
 
 [override]
 *::create

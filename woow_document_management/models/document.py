@@ -36,7 +36,10 @@ class WoowDocument(models.Model):
         # computed from the file and the folder, and the chatter of the record
         'attachment_id', 'checksum', 'file_size', 'company_id', 'folder_in_trash',
         'woow_user_can_write', 'source_display', 'activity_ids',
-        'message_follower_ids', 'message_ids', 'website_message_ids'})
+        'message_follower_ids', 'message_ids', 'website_message_ids',
+        # release 18.0.2: requested files (models/requests.py)
+        'request_user_id', 'request_deadline', 'request_note', 'request_activity_id',
+        'request_last_reminder'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,
