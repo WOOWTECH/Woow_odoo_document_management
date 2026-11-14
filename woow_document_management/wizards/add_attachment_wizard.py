@@ -13,10 +13,16 @@ from ..models.upload_policy import WoowUploadRejected
 
 class WoowDocumentAddAttachmentWizard(models.TransientModel):
     _name = 'woow.document.add.attachment.wizard'
+    _inherit = ['woow.document.wizard.refs.mixin']
     _description = 'Add attachments to a folder'
 
     attachment_ids = fields.Many2many('ir.attachment')
     folder_id = fields.Many2one('woow.document.folder', required=True)
+
+    def _woow_visible_refs(self):
+        return {
+            'folder_id': ('woow.document.folder', _('The target folder is unavailable.')),
+        }
 
     def action_add(self):
         """Import only the exact active selection after native attachment checks."""

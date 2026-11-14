@@ -684,6 +684,11 @@ class TestRename(DocActionsCase):
             with self.subTest(user=user.login):
                 with self.assertRaises(AccessError):
                     self._as(user).action_open_rename_wizard()
+                if user == self.nobody:
+                    # the document is hidden from this user: the wizard row is refused at once
+                    with self.assertRaises(AccessError):
+                        self._wizard(user, document_id=self.doc.id, name='hijack.txt')
+                    continue
                 wizard = self._wizard(user, document_id=self.doc.id, name='hijack.txt')
                 with self.assertRaises(AccessError):
                     wizard.action_rename()

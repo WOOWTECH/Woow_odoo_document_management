@@ -12,12 +12,18 @@ from ..services.constants import MAIL_PER_USER_PER_HOUR
 
 class WoowDocumentNotifyWizard(models.TransientModel):
     _name = 'woow.document.notify.wizard'
+    _inherit = ['woow.document.wizard.refs.mixin']
     _description = 'Notify folder members'
 
     folder_id = fields.Many2one('woow.document.folder', required=True, readonly=True)
     all_members = fields.Boolean(default=True)
     recipient_ids = fields.Many2many('res.partner', string='Selected members')
     note = fields.Text()
+
+    def _woow_visible_refs(self):
+        return {
+            'folder_id': ('woow.document.folder', _('Folder unavailable.')),
+        }
 
     def _member_recipients(self):
         folder = self.folder_id

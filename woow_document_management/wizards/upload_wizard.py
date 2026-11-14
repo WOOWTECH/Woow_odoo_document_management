@@ -23,7 +23,7 @@ WIZARDS_PER_USER = 5
 
 class WoowDocumentUploadWizard(models.TransientModel):
     _name = 'woow.document.upload.wizard'
-    _inherit = ['woow.document.server.fields.mixin']
+    _inherit = ['woow.document.wizard.refs.mixin', 'woow.document.server.fields.mixin']
     _description = 'Upload documents'
     _woow_own_default_fields = frozenset()      # every field is filled in by the user in the form
 
@@ -31,6 +31,12 @@ class WoowDocumentUploadWizard(models.TransientModel):
     tag_ids = fields.Many2many('woow.document.tag', 'woow_document_upload_wizard_tag_rel',
                                'wizard_id', 'tag_id')
     line_ids = fields.One2many('woow.document.upload.wizard.line', 'wizard_id', string='Files')
+
+    def _woow_visible_refs(self):
+        return {
+            'folder_id': ('woow.document.folder', _('The target folder is unavailable.')),
+            'tag_ids': ('woow.document.tag', _('One or more selected tags are unavailable.')),
+        }
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -124,7 +130,7 @@ class WoowDocumentUploadWizard(models.TransientModel):
 
 class WoowDocumentUploadWizardLine(models.TransientModel):
     _name = 'woow.document.upload.wizard.line'
-    _inherit = ['woow.document.server.fields.mixin']
+    _inherit = ['woow.document.wizard.refs.mixin', 'woow.document.server.fields.mixin']
     _description = 'File of an upload'
     _woow_own_default_fields = frozenset({'file_size'})
 
@@ -135,6 +141,11 @@ class WoowDocumentUploadWizardLine(models.TransientModel):
     datas = fields.Binary(attachment=False)
     # Set by the server from ``datas``: the sum of it is what a user keeps waiting.
     file_size = fields.Integer(readonly=True)
+
+    def _woow_visible_refs(self):
+        return {
+            'wizard_id': ('woow.document.upload.wizard', _('The upload is unavailable.')),
+        }
 
     @api.model_create_multi
     def create(self, vals_list):

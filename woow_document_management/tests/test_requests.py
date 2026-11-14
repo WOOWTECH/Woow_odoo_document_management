@@ -349,6 +349,23 @@ class TestRequestFulfil(RequestsCase):
         self.assertTrue(self._fulfil(self.requester))
         self._assert_fulfilled()
 
+    def test_everyone_who_may_answer_fulfils_it_on_a_cold_cache(self):
+        # a real RPC call starts with an empty cache: the task of the person asked is read by the
+        # requester through the right to write the placeholder, so it is completed before the
+        # placeholder becomes a file (a warm cache hid this once)
+        for user in (self.requester, self.editor, self.asked):
+            with self.subTest(user=user.login):
+                doc = self._ask(name='Cold %s' % user.login)
+                activity = doc.sudo().request_activity_id
+                self.assertTrue(activity)
+                self._cold()
+                self.assertTrue(doc.with_user(user)._woow_fulfil_request('cold.txt', _TEXT))
+                self._cold()
+                self.assertEqual(doc.sudo().document_type, 'binary')
+                self.assertFalse(doc.sudo().request_activity_id)
+                self.assertFalse(activity.exists())
+                self.assertEqual(self._events(doc, 'request_done').user_id, user)
+
     def test_a_document_administrator_fulfils_it(self):
         self.assertTrue(self._fulfil(self.admin))
         self._assert_fulfilled()
@@ -419,7 +436,11 @@ class TestRequestFulfil(RequestsCase):
         self._assert_fulfilled()
 
     def test_the_wizard_checks_the_live_rights_of_its_user(self):
-        wizard = self.env['woow.document.request.fulfil.wizard'].with_user(self.stranger).create({
+        # someone who cannot even see the request gets the answer of a missing one, at once
+        with self.assertRaises(AccessError):
+            self.env['woow.document.request.fulfil.wizard'].with_user(self.stranger).create({
+                'document_id': self.doc.id, 'file': base64.b64encode(_TEXT), 'filename': 'a.txt'})
+        wizard = self.env['woow.document.request.fulfil.wizard'].with_user(self.reader).create({
             'document_id': self.doc.id, 'file': base64.b64encode(_TEXT), 'filename': 'a.txt'})
         with self.assertRaises(AccessError):
             wizard.action_fulfil()

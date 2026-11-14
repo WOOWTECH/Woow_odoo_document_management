@@ -9,7 +9,7 @@ from ..models.shortcuts import SHORTCUT_CTX_KEY, _SHORTCUT_SENTINEL, TARGET_TYPE
 
 class WoowDocumentShortcutWizard(models.TransientModel):
     _name = 'woow.document.shortcut.wizard'
-    _inherit = ['woow.document.server.fields.mixin']
+    _inherit = ['woow.document.wizard.refs.mixin', 'woow.document.server.fields.mixin']
     _description = 'Create a shortcut'
     _woow_own_default_fields = frozenset()      # both fields are filled in by the user
 
@@ -18,33 +18,13 @@ class WoowDocumentShortcutWizard(models.TransientModel):
     folder_id = fields.Many2one('woow.document.folder', string='Destination folder',
                                 required=True)
 
-    def _woow_check_visible(self, vals):
-        """A document or a folder that is named here must be one that the caller can find.
-
-        The database would answer a missing id with a constraint error and a hidden one with a new
-        row, which tells the caller which ids exist. The caller's own search (record rules apply)
-        gives the same refusal for both.
-        """
-        if self.env.su:
-            return
-        for name, model, message in (
-                ('document_id', 'woow.document', _('The document is unavailable.')),
-                ('folder_id', 'woow.document.folder', _('The target folder is unavailable.'))):
-            value = vals.get(name)
-            if isinstance(value, int) and not isinstance(value, bool) and not self.env[model].with_context(
-                    active_test=False).search([('id', '=', value)], limit=1):
-                raise AccessError(message)
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        defaults = self.default_get(['document_id', 'folder_id'])
-        for vals in vals_list:
-            self._woow_check_visible({**defaults, **vals})
-        return super().create(vals_list)
-
-    def write(self, vals):
-        self._woow_check_visible(vals)
-        return super().write(vals)
+    def _woow_visible_refs(self):
+        # the shared check of ``woow.document.wizard.refs.mixin``: a document or a folder that is
+        # named here must be one that the caller can find, with one answer for a missing id
+        return {
+            'document_id': ('woow.document', _('The document is unavailable.')),
+            'folder_id': ('woow.document.folder', _('The target folder is unavailable.')),
+        }
 
     def action_create(self):
         """Create the shortcut for the caller; the rights are judged again, at this moment."""
