@@ -1,0 +1,189 @@
+# Traditional Chinese terms of the workspace lane (release 18.0.2.0.0).
+# Plain PO: msgid is the English source exactly as it appears in the code or the views.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_TW\n"
+
+msgid "Too many documents at once."
+msgstr "一次選取的文件太多。"
+
+msgid "This field is set by the server."
+msgstr "此欄位由伺服器設定。"
+
+msgid "You can only star documents for yourself."
+msgstr "您只能為自己的帳號加上星號。"
+
+msgid "This document is unavailable."
+msgstr "此文件無法使用。"
+
+msgid "This document is already a favourite."
+msgstr "此文件已在我的最愛中。"
+
+msgid "Favourites cannot be edited."
+msgstr "我的最愛不能編輯。"
+
+msgid "Document favourite"
+msgstr "文件我的最愛"
+
+msgid "Starred"
+msgstr "已加星號"
+
+msgid "Whether you marked this document with a star. Stars are private to each user."
+msgstr "您是否已為此文件加上星號。星號只屬於各自的使用者。"
+
+msgid "Section"
+msgstr "分類"
+
+msgid "Sections"
+msgstr "分類"
+
+msgid "A quick filter of the workspace; it is only used to search."
+msgstr "工作區的快速篩選，只用於搜尋。"
+
+msgid "My files"
+msgstr "我的檔案"
+
+msgid "Shared with me"
+msgstr "與我共用"
+
+msgid "Recent"
+msgstr "最近"
+
+msgid "Icon"
+msgstr "圖示"
+
+msgid "This filter cannot be combined that way."
+msgstr "此篩選不能這樣組合。"
+
+msgid "You cannot upload documents."
+msgstr "您不能上傳文件。"
+
+msgid "Add at least one file."
+msgstr "請至少加入一個檔案。"
+
+msgid "Invalid number of files."
+msgstr "檔案數量無效。"
+
+msgid "The target folder is unavailable."
+msgstr "目標資料夾無法使用。"
+
+msgid "One or more selected tags are unavailable."
+msgstr "所選標籤中有無法使用的項目。"
+
+msgid "(unnamed file)"
+msgstr "（未命名的檔案）"
+
+msgid "The file has no name or no content."
+msgstr "檔案沒有名稱或沒有內容。"
+
+msgid "%(added)s added."
+msgstr "已加入 %(added)s 個。"
+
+msgid "%(added)s added; %(refused)s refused. %(names)s"
+msgstr "已加入 %(added)s 個；拒絕 %(refused)s 個。%(names)s"
+
+msgid "Upload finished"
+msgstr "上傳完成"
+
+msgid "; and %(count)s more"
+msgstr "；另有 %(count)s 個"
+
+msgid "No files were uploaded: %(reasons)s"
+msgstr "沒有上傳任何檔案：%(reasons)s"
+
+msgid "Upload documents"
+msgstr "上傳文件"
+
+msgid "File of an upload"
+msgstr "上傳的檔案"
+
+msgid "Files"
+msgstr "檔案"
+
+msgid "Documents"
+msgstr "文件"
+
+msgid "Upload"
+msgstr "上傳"
+
+msgid "Upload files"
+msgstr "上傳檔案"
+
+msgid "New link"
+msgstr "新增連結"
+
+msgid "New folder"
+msgstr "新增資料夾"
+
+msgid "Trash"
+msgstr "回收桶"
+
+msgid "Star"
+msgstr "加星號"
+
+msgid "Remove star"
+msgstr "取消星號"
+
+msgid "Star or remove the star"
+msgstr "加上或取消星號"
+
+msgid "Remove the star"
+msgstr "取消星號"
+
+msgid "Contact"
+msgstr "聯絡人"
+
+msgid "Last change"
+msgstr "最後變更"
+
+msgid "Source"
+msgstr "來源"
+
+msgid "Name"
+msgstr "名稱"
+
+msgid "File"
+msgstr "檔案"
+
+msgid "File name"
+msgstr "檔案名稱"
+
+msgid "Links"
+msgstr "連結"
+
+msgid "My uploads"
+msgstr "我上傳的"
+
+msgid "With activities"
+msgstr "有活動"
+
+msgid "Group by"
+msgstr "分組依據"
+
+msgid "Folder"
+msgstr "資料夾"
+
+msgid "Folders"
+msgstr "資料夾"
+
+msgid "Owner"
+msgstr "擁有者"
+
+msgid "Type"
+msgstr "類型"
+
+msgid "Month"
+msgstr "月份"
+
+msgid "Tags"
+msgstr "標籤"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Add your first document"
+msgstr "加入您的第一份文件"
+
+msgid "Use Upload to add files to a folder, or New link to keep the address of a web page."
+msgstr "用「上傳」把檔案加到資料夾，或用「新增連結」保存網頁的位址。"
