@@ -2,7 +2,7 @@
 // License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 /** @odoo-module **/
 
-import { describe, expect, test } from "@odoo/hoot";
+import { after, describe, expect, test } from "@odoo/hoot";
 import { click, dblclick, keyDown, keyUp, press, queryAll, queryAllTexts, queryOne } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
 import { Component, xml } from "@odoo/owl";
@@ -334,33 +334,76 @@ test("the star entry stars one document after the other", async () => {
     expect.verifySteps(["toggle [1]", "toggle [3]"]);
 });
 
-test("Download goes to the download route for one file and to the ZIP route for several", async () => {
-    const urls = [];
+// Answers the download routes: ``failing`` ids get a 404, the others a small attachment.
+function patchDownloads(failing = []) {
+    const asked = [];
+    const saved = [];
+    const original = browser.fetch;
+    patchWithCleanup(browser, {
+        fetch: async (url, options) => {
+            if (!String(url).startsWith("/woow_document/")) {
+                return original(url, options);
+            }
+            asked.push(url);
+            if (failing.some((id) => String(url).includes(id))) {
+                return new Response("not found", { status: 404 });
+            }
+            return new Response("bytes", {
+                status: 200,
+                headers: { "Content-Disposition": 'attachment; filename="photo.png"' },
+            });
+        },
+    });
     const onClick = (ev) => {
         const link = ev.target.closest && ev.target.closest("a[href]");
         if (link) {
             ev.preventDefault();
-            urls.push(link.getAttribute("href"));
+            saved.push(link.getAttribute("download"));
         }
     };
     document.addEventListener("click", onClick, true);
-    try {
-        await mountKanban();
-        await click(cardOf("photo.png"));
-        await animationFrame();
-        await click(".o_woow_download");
-        await keyDown("ctrl");
-        await click(cardOf("contract.pdf"));
-        await keyUp("ctrl");
-        await animationFrame();
-        await click(".o_woow_download");
-    } finally {
-        document.removeEventListener("click", onClick, true);
-    }
-    expect(urls).toEqual([
+    after(() => document.removeEventListener("click", onClick, true));
+    return { asked, saved };
+}
+
+test("Download goes to the download route for one file and to the ZIP route for several", async () => {
+    const { asked, saved } = patchDownloads();
+    await mountKanban();
+    await click(cardOf("photo.png"));
+    await animationFrame();
+    await click(".o_woow_download");
+    await animationFrame();
+    await keyDown("ctrl");
+    await click(cardOf("contract.pdf"));
+    await keyUp("ctrl");
+    await animationFrame();
+    await click(".o_woow_download");
+    await animationFrame();
+    expect(asked).toEqual([
         "/woow_document/doc/1/download",
         "/woow_document/zip?document_ids=1%2C2",
     ]);
+    expect(saved).toEqual(["photo.png", "photo.png"]);
+});
+
+test("a refused download shows a notification and leaves the screen in place", async () => {
+    mockService("notification", {
+        add(message, options) {
+            expect.step(`${options.type}: ${message}`);
+        },
+    });
+    const { asked, saved } = patchDownloads(["/doc/1/"]);
+    await mountKanban();
+    await click(cardOf("photo.png"));
+    await animationFrame();
+    await click(".o_woow_download");
+    await animationFrame();
+    expect(asked).toEqual(["/woow_document/doc/1/download"]);
+    expect(saved).toEqual([]);
+    expect.verifySteps([
+        "danger: The download failed. The file may have been moved or removed, or you may no longer have access to it.",
+    ]);
+    expect(".o_kanban_view").toHaveCount(1);
 });
 
 test("Share calls the share dialog of the server for one document", async () => {

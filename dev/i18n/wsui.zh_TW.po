@@ -150,3 +150,6 @@ msgstr "匯出"
 
 msgid "More folders are in the left panel."
 msgstr "更多資料夾請從左側面板選取。"
+
+msgid "The download failed. The file may have been moved or removed, or you may no longer have access to it."
+msgstr "下載失敗。檔案可能已被移動或刪除，或您已不再有存取權限。"

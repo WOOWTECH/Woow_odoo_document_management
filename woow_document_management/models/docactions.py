@@ -112,7 +112,7 @@ class WoowDocumentLock(models.Model):
         return True
 
     def action_unlock(self):
-        """Release the lock: its holder, the owner, a manager of the folder or a document administrator."""
+        """Release the lock: its holder, a manager of the folder or a document administrator."""
         self.with_context(active_test=False).check_access('read')
         if len(self) > LOCK_MAX_PER_CALL:
             raise UserError(_('Select fewer documents.'))
@@ -122,8 +122,7 @@ class WoowDocumentLock(models.Model):
             if not doc.lock_uid:
                 continue
             holder = doc.lock_uid.id == uid
-            if not (holder or administrator or doc.owner_id.id == uid
-                    or doc.folder_id._woow_has_rank(4)):
+            if not (holder or administrator or doc.folder_id._woow_has_rank(4)):
                 raise AccessError(_('You cannot unlock this document.'))
             if not doc.has_access('write'):
                 # The release is an ordinary write of the two lock columns (no elevation), so a

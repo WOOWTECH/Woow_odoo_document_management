@@ -1151,6 +1151,27 @@ class TestTestFilesAreRegistered(unittest.TestCase):
                 self.assertIn(name, floors)
 
 
+class TestViewImagesHaveAlt(unittest.TestCase):
+    """Odoo logs a view warning for an ``img`` with an empty ``alt`` on every install/upgrade."""
+
+    def test_no_template_has_an_img_with_an_empty_alt(self):
+        bad = []
+        for base in (os.path.join(REPO, 'woow_document_management', 'views'),
+                     os.path.join(REPO, 'woow_document_management', 'static', 'src')):
+            for root, _dirs, files in os.walk(base):
+                for name in files:
+                    if not name.endswith('.xml'):
+                        continue
+                    path = os.path.join(root, name)
+                    with open(path, encoding='utf-8') as handle:
+                        text = handle.read()
+                    for tag in re.findall(r'<img\b[^>]*>', text, re.S):
+                        if re.search(r'\balt\s*=\s*(""|\'\')', tag) or not re.search(
+                                r'(\bt-att-alt|\bt-attf-alt|\balt)\s*=', tag):
+                            bad.append('%s: %s' % (os.path.relpath(path, REPO), tag[:80]))
+        self.assertEqual(bad, [])
+
+
 class TestYamlSubset(unittest.TestCase):
 
     SAMPLE = (

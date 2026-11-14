@@ -46,7 +46,7 @@
       <xpath expr="//t[@t-name='card']" position="replace">
         <t t-name="card" class="woow-card flex-column p-0">
           <div class="woow-card-preview">
-            <img t-if="woo.pictureUrl" t-att-src="woo.pictureUrl" loading="lazy" alt="" draggable="false"/>
+            <img t-if="woo.pictureUrl" t-att-src="woo.pictureUrl" loading="lazy" t-att-alt="record.name.value" draggable="false"/>
             <i t-else="" t-attf-class="fa #{woo.icon} woow-kind-icon"/>
           </div>
           <div class="woow-card-body">

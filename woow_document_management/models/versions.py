@@ -86,8 +86,20 @@ class WoowDocumentVersion(models.Model):
             raise AccessError(_('Versions are removed by the server.'))
         return super().unlink()
 
-    def _woow_drop(self):
-        """Remove the versions of ``self`` (the caller has judged the rights) and log each one."""
+    def _woow_server_scope(self):
+        """``self`` as the server sees it: the one elevation of this file (see S6 in the checks).
+
+        Used only to drop the oldest version when a replacement reaches the limit: the person who
+        replaces the content may not remove history, but the replacement they are allowed to make
+        drops it. The callers refuse a document under legal hold before they use it.
+        """
+        return self.sudo()  # sudo-ok: S6
+
+    def _woow_drop(self, elevated=False):
+        """Remove the versions of ``self`` (the caller has judged the rights) and log each one.
+
+        ``elevated`` is for the removal of the oldest version by a permitted replacement.
+        """
         log = self.env['woow.document.log']
         for version in self:
             document = version.document_id
@@ -95,7 +107,7 @@ class WoowDocumentVersion(models.Model):
                 'version_delete', channel=document._woow_log_channel(),
                 document_id=document.id, folder_id=document.folder_id.id,
                 company_id=document.company_id.id, detail={'number': version.number})
-        _swap(self).unlink()
+        _swap(self._woow_server_scope() if elevated else self).unlink()
 
     def action_download(self):
         """Download this version through its own route (the route checks the access again)."""
@@ -271,12 +283,19 @@ class WoowDocumentVersions(models.Model):
         kept = versions.search([('document_id', '=', self.id)], order='number, id')
         droppable = kept - keep if keep else kept
         surplus = droppable[:max(0, len(kept) + 1 - MAX_VERSIONS_PER_DOCUMENT)]
+        elevated = False
         if surplus and not surplus.has_access('unlink'):
             # Only a document administrator may read the hold, so only one is told about it.
             if self.env.su or self.env.user.has_group(_MANAGER):
                 raise UserError(_('This document is under legal hold, so none of its versions '
                                   'can be removed. It has reached the limit of versions.'))
-            raise UserError(_('This document cannot take another version.'))
+            # Whoever may replace the content may let the replacement drop the oldest version,
+            # also when they have no right to remove history themselves (an editor by share);
+            # a document under legal hold never loses one.
+            held = any(surplus._woow_server_scope().document_id.mapped('legal_hold'))
+            if held or not self.has_access('write'):
+                raise UserError(_('This document cannot take another version.'))
+            elevated = True
         current = self.datas
         if not current:
             raise UserError(_('This file has no content to keep as a version.'))
@@ -293,7 +312,7 @@ class WoowDocumentVersions(models.Model):
                 'version_last_number': number})
             _swap(versions).create(earlier)
             if surplus:
-                surplus._woow_drop()
+                surplus._woow_drop(elevated=elevated)
             if log:
                 self.env['woow.document.log']._log_event(
                     event, channel=self._woow_log_channel(), document_id=self.id,
