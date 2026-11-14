@@ -28,6 +28,8 @@ woow.document.add.attachment.wizard::action_add
 ir.attachment::action_woow_open_source
 ir.attachment::action_woow_download
 woow.document.notify.wizard::action_send
+woow.document::action_toggle_favorite
+woow.document.upload.wizard::action_upload
 
 [override]
 *::create
@@ -50,3 +52,4 @@ res.config.settings::default_get
 woow.document.*.wizard::default_get
 ir.attachment::generate_access_token
 ir.attachment::validate_access
+woow.document::search_panel_select_range

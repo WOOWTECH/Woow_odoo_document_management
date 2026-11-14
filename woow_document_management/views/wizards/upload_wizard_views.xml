@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_upload_wizard" model="ir.ui.view">
+    <field name="name">woow.document.upload.wizard.form</field>
+    <field name="model">woow.document.upload.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Upload files">
+        <group>
+          <field name="folder_id" options="{'no_create': True, 'no_open': True}"/>
+          <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color', 'no_create': True}"/>
+        </group>
+        <field name="line_ids" nolabel="1">
+          <list editable="bottom" string="Files">
+            <field name="datas" filename="name" string="File"/>
+            <field name="name" string="File name"/>
+          </list>
+        </field>
+        <footer>
+          <button name="action_upload" type="object" string="Upload" class="btn-primary" data-hotkey="q"/>
+          <button string="Cancel" special="cancel" data-hotkey="x"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+  <record id="action_woow_document_upload_wizard" model="ir.actions.act_window">
+    <field name="name">Upload</field>
+    <field name="res_model">woow.document.upload.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_woow_document_upload_wizard"/>
+    <field name="target">new</field>
+  </record>
+</odoo>

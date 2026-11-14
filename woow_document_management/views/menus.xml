@@ -4,7 +4,7 @@
 <odoo>
   <menuitem id="menu_woow_document_root" name="Documents" groups="group_woow_document_user,group_woow_document_attachment_overview" sequence="40"/>
   <menuitem id="menu_woow_document_folder" name="Folders" parent="menu_woow_document_root" action="action_woow_document_folder" groups="group_woow_document_user" sequence="10"/>
-  <menuitem id="menu_woow_document_document" name="Documents" parent="menu_woow_document_root" action="action_woow_document_document" groups="group_woow_document_user" sequence="20"/>
+  <menuitem id="menu_woow_document_document" name="Documents" parent="menu_woow_document_root" action="action_woow_document_workspace" groups="group_woow_document_user" sequence="5"/>
   <menuitem id="menu_woow_document_trash" name="Trash" parent="menu_woow_document_root" action="action_woow_document_trash" groups="group_woow_document_user" sequence="40"/>
   <menuitem id="menu_woow_document_deleted_files" name="Deleted files" parent="menu_woow_document_root" action="action_woow_document_trash_documents" groups="group_woow_document_user" sequence="41"/>
   <menuitem id="menu_woow_document_attachment_overview" name="Attachments in other apps" parent="menu_woow_document_root" action="action_woow_document_attachment_overview" groups="group_woow_document_attachment_overview" sequence="30"/>

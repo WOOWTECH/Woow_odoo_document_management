@@ -44,7 +44,9 @@ def _fixture(env, suffix, password=None):
         'woow.document.folder.access': rows['read'],
         'woow.document.tag': env['woow.document.tag'].sudo().create({'name': 'Notify %s' % suffix}),
         'woow.document.log': env['woow.document.log'].sudo().create({
-            'event': 'view', 'result': 'ok', 'channel': 'backend'})}
+            'event': 'view', 'result': 'ok', 'channel': 'backend'}),
+        'woow.document.favorite': env['woow.document.favorite'].sudo().create({
+            'document_id': document.id, 'user_id': users['reader'].id})}
     assert set(records) == set(WOOW_MODELS)
     env.flush_all()
     return records, users

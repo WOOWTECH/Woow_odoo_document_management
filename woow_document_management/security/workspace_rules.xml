@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+    <!-- R-V0, R-V1: a favourite belongs to the user who made it; nobody reads another row. -->
+    <record id="rule_woow_document_favorite_company" model="ir.rule">
+        <field name="name">R-V0 rule_woow_document_favorite_company</field>
+        <field name="model_id" ref="model_woow_document_favorite" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_favorite_owner" model="ir.rule">
+        <field name="name">R-V1 rule_woow_document_favorite_owner</field>
+        <field name="model_id" ref="model_woow_document_favorite" />
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <!-- R-W7, R-W8: an upload wizard and its files belong to the user who made them. -->
+    <record id="rule_woow_document_upload_wizard_owner" model="ir.rule">
+        <field name="name">R-W7 rule_woow_document_upload_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_upload_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_upload_wizard_line_owner" model="ir.rule">
+        <field name="name">R-W8 rule_woow_document_upload_wizard_line_owner</field>
+        <field name="model_id" ref="model_woow_document_upload_wizard_line" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+</odoo>
