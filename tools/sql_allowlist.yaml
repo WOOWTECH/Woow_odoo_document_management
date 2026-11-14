@@ -57,3 +57,7 @@ entries:
   file: woow_document_management/models/trash_actions.py
   functions: [_woow_lock_purge_root]
   note: row locks on a purge root and on every folder of its subtree (trashed ones included, in id order) that write no row version, taken before any hold is read, so a legal hold, restore or move of any subtree folder committed after a purge batch's repeatable read snapshot fails that root with serialization_failure and a later one waits for the batch
+- id: Q31
+  file: woow_document_management/models/versions.py
+  functions: [_woow_lock_document_rows]
+  note: row locks on the documents whose version history a new version, a restore or a delete changes, in id order and writing no row version, taken before the history or a legal hold is read, so a hold, a trash or an upload committed after the snapshot of the call fails it with serialization_failure (the call is run again) and a later one waits

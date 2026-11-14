@@ -106,3 +106,24 @@ msgstr "要刪除此版本嗎？它的檔案會被永久移除。"
 
 msgid "The file that is current now is kept as the newest version. The document keeps its name; if the new file has another extension, the name takes it."
 msgstr "目前的檔案會保存為最新的版本。文件沿用原本的名稱；如果新檔案的副檔名不同，名稱會改用新的副檔名。"
+
+msgid "These versions cannot be deleted."
+msgstr "這些版本不能刪除。"
+
+msgid "This document cannot take another version."
+msgstr "此文件不能再新增版本。"
+
+msgid "Last version number"
+msgstr "最後的版本編號"
+
+msgid "The number the newest version took. A number is never given twice, even after the newest version was deleted."
+msgstr "最新版本使用的編號。編號不會重複使用，即使最新的版本已被刪除。"
+
+msgid "Version added"
+msgstr "已新增版本"
+
+msgid "Version restored"
+msgstr "已還原版本"
+
+msgid "Version deleted"
+msgstr "已刪除版本"
