@@ -17,6 +17,7 @@ from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tests.common import new_test_user
 from odoo.tools import mute_logger
 
+from .common import plant_default
 from ..hooks import uninstall_hook
 from ..models.upload_policy import WoowUploadRejected
 from ..services import locks
@@ -584,10 +585,9 @@ class TestServerOnlyRows(_Fixture, TransactionCase):
         self.assertEqual(self._versions(self.doc).ids, self.version.ids)
 
     def test_a_stored_default_does_not_reach_a_version(self):
-        self.env['ir.default'].with_user(self.docmgr).set(
-            'woow.document.version', 'checksum', 'poison', user_id=True)
-        self.env['ir.default'].with_user(self.docmgr).set(
-            'woow.document.version', 'mimetype', 'poison/type', user_id=True)
+        plant_default(self.env, 'woow.document.version', 'checksum', 'poison', user=self.docmgr)
+        plant_default(self.env, 'woow.document.version', 'mimetype', 'poison/type',
+                      user=self.docmgr)
         # a call made with sudo() keeps the uid of its caller, and so his stored defaults
         row = self.env['woow.document.version'].with_user(self.docmgr).sudo().with_context(
             default_file_size=77).create({

@@ -9,6 +9,7 @@ from odoo.exceptions import AccessError, UserError
 from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
+from .common import plant_default
 from ..models import docactions
 from ..services import locks
 from ..models.docactions import DUPLICATE_MAX_PER_CALL
@@ -248,8 +249,7 @@ class TestLockFieldsAreServerOnly(DocActionsCase):
                     vals, name='forged.txt', folder_id=self.folder.id, datas=_b64(b'plain text content')))
 
     def test_a_stored_default_cannot_lock_a_new_document(self):
-        self.env['ir.default'].with_user(self.alice).set(
-            'woow.document', 'lock_uid', self.bob.id, user_id=True)
+        plant_default(self.env, 'woow.document', 'lock_uid', self.bob.id, user=self.alice)
         doc = self.env['woow.document'].with_user(self.alice).create({
             'name': 'fresh.txt', 'folder_id': self.folder.id, 'datas': _b64(b'plain text content')})
         self.assertFalse(doc.sudo().lock_uid)

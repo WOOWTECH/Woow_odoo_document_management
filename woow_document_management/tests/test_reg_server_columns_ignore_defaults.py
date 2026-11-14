@@ -15,6 +15,8 @@ from odoo.exceptions import AccessError
 from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
+from .common import plant_default
+
 _USER = 'woow_document_management.group_woow_document_user'
 _MAGIC = frozenset(models.MAGIC_COLUMNS) | {'display_name'}
 # The three ways a default reaches a create call: stored by the caller, stored for the site,
@@ -27,10 +29,7 @@ def _store(env, model, defaults, *, user=None):
     may), or for the whole site."""
     _forget(env, model)
     for name, value in defaults.items():
-        if user is None:
-            env['ir.default'].with_user(env.ref('base.user_admin')).set(model, name, value)
-        else:
-            env['ir.default'].with_user(user).set(model, name, value, user_id=True)
+        plant_default(env, model, name, value, user=user)
 
 
 def _forget(env, *model_names):

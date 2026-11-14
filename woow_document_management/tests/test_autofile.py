@@ -2,13 +2,15 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Filing rules: files attached to a kind of record are also filed as documents (lane autofile)."""
 import base64
+from contextlib import contextmanager
 from unittest.mock import patch
 
-from odoo import Command
+from odoo import Command, api
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
+from .common import plant_default
 from ..hooks import uninstall_hook
 from ..models import autofile, quota as quota_module
 from ..models.autofile import IrAttachmentAutoFile
@@ -316,6 +318,25 @@ class TestRuleCache(_Fixture, TransactionCase):
         rule = self._rule(user=self.env.ref('base.user_root'), folder_id=folder.id)
         self.assertEqual(self.rules._woow_auto_state()[0], {'res.partner': ((rule.id, other.id),)})
 
+    @contextmanager
+    def _hook_removed(self):
+        """``create`` and ``unlink`` of the attachment without the hook of this module.
+
+        The rest of the chain stays as it is (other installed modules extend ``ir.attachment`` too
+        and may be loaded after this one), so the only difference between a call with and without
+        this context is the hook itself.
+        """
+        @api.model_create_multi
+        def create(this, vals_list):
+            return super(IrAttachmentAutoFile, this).create(vals_list)
+
+        def unlink(this):
+            return super(IrAttachmentAutoFile, this).unlink()
+
+        with patch.object(IrAttachmentAutoFile, 'create', create), \
+                patch.object(IrAttachmentAutoFile, 'unlink', unlink):
+            yield
+
     def test_the_query_count_of_an_attachment_without_any_rule_is_unchanged(self):
         model = self.attachments.with_user(self.plain)
         values = {'name': 'count.txt', 'raw': b'count', 'type': 'binary',
@@ -330,12 +351,14 @@ class TestRuleCache(_Fixture, TransactionCase):
             self.env.flush_all()
             return self.env.cr.sql_log_count - before
 
-        baseline = queries(lambda: super(IrAttachmentAutoFile, model).create([dict(values)]))
+        with self._hook_removed():
+            baseline = queries(lambda: model.create([dict(values)]))
         with_hook = queries(lambda: model.create([dict(values)]))
         self.assertEqual(with_hook, baseline)
         # the very first call after a change of the rules reads them once
         self.env.registry.clear_cache()
-        cold_baseline = queries(lambda: super(IrAttachmentAutoFile, model).create([dict(values)]))
+        with self._hook_removed():
+            cold_baseline = queries(lambda: model.create([dict(values)]))
         self.env.registry.clear_cache()
         cold = queries(lambda: model.create([dict(values)]))
         # the one read of the rules, inside a savepoint of its own
@@ -345,7 +368,8 @@ class TestRuleCache(_Fixture, TransactionCase):
         self.env.invalidate_all()
         queries(lambda: rows[0].unlink())                  # warms what both calls below read
         self.env.invalidate_all()
-        baseline = queries(lambda: super(IrAttachmentAutoFile, rows[1]).unlink())
+        with self._hook_removed():
+            baseline = queries(lambda: rows[1].unlink())
         self.env.invalidate_all()
         with_hook = queries(lambda: rows[2].unlink())
         self.assertEqual(with_hook, baseline)
@@ -620,7 +644,7 @@ class TestWhoManagesRules(_Fixture, TransactionCase):
 
     def test_the_ids_of_the_filed_documents_are_not_defaulted_by_a_caller(self):
         attachment = self._attach()
-        self.env['ir.default'].set('woow.document', 'auto_rule_id', self.rule.id, user_id=True)
+        plant_default(self.env, 'woow.document', 'auto_rule_id', self.rule.id, user=self.manager)
         document = self.env['woow.document'].with_user(self.manager).create({
             'name': 'plain.txt', 'folder_id': self.folder.id,
             'datas': base64.b64encode(b'plain')})

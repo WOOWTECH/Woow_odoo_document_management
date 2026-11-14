@@ -551,6 +551,52 @@ class TestAnInboundReplyNeedsAReader(_InboundFixture, TransactionCase):
                                      'Documents and folders do not accept this email.')
             self.assertEqual(record.sudo().description, before)
 
+    def test_message_update_in_the_environment_of_a_system_administrator(self):
+        """Newer core runs a reply route (no alias) in the caller's environment, not as superuser.
+
+        The sandbox core switches to the superuser first, so the call is made here by hand in the
+        environment that a system administrator has on the newer core: not the superuser, but
+        ``_is_system()``. The sender is judged exactly as for the superuser.
+        """
+        self.assertTrue(self.admin._is_system())
+        valid = {'author_id': self.reader.partner_id.id, 'email_from': self.reader.email}
+        edit = {'description': '<p>by an administrator caller</p>'}
+        for record in self.records:
+            as_admin = record.with_user(self.admin)
+            self.assertFalse(as_admin.env.su)
+            before = record.sudo().description
+            for label, values in (
+                    ('no values', {}),
+                    ('an author that is not the address', {
+                        'author_id': self.editor.partner_id.id, 'email_from': self.reader.email}),
+                    ('a stranger', {'author_id': self.stranger.partner_id.id,
+                                    'email_from': self.stranger.email}),
+                    ('a user without the module group', {'author_id': self.plain.partner_id.id,
+                                                         'email_from': self.plain.email}),
+                    ('a portal user', {'author_id': self.portal_partner.id,
+                                       'email_from': self.portal.email})):
+                with self.subTest(model=record._name, sender=label), self._refused() as refusal:
+                    as_admin.message_update(values, edit)
+                self.assertEqual(str(refusal.exception),
+                                 'Documents and folders do not accept this email.')
+            self.assertEqual(record.sudo().description, before)
+            with self.subTest(model=record._name, sender='an authorised internal sender'):
+                as_admin.message_update(valid, edit)
+                self.assertIn('by an administrator caller', record.sudo().description)
+
+    def test_a_user_with_access_rights_but_without_settings_is_refused_by_message_update(self):
+        """The caller check is ``_is_system()``: a user of the Access Rights group is not enough."""
+        rights = self._make_user('rights', '%s,base.group_erp_manager' % _USER)
+        self.assertTrue(rights._is_admin() and not rights._is_system())
+        valid = {'author_id': self.reader.partner_id.id, 'email_from': self.reader.email}
+        for record in self.records:
+            before = record.sudo().description
+            with self.subTest(model=record._name), self._refused() as refusal:
+                record.with_user(rights).message_update(valid, {'description': '<p>no</p>'})
+            self.assertEqual(str(refusal.exception),
+                             'Documents and folders do not accept this email.')
+            self.assertEqual(record.sudo().description, before)
+
     def test_the_caller_of_the_gateway_is_still_checked_first(self):
         """A caller who is neither the superuser nor a system administrator is refused, whoever wrote."""
         for record in self.records:
