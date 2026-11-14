@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+    <!-- R-AF0: the company rule of the filing rules. Only document administrators have an ACL on the
+         model, so nobody else reads or changes a rule. -->
+    <record id="rule_woow_document_auto_rule_company" model="ir.rule">
+        <field name="name">R-AF0 rule_woow_document_auto_rule_company</field>
+        <field name="model_id" ref="model_woow_document_auto_rule" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <!-- R-AF1: a wizard row is its creator's alone. -->
+    <record id="rule_woow_document_autofile_wizard_owner" model="ir.rule">
+        <field name="name">R-AF1 rule_woow_document_autofile_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_autofile_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_manager'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+</odoo>

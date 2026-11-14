@@ -16,6 +16,7 @@
         'security/rules.xml',
         'security/trash_access.xml',
         'security/backend_access.xml',
+        'security/autofile_rules.xml',
         'data/ir_cron.xml',
         'data/mail_templates.xml',
         'views/safe_url_templates.xml',
@@ -33,6 +34,8 @@
         'views/wizards/add_attachment_wizard_views.xml',
         'views/wizards/notify_wizard_views.xml',
         'views/portal_templates.xml',
+        'views/backend/autofile_views.xml',
+        'views/wizards/autofile_wizard_views.xml',
         'views/menus.xml',
     ],
     'assets': {

@@ -1,0 +1,8 @@
+from odoo import models
+
+
+class WoowDocumentAutoRule(models.Model):
+    _name = 'woow.document.auto.rule'
+
+    def _woow_elevated(self):
+        return self.sudo().with_context(x=1)  # sudo-ok: A1

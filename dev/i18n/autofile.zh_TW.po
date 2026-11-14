@@ -1,0 +1,113 @@
+# Traditional Chinese terms of the lane "autofile" (filing rules). The integrator merges them
+# into woow_document_management/i18n/zh_TW.po when it regenerates the catalogue.
+msgid ""
+msgstr ""
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Filing rules"
+msgstr "歸檔規則"
+
+msgid "Filing rule"
+msgstr "歸檔規則"
+
+msgid "Document filing rule"
+msgstr "文件歸檔規則"
+
+msgid "File existing attachments"
+msgstr "歸檔現有附件"
+
+msgid "Kind of record"
+msgstr "紀錄種類"
+
+msgid "Files attached to records of this kind are also filed as documents."
+msgstr "附加在這種紀錄上的檔案，也會歸檔成文件。"
+
+msgid "Target folder"
+msgstr "目標資料夾"
+
+msgid "Tags"
+msgstr "標籤"
+
+msgid "Owner"
+msgstr "擁有者"
+
+msgid "The owner of the filed documents. A document user who may upload to the folder."
+msgstr "歸檔文件的擁有者。必須是可以上傳到該資料夾的文件使用者。"
+
+msgid "Trash when the original is deleted"
+msgstr "原附件刪除時丟進回收桶"
+
+msgid "Move the filed document to the trash when the attachment it came from is deleted."
+msgstr "原本的附件被刪除時，把歸檔的文件移到回收桶。"
+
+msgid "Filed documents"
+msgstr "歸檔的文件"
+
+msgid "Source Attachment"
+msgstr "來源附件"
+
+msgid "The attachment of another app that this document was filed from."
+msgstr "這份文件是從其他模組的哪一個附件歸檔而來。"
+
+msgid "Res Model"
+msgstr "紀錄種類名稱"
+
+msgid "Backfill Cursor"
+msgstr "補歸檔位置"
+
+msgid "Looked at"
+msgstr "已檢查"
+
+msgid "Filed"
+msgstr "已歸檔"
+
+msgid "Not accepted"
+msgstr "未接受"
+
+msgid "Still to look at"
+msgstr "尚待檢查"
+
+msgid "Ran"
+msgstr "已執行"
+
+msgid "Archived"
+msgstr "已封存"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Active"
+msgstr "啟用"
+
+msgid "Name"
+msgstr "名稱"
+
+msgid "Company"
+msgstr "公司"
+
+msgid "Choose a kind of record from another app."
+msgstr "請選擇其他模組的紀錄種類。"
+
+msgid "Choose a document user who may upload to the target folder."
+msgstr "請選擇可以上傳到目標資料夾的文件使用者。"
+
+msgid "A tag of another company cannot be used here."
+msgstr "這裡不能使用其他公司的標籤。"
+
+msgid "This field of a filing rule is set by the server."
+msgstr "歸檔規則的這個欄位由系統設定。"
+
+msgid "Activate the filing rule first."
+msgstr "請先啟用這條歸檔規則。"
+
+msgid "The file was not accepted."
+msgstr "檔案未被接受。"
+
+msgid "Everyone who can open the target folder will see the filed files, even if they cannot open the record that a file came from."
+msgstr "所有能開啟目標資料夾的人都看得到歸檔的檔案，即使他們不能開啟檔案原本所在的紀錄。"
+
+msgid "This looks at the next batch of attachments of the kind of record named by the rule that are not filed yet, and files them in the target folder. You can run it again until nothing is left to look at."
+msgstr "這會檢查規則所指紀錄種類中、尚未歸檔的下一批附件，並歸檔到目標資料夾。可以重複執行，直到沒有待檢查的附件為止。"

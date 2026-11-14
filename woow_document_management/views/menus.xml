@@ -10,6 +10,7 @@
   <menuitem id="menu_woow_document_attachment_overview" name="Attachments in other apps" parent="menu_woow_document_root" action="action_woow_document_attachment_overview" groups="group_woow_document_attachment_overview" sequence="30"/>
   <menuitem id="menu_woow_document_config" name="Configuration" parent="menu_woow_document_root" groups="group_woow_document_manager" sequence="90"/>
   <menuitem id="menu_woow_document_tag" name="Tags" parent="menu_woow_document_config" action="action_woow_document_tag" groups="group_woow_document_manager" sequence="10"/>
+  <menuitem id="menu_woow_document_auto_rule" name="Filing rules" parent="menu_woow_document_config" action="action_woow_document_auto_rule" groups="group_woow_document_manager" sequence="15"/>
   <menuitem id="menu_woow_document_log" name="Audit log" parent="menu_woow_document_config" action="action_woow_document_log" groups="group_woow_document_manager" sequence="20"/>
   <menuitem id="menu_woow_document_settings" name="Settings" parent="menu_woow_document_config" action="action_woow_document_config_settings" groups="base.group_system" sequence="30"/>
 </odoo>

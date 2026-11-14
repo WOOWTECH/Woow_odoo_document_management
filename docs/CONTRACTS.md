@@ -264,6 +264,7 @@
 |---|---|---|---|---|
 | S1 | `W/models/document_log.py` | `_name='woow.document.log'` | `_log_event` | 1：`self.sudo().create(vals)` |
 | S3 | `W/models/settings.py` | `_name='woow.document.settings'` | `_read_params` | 1：`self.env['ir.config_parameter'].sudo().get_param(k)` |
+| A1 | `W/models/autofile.py` | `_name='woow.document.auto.rule'` | `_woow_elevated` | 1：`self.sudo().with_context(...)`（自動歸檔：建立規則的文件管理員就是授權；建立歸檔文件、讀取要補歸檔的附件、把原附件刪除後的歸檔文件丟進回收桶，都經過這一處） |
 
 - 非測試程式裡，`with_user(` 是 0 次。
 - 整個 repo 不准出現 `<名稱以 _sudo 結尾>.env`（T-STAT-19）。

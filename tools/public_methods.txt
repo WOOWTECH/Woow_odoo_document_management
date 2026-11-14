@@ -28,6 +28,8 @@ woow.document.add.attachment.wizard::action_add
 ir.attachment::action_woow_open_source
 ir.attachment::action_woow_download
 woow.document.notify.wizard::action_send
+woow.document.auto.rule::action_open_backfill
+woow.document.autofile.wizard::action_file
 
 [override]
 *::create
