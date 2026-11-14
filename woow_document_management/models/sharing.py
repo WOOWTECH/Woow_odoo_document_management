@@ -13,13 +13,26 @@ from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 from ..services.constants import ACCESS_EXPIRY_BATCH
+from .document_folder import _stored_flag
 
 _logger = logging.getLogger(__name__)
 
 _USER = 'woow_document_management.group_woow_document_user'
 _SERVER_DOCUMENT_FIELDS = frozenset({'shared_editor_user_ids', 'woow_user_can_share'})
+_LEVEL_RANK = {'read': 1, 'upload': 2, 'edit': 3, 'manage': 4}
+_SUBJECT_FIELD = {'user': 'user_id', 'group': 'group_id', 'partner': 'partner_id'}
 _ALL_USERS_LEVELS = [('none', 'No access'), ('read', 'View'), ('upload', 'Upload'),
                      ('edit', 'Edit'), ('manage', 'Manage')]
+
+
+def _merge_end(ends, key, rank, end):
+    """Add a grant of ``rank`` to ``key`` in ``ends``: it ends when the last grant of that rank does,
+    and never (``False``) when one of them has no end."""
+    known = ends.setdefault(key, {})
+    if rank not in known:
+        known[rank] = end
+    else:
+        known[rank] = False if known[rank] is False or end is False else max(known[rank], end)
 
 
 class WoowDocumentFolderAccessExpiry(models.Model):
@@ -112,16 +125,16 @@ class WoowDocumentSharing(models.Model):
         documents = self.exists().with_context(active_test=False)
         if not documents:
             return
-        # core caches only the active entries of a list that a write has just changed
-        documents.invalidate_recordset(['shared_user_ids', 'shared_partner_ids'])
         shares._woow_lock_documents(documents.ids)
+        # the lists as they are stored: every entry counts, an archived person or a contact that the
+        # caller's rules hide included (the field would leave them out, and they would lose the row)
+        listed_users, listed_partners = shares._woow_listed(documents.ids)
         rows = {}
         for row in shares._woow_rows(documents.ids):
             rows.setdefault(row[1], []).append(row)
         drop, add = [], []
         for doc in documents:
-            # every stored entry counts, an archived user or contact included
-            users, partners = set(doc.shared_user_ids.ids), set(doc.shared_partner_ids.ids)
+            users, partners = listed_users.get(doc.id, set()), listed_partners.get(doc.id, set())
             have_users, have_partners = set(), set()
             for row_id, _document_id, user_id, partner_id, _role in rows.get(doc.id, ()):
                 if user_id:
@@ -244,7 +257,104 @@ class WoowDocumentFolderSharing(models.Model):
     def write(self, vals):
         if 'woow_all_users_level' in vals and not self.env.su:
             self._woow_require_rank(4)
-        return super().write(vals)
+        plan = None
+        if 'inherit_access' in vals and not _stored_flag(vals, 'inherit_access', True):
+            plan = self._woow_inherited_ends()
+        result = super().write(vals)
+        if plan:
+            self._woow_carry_inherited_ends(plan)
+        return result
+
+    def _woow_inherited_ends(self):
+        """Before inheritance is turned off: what ends, and when, of the access that the folders inherit.
+
+        Returns {folder id: ({member id: level before}, {(subject, principal): {rank: last day}})}
+        for the folders that inherit today. ``last day`` is ``False`` for a grant that never ends.
+        The grants come from the member rows (and the owners) of the parent and of every folder
+        above it as long as the folder in between inherits. The rows are read as stored, whatever
+        the record rules of the caller: the caller may manage a folder below a parent that he does
+        not read, and the copy of the access that turning inheritance off makes must not outlive it.
+        """
+        folders = self.filtered(lambda folder: folder.inherit_access and folder.parent_id)
+        if not folders:
+            return {}
+        folders.flush_recordset(['inherit_access', 'parent_id', 'parent_path'])
+        self.env['woow.document.folder.access'].flush_model()
+        cr = self.env.cr
+        cr.execute(  # sql-ok: Q65
+            'SELECT id, parent_path FROM woow_document_folder WHERE id = ANY(%s)',
+            (sorted(folders.ids),))
+        paths = {row[0]: [int(part) for part in (row[1] or '').split('/') if part]
+                 for row in cr.fetchall()}
+        every = sorted({node for path in paths.values() for node in path})
+        cr.execute(  # sql-ok: Q65
+            'SELECT id, inherit_access, owner_id FROM woow_document_folder WHERE id = ANY(%s)',
+            (every,))
+        nodes = {row[0]: (bool(row[1]), row[2]) for row in cr.fetchall()}
+        cr.execute(  # sql-ok: Q65
+            'SELECT folder_id, subject_type, user_id, group_id, partner_id, level, expiry_date '
+            'FROM woow_document_folder_access WHERE folder_id = ANY(%s)', (every,))
+        lines = {}
+        for row in cr.fetchall():
+            lines.setdefault(row[0], []).append(row[1:])
+        plan = {}
+        for folder in folders:
+            chain, path = [], paths.get(folder.id, [])[:-1]
+            for node in reversed(path):
+                chain.append(node)
+                if not nodes.get(node, (False, None))[0]:
+                    break
+            ends = {}
+            for node in chain:
+                owner = nodes.get(node, (False, None))[1]
+                if owner:
+                    _merge_end(ends, ('user', owner), 4, False)
+                for subject, user_id, group_id, partner_id, level, end in lines.get(node, ()):
+                    principal = {'user': user_id, 'group': group_id, 'partner': partner_id}.get(subject)
+                    if not principal or level not in _LEVEL_RANK:
+                        continue
+                    rank = min(_LEVEL_RANK[level], 2) if subject == 'partner' else _LEVEL_RANK[level]
+                    _merge_end(ends, (subject, principal), rank, end or False)
+            plan[folder.id] = ({line.id: line.level for line in folder.access_ids}, ends)
+        return plan
+
+    def _woow_carry_inherited_ends(self, plan):
+        """After inheritance is turned off: the member rows that the copy made or raised get the end
+        of the access they stand for, so that nobody keeps for good what was given until a day.
+
+        A person may hold the same level from several rows above: the row ends when the last of
+        them does, and never when one of them has no end. When the person also held a lower level
+        without an end, that lower level is not kept past the end of the higher one: the copy is one
+        row, and ending it is the safe way to be wrong.
+        """
+        today = fields.Date.today()
+        for folder in self.exists():
+            known = plan.get(folder.id)
+            if not known:
+                continue
+            before, ends = known
+            for line in folder.access_ids:
+                subject = line.subject_type
+                if subject not in _SUBJECT_FIELD:
+                    continue
+                if line.id in before and before[line.id] == line.level:
+                    continue
+                sources = ends.get((subject, line[_SUBJECT_FIELD[subject]].id))
+                rank = _LEVEL_RANK.get(line.level, 0)
+                if not sources or rank not in sources:
+                    continue
+                end = sources[rank]
+                if end is False:
+                    if line.id in before and line.expiry_date:
+                        line.write({'expiry_date': False})
+                elif end < today:
+                    # that grant ended already and only waits for the cron: do not copy it
+                    if line.id in before:
+                        line.write({'level': before[line.id]})
+                    else:
+                        line.unlink()
+                elif line.expiry_date != end:
+                    line.write({'expiry_date': end})
 
     def action_open_share_dialog(self):
         """Open the compact sharing dialog of this folder: its members and the all-users choice."""

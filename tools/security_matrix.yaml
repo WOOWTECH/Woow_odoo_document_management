@@ -222,7 +222,13 @@ rules:
   ref: R-S2
   model: woow.document.share
   groups: [user]
-  perms: '1111'
+  perms: '1000'
+  domain: "[('folder_id', 'any', ['&', ('in_trash', '=', False), '|', ('eff_manage_user_ids', 'in', [user.id]), ('eff_manage_group_ids', 'in', user.groups_id.ids)])]"
+- id: rule_woow_document_share_user_manage_change
+  ref: R-S4
+  model: woow.document.share
+  groups: [user]
+  perms: '0111'
   domain: "[('folder_id', 'any', ['|', ('eff_manage_user_ids', 'in', [user.id]), ('eff_manage_group_ids', 'in', user.groups_id.ids)])]"
 - id: rule_woow_document_share_manager
   ref: R-S3

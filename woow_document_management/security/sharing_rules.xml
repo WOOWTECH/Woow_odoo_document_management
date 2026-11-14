@@ -27,16 +27,30 @@
         <field name="perm_create" eval="False" />
         <field name="perm_unlink" eval="False" />
     </record>
-    <!-- Rows are changed by those who hold the manage level of the folder of the document, the
-         same people as for the lists in release 18.0.1. The folder is stored on the row. They also
-         read every row of that folder, a document in the trash included: the lists are rebuilt from
-         all the rows of a document and a manager must not be blind to the rows of an archived one. -->
+    <!-- Rows of a folder are read by those who hold the manage level of it, a document in the
+         trash included: the lists are rebuilt from all the rows of a document and a manager must not
+         be blind to the rows of an archived one. A folder in the trash hides its documents from its
+         manager (R-D1), and so it hides their rows: who the documents were shared with is not
+         told to someone who cannot read them. They come back with the folder. -->
     <record id="rule_woow_document_share_user_manage" model="ir.rule">
         <field name="name">R-S2 rule_woow_document_share_user_manage</field>
         <field name="model_id" ref="model_woow_document_share" />
-        <field name="domain_force">[('folder_id', 'any', ['|', ('eff_manage_user_ids', 'in', [user.id]), ('eff_manage_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="domain_force">[('folder_id', 'any', ['&amp;', ('in_trash', '=', False), '|', ('eff_manage_user_ids', 'in', [user.id]), ('eff_manage_group_ids', 'in', user.groups_id.ids)])]</field>
         <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
         <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <!-- Rows are created, changed and removed by the same people, whether the folder is in the
+         trash or not: each change asks for the document itself first (``_woow_require_manage``),
+         which a trashed folder refuses. -->
+    <record id="rule_woow_document_share_user_manage_change" model="ir.rule">
+        <field name="name">R-S4 rule_woow_document_share_user_manage_change</field>
+        <field name="model_id" ref="model_woow_document_share" />
+        <field name="domain_force">[('folder_id', 'any', ['|', ('eff_manage_user_ids', 'in', [user.id]), ('eff_manage_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
         <field name="perm_write" eval="True" />
         <field name="perm_create" eval="True" />
         <field name="perm_unlink" eval="True" />

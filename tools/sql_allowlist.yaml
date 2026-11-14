@@ -69,3 +69,11 @@ entries:
   file: woow_document_management/migrations/18.0.2.0.0/post-sharing.py
   functions: [migrate]
   note: viewer rows for the people already listed in shared_user_ids and shared_partner_ids, set-based and idempotent (sharing lane)
+- id: Q64
+  file: woow_document_management/models/share.py
+  functions: [_woow_listed]
+  note: the people that the two old lists name, read from their relation tables without record rules, so that mirroring a direct change of a list into rows never drops a person whom the caller's rules hide (sharing lane)
+- id: Q65
+  file: woow_document_management/models/sharing.py
+  functions: [_woow_inherited_ends]
+  note: the parents, owners and member rows above a folder that inherits, read as stored without record rules, to find when the access that a copy of the inherited members stands for ends (sharing lane)

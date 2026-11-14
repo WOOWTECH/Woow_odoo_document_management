@@ -55,9 +55,13 @@ its own access check.
   answers the same for a missing and for a hidden document. A share gives no management right.
 - **Record rules.** R-D2 (document write) gets one more way in: a user in `shared_editor_user_ids`, when
   the document is active and its folder is not in the trash. Nothing else of `rules.xml` changes. New
-  rules R-S0 to R-S3 (`security/sharing_rules.xml`): company, read (the rows of the documents the user
+  rules R-S0 to R-S4 (`security/sharing_rules.xml`): company, read (the rows of the documents the user
   reads, as R-D1 judges it, written out in full because a sub-search of a rule runs without rules), manage
-  (folder manage level; also reads the rows of its folders, trashed documents included), administrator.
+  read (R-S2: the rows of the folders that the user manages, a document in the trash included, but not a
+  folder in the trash: its documents are hidden from the manager by R-D1, so the rows that name who they
+  were shared with are hidden too, and they come back when the folder is restored), manage change (R-S4:
+  create, change and remove, also in a folder in the trash; the check of the document itself, which a
+  trashed folder refuses, is what stops it), administrator.
   Portal users have no ACL row on the model; the new fields have `groups='base.group_user'`.
 - **Server only.** `shared_editor_user_ids` and the stored `folder_id` / `company_id` of a row cannot be
   written by a client. The marker of server work (`CTX_SHARE_SYNC`) is honoured only when its value is an
@@ -70,6 +74,17 @@ its own access check.
   No names, addresses or file names are logged.
 - **Concurrency.** A change of rows first locks the documents it touches (row lock, id order, bounded
   wait), so two changes never rebuild the lists from stale rows.
+- **Mirror of the old lists.** The people that a direct change of `shared_user_ids` or
+  `shared_partner_ids` leaves out are found by reading the two relation tables as stored, not through the
+  caller's record rules: a contact of another company, or an archived person, who is in the list but whom
+  the caller cannot see keeps the row.
+- **Turning inheritance off.** The copy of the inherited members that this makes carries the end date of
+  the grant it stands for (the latest end of the rows of that level above, no end when one of them has
+  none). A grant that has ended and only waits for the scheduled action is not copied. When a person held
+  a higher level until a day and a lower one for good, the single copied row ends with the higher level.
+- **The all-users choice** of a folder is never taken from a stored or context default.
+- **Over the limit.** A document that 18.0.1 shared with more than 200 people migrates whole. Its rows can
+  still be changed and removed; only adding a person is refused until it is under the limit again.
 - **Dates.** The end date is compared with the server date in UTC, by the check and by the cron.
 
 ## Deploying

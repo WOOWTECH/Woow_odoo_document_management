@@ -95,6 +95,31 @@ class WoowDocumentShare(models.Model):
         return self.env.cr.fetchall()
 
     @api.model
+    def _woow_listed(self, document_ids):
+        """The people that the two old lists name, whatever the caller's rules: ({doc: users}, {doc: partners}).
+
+        The lists are stored in two relation tables and an archived person is in them too. Reading
+        them through the field would drop the people that the caller's record rules hide (a contact
+        of another company, say), and the mirror would take their access away.
+        """
+        ids = sorted({int(value) for value in document_ids})
+        users, partners = {}, {}
+        if not ids:
+            return users, partners
+        self.env['woow.document'].flush_model(['shared_user_ids', 'shared_partner_ids'])
+        self.env.cr.execute(  # sql-ok: Q64
+            'SELECT document_id, user_id FROM woow_document_shared_user_rel '
+            'WHERE document_id = ANY(%s)', (ids,))
+        for document_id, user_id in self.env.cr.fetchall():
+            users.setdefault(document_id, set()).add(user_id)
+        self.env.cr.execute(  # sql-ok: Q64
+            'SELECT document_id, partner_id FROM woow_document_shared_partner_rel '
+            'WHERE document_id = ANY(%s)', (ids,))
+        for document_id, partner_id in self.env.cr.fetchall():
+            partners.setdefault(document_id, set()).add(partner_id)
+        return users, partners
+
+    @api.model
     def _woow_require_manage(self, document_ids):
         """AccessError unless the caller may change who these documents are shared with.
 
@@ -293,7 +318,8 @@ class WoowDocumentShare(models.Model):
         documents = self.document_id
         result = super().write(vals)
         if vals:
-            self._woow_check_rows()
+            if 'document_id' in vals:
+                self._woow_check_rows()     # a change of the person or the role adds no row
             self._woow_sync_lists(documents)
             if not sync:
                 changed = {}
