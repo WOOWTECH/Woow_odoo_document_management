@@ -73,7 +73,7 @@ class WoowDocumentAutoRule(models.Model):
 
     name = fields.Char(required=True)
     model_id = fields.Many2one(
-        'ir.model', string='Kind of record', required=True, ondelete='cascade', index=True,
+        'ir.model', string='Model of the kind of record', required=True, ondelete='cascade', index=True,
         domain=[('transient', '=', False), '!', ('model', '=like', 'ir.%'),
                 '!', ('model', '=like', 'mail.%'), '!', ('model', '=like', 'woow.document%')],
         help='Files attached to records of this kind are also filed as documents.')

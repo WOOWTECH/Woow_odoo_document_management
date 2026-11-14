@@ -8,7 +8,7 @@
     <field name="arch" type="xml">
       <list string="Filing rules">
         <field name="name"/>
-        <field name="model_id"/>
+        <field name="model_id" string="Kind of record"/>
         <field name="folder_id"/>
         <field name="owner_id" optional="show"/>
         <field name="tag_ids" widget="many2many_tags" optional="hide"/>
