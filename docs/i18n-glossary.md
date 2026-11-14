@@ -16,5 +16,8 @@
 | Audit log | 稽核紀錄 |
 | Restore | 還原 |
 | Owner | 擁有者 |
+| Attachments in other apps | 各模組附件 |
+| Source type | 來源類型 |
+| Source record | 來源紀錄 |
 
 介面中的 `MB` 沿用產品設定說明；精確計算和技術文件使用 `MiB`。
