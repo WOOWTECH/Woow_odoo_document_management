@@ -13,6 +13,21 @@
         <field name="perm_create" eval="True" />
         <field name="perm_unlink" eval="True" />
     </record>
+    <!-- R-Q3: the user who made a pending request may write the placeholder while they still have
+         upload level in its folder (the owner is the person asked). Fields of the request stay
+         server-only (the write guard), the type cannot change and a file cannot be put on a
+         placeholder by a plain write, so this lets the requester rename, tag, cancel and
+         remind, and nothing else. No other rule changes. -->
+    <record id="rule_woow_document_request_creator_write" model="ir.rule">
+        <field name="name">R-Q3 rule_woow_document_request_creator_write</field>
+        <field name="model_id" ref="model_woow_document" />
+        <field name="domain_force">['&amp;', ('document_type', '=', 'request'), '&amp;', ('create_uid', '=', user.id), '&amp;', ('folder_in_trash', '=', False), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
     <!-- R-Q1, R-Q2: a wizard row belongs to the user who created it (as R-W2..R-W6). -->
     <record id="rule_woow_document_request_wizard_owner" model="ir.rule">
         <field name="name">R-Q1 rule_woow_document_request_wizard_owner</field>
