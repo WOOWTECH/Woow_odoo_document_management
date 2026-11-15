@@ -96,6 +96,8 @@ class WoowDocumentPdfCommon(models.AbstractModel):
         if code == 'total':
             return _('The files to merge have more than %(limit)s pages in all.',
                      limit=params['limit'])
+        if code == 'too_large':
+            return _('The PDF file is too large to process here.')
         return _('The PDF file is damaged or is not a PDF file.')
 
     def _woow_pdf_sources(self, ids):

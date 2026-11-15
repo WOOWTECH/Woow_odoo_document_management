@@ -2,10 +2,15 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
 """Splitting and merging PDF documents: page ranges, limits, rights, outputs, trash and log."""
 import base64
+import gzip
+import importlib
 import io
 import json
 import random
+import re
+import resource
 import sys
+import threading
 import time
 import zlib
 from unittest.mock import patch
@@ -880,12 +885,12 @@ def flate_bomb_pdf(size):
 class TestParsingLimits(PdfToolsCase):
     """The raw bytes and the time of the library are bounded before and while a file is parsed."""
 
-    def _refused_fast(self, data):
+    def _refused_fast(self, data, code='damaged'):
         started = time.monotonic()
         with self.assertRaises(PdfToolError) as caught:
             pdf_tools.open_pdf(data)
         self.assertLess(time.monotonic() - started, 2)
-        self.assertEqual(caught.exception.code, 'damaged')
+        self.assertEqual(caught.exception.code, code)
 
     def test_a_file_with_few_revisions_still_opens(self):
         reader, count = pdf_tools.open_pdf(revisions_pdf(2))
@@ -985,16 +990,16 @@ class TestParsingLimits(PdfToolsCase):
     def test_a_stream_that_inflates_far_beyond_its_size_is_refused(self):
         data = flate_bomb_pdf(8 * 1024 * 1024)
         self.assertLess(len(data), 20000)
-        self._refused_fast(data)
+        self._refused_fast(data, 'too_large')
 
     def test_the_size_limits_of_one_stream_and_of_all_streams(self):
         data = flate_bomb_pdf(3 * 1024 * 1024)
         with patch.object(pdf_tools, 'PDF_INFLATE_RATIO', 100000), \
                 patch.object(pdf_tools, 'PDF_STREAM_MAX_BYTES', 2 * 1024 * 1024):
-            self._refused_fast(data)
+            self._refused_fast(data, 'too_large')
         with patch.object(pdf_tools, 'PDF_INFLATE_RATIO', 100000), \
                 patch.object(pdf_tools, 'PDF_DECODED_MAX_BYTES', 2 * 1024 * 1024):
-            self._refused_fast(data)
+            self._refused_fast(data, 'too_large')
         with patch.object(pdf_tools, 'PDF_INFLATE_RATIO', 100000):
             reader, count = pdf_tools.open_pdf(data)
         self.assertEqual(count, 1)
@@ -1291,8 +1296,8 @@ class TestPrechecksAreCheap(PdfToolsCase):
         self._refused_fast(data)
         self.assertEqual(pdf_tools.open_pdf(revisions_pdf(2).replace(b'endobj\n', busy + b'\nendobj\n'))[1], 1)
 
-    def _refused_fast(self, data):
-        self.assertEqual(self._code(data), 'damaged')
+    def _refused_fast(self, data, code='damaged'):
+        self.assertEqual(self._code(data), code)
 
     def _code(self, data):
         started = time.monotonic()
@@ -1304,21 +1309,21 @@ class TestPrechecksAreCheap(PdfToolsCase):
     def test_many_small_flate_streams_are_refused_in_a_moment(self):
         data = b'%PDF-1.4\n' + b'stream\nx\x9c\xff' * 1500000
         self.assertGreater(len(data), 14 * 1024 * 1024)
-        self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'damaged')
-        self.assertEqual(self._code(data), 'damaged')
+        self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'too_large')
+        self.assertEqual(self._code(data), 'too_large')
 
     def test_a_few_thousand_small_flate_streams_are_still_looked_at(self):
         data = padded_pdf(b'stream\nx\x9c\xff' * 20000)
         self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'ok')
         bomb = flate_bomb_pdf(80 * 1024 * 1024)
         self.assertEqual(self._timed(pdf_tools._check_inflated_size,
-                                     padded_pdf(b'stream\nx\x9c\xff' * 20000) + bomb), 'damaged')
+                                     padded_pdf(b'stream\nx\x9c\xff' * 20000) + bomb), 'too_large')
 
     def test_the_check_reads_no_more_than_a_multiple_of_the_file(self):
         data = padded_pdf(b'stream\n' + zlib.compress(b'q Q\n' * 4000))
         self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'ok')
         with patch.object(pdf_tools, 'PDF_INFLATE_INPUT_RATIO', 0):
-            self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'damaged')
+            self.assertEqual(self._timed(pdf_tools._check_inflated_size, data), 'too_large')
 
     def test_a_scan_of_large_flate_images_opens(self):
         data = flate_scan_pdf(11, 27)
@@ -1331,7 +1336,7 @@ class TestPrechecksAreCheap(PdfToolsCase):
         claims = b'% /Type /Page\n' * 400
         data = padded_pdf(claims) + flate_bomb_pdf(16 * 1024 * 1024)
         self.assertLess(len(data), 100000)
-        self.assertEqual(self._code(data), 'damaged')
+        self.assertEqual(self._code(data), 'too_large')
 
     def test_the_checks_run_inside_the_time_budget(self):
         seen = []
@@ -1381,3 +1386,341 @@ class TestPrechecksAreCheap(PdfToolsCase):
 
         with patch.object(pdf_tools.odoo_pdf, 'PdfReader', Slow):
             self.assertEqual(self._code(raw_pdf([101])), 'damaged')
+
+
+# --- the third fix round: chains of filters, loops of sections, caps that scale with the file ---
+
+_MIB = 1024 * 1024
+_FILTER_NAMES = {'flate': b'/FlateDecode', 'a85': b'/ASCII85Decode'}
+
+
+def _encode_chain(payload, chain):
+    """``payload`` written for the filters of ``chain`` (the first filter is the one decoded first)."""
+    data = payload
+    for name in reversed(chain):
+        data = zlib.compress(data, 9) if name == 'flate' else base64.a85encode(data) + b'~>'
+    return data
+
+
+def _filter_text(chain):
+    if not chain:
+        return b''
+    if len(chain) == 1:
+        return b'/Filter ' + _FILTER_NAMES[chain[0]]
+    return b'/Filter [' + b' '.join(_FILTER_NAMES[name] for name in chain) + b']'
+
+
+def _bomb_payload(chain, head, megabytes=200):
+    """``head`` followed by ``megabytes`` MiB of zeros, packed for ``chain`` (a few hundred KB at most)."""
+    packer = zlib.compressobj(9)
+    packed = packer.compress(head)
+    block = b'\0' * _MIB
+    for _index in range(megabytes):
+        packed += packer.compress(block)
+    return _encode_chain_from(packed + packer.flush(), chain[:-1])
+
+
+def _encode_chain_from(packed, chain):
+    return _encode_chain(packed, chain) if chain else packed
+
+
+def object_stream_pdf(widths, objstm_chain=('flate',), xref_chain=('flate',), objstm_data=None,
+                      xref_data=None, type_text=b'/Type /ObjStm', filter_text=None, megabytes=0,
+                      content_dict=b'<< /Length 4 >>', self_prev=False):
+    """A PDF 1.5 file: the page objects in an object stream, a cross-reference stream at the end.
+
+    ``objstm_data`` and ``xref_data`` replace the data of those streams (a bomb), ``type_text`` and
+    ``filter_text`` the text of the object stream's "/Type" and "/Filter", ``megabytes`` gives every
+    page an image that inflates to that many MiB (as the scan helpers do), ``self_prev`` makes the
+    cross-reference stream point at itself.
+    """
+    count = len(widths)
+    kids = ' '.join('%d 0 R' % (3 + index) for index in range(count))
+    texts = [b'<< /Type /Catalog /Pages 2 0 R >>',
+             ('<< /Type /Pages /Kids [%s] /Count %d >>' % (kids, count)).encode()]
+    for index, width in enumerate(widths):
+        texts.append(('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d 100] /Contents %d 0 R >>'
+                      % (width, 3 + count + index)).encode())
+    header = b''
+    body = b''
+    for number, text in enumerate(texts, 1):
+        header += b'%d %d ' % (number, len(body))
+        body += text + b'\n'
+    out = io.BytesIO()
+    out.write(b'%PDF-1.5\n')
+    offsets = {}
+    image = None
+    if megabytes:
+        chunk = random.Random(7).randbytes(_MIB).translate(bytes(value & 1 for value in range(256)))
+        raw = zlib.compressobj(6, zlib.DEFLATED, -15)
+        block = raw.compress(chunk) + raw.flush(zlib.Z_FULL_FLUSH)
+        last = raw.flush(zlib.Z_FINISH)
+        adler = 1
+        for _index in range(megabytes):
+            adler = zlib.adler32(chunk, adler)
+        image = b'\x78\x9c' + block * megabytes + last + adler.to_bytes(4, 'big')
+    for index in range(count):
+        number = 3 + count + index
+        offsets[number] = out.tell()
+        if image:
+            out.write(b'%d 0 obj\n<< /Length %d /Filter /FlateDecode >>\nstream\n' % (number, len(image))
+                      + image + b'\nendstream\nendobj\n')
+        else:
+            out.write(b'%d 0 obj\n' % number + content_dict + b'\nstream\nq Q\n\nendstream\nendobj\n')
+    stream_number = 3 + 2 * count
+    offsets[stream_number] = out.tell()
+    packed = objstm_data if objstm_data is not None else _encode_chain(header + body, objstm_chain)
+    out.write(b'%d 0 obj\n<< %s /N %d /First %d /Length %d %s >>\nstream\n' % (
+        stream_number, type_text, len(texts), len(header), len(packed),
+        _filter_text(objstm_chain) if filter_text is None else filter_text) + packed
+        + b'\nendstream\nendobj\n')
+    xref_number = stream_number + 1
+    offsets[xref_number] = out.tell()
+    rows = b''
+    for number in range(xref_number + 1):
+        if number == 0:
+            rows += b'\x00' * 7
+        elif number <= len(texts):
+            rows += b'\x02' + stream_number.to_bytes(4, 'big') + (number - 1).to_bytes(2, 'big')
+        else:
+            rows += b'\x01' + offsets[number].to_bytes(4, 'big') + b'\x00\x00'
+    packed = xref_data if xref_data is not None else _encode_chain(rows, xref_chain)
+    prev = b'/Prev %d' % offsets[xref_number] if self_prev else b''
+    out.write(b'%d 0 obj\n<< /Type /XRef /Size %d /W [1 4 2] /Root 1 0 R %s /Length %d %s >>\nstream\n' % (
+        xref_number, xref_number + 1, prev, len(packed), _filter_text(xref_chain)) + packed
+        + b'\nendstream\nendobj\n')
+    out.write(b'startxref\n%d\n%%%%EOF\n' % offsets[xref_number])
+    return out.getvalue()
+
+
+def linked_sections_pdf(loop):
+    """A one-page PDF whose last section's trailer links to the section of ``loop`` ('self' or 'pair').
+
+    ``'self'``: the one section points at its own offset. ``'pair'``: two sections point at each other.
+    """
+    bodies = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+              b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>']
+    out = io.BytesIO()
+    out.write(b'%PDF-1.4\n')
+    offsets = []
+    for number, body in enumerate(bodies, 1):
+        offsets.append(out.tell())
+        out.write(b'%d 0 obj\n' % number + body + b'\nendobj\n')
+    table = (b'xref\n0 4\n0000000000 65535 f \n'
+             + b''.join(b'%010d 00000 n \n' % offset for offset in offsets))
+    first = out.tell()
+    trailer = b'trailer\n<< /Size 4 /Root 1 0 R /Prev %010d >>\n'
+    if loop == 'self':
+        out.write(table + trailer % first + b'startxref\n%d\n%%%%EOF\n' % first)
+    else:
+        second = first + len(table) + len(trailer % 0)
+        out.write(table + trailer % second + table + trailer % first
+                  + b'startxref\n%d\n%%%%EOF\n' % second)
+    return out.getvalue()
+
+
+class _Rss:
+    """Samples the resident memory of the process while it runs; ``growth`` is the peak above the start."""
+
+    def __init__(self):
+        self.start = self.peak = self._now()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run)
+
+    @staticmethod
+    def _now():
+        with open('/proc/self/statm') as handle:
+            return int(handle.read().split()[1]) * resource.getpagesize()
+
+    def _run(self):
+        while not self._stop.is_set():
+            self.peak = max(self.peak, self._now())
+            time.sleep(0.002)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self._thread.join()
+        self.peak = max(self.peak, self._now())
+
+    @property
+    def growth(self):
+        return self.peak - self.start
+
+
+class FixRound3Case(PdfToolsCase):
+
+    def _refused(self, data, code, seconds=2, megabytes=100):
+        """open_pdf refuses ``data`` with ``code`` inside ``seconds`` and grows the process by < ``megabytes``."""
+        started = time.monotonic()
+        with _Rss() as memory, self.assertRaises(PdfToolError) as caught:
+            pdf_tools.open_pdf(data)
+        self.assertLess(time.monotonic() - started, seconds)
+        self.assertLess(memory.growth, megabytes * _MIB)
+        self.assertEqual(caught.exception.code, code)
+
+    def _opens(self, data, pages, seconds=None):
+        started = time.monotonic()
+        self.assertEqual(pdf_tools.open_pdf(data)[1], pages)
+        self.assertLess(time.monotonic() - started, seconds or pdf_tools.PDF_PARSE_SECONDS)
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestFilterChainsAreBounded(FixRound3Case):
+    """F-A: the library decodes cross-reference and object streams whole, whatever their chain."""
+
+    _HEAD = b'1 0 2 40 << /Type /Catalog /Pages 2 0 R >>\n<< /Type /Pages /Kids [] /Count 0 >>\n'
+
+    def _bomb(self, chain, where):
+        packed = _bomb_payload(chain, self._HEAD if where == 'objstm' else b'\0' * 7)
+        key = 'objstm_data' if where == 'objstm' else 'xref_data'
+        chain_key = 'objstm_chain' if where == 'objstm' else 'xref_chain'
+        data = object_stream_pdf([101], **{key: packed, chain_key: tuple(chain)})
+        self.assertLess(len(data), 400 * 1024)
+        return data
+
+    def test_the_library_decodes_only_cross_reference_and_object_streams(self):
+        # the streams whose data the library decodes while a file is opened and its pages are copied
+        filters = None
+        for package in ('PyPDF2', 'pypdf'):
+            try:
+                filters = importlib.import_module(package + '.filters')
+                break
+            except ImportError:
+                continue
+        if filters is None or not hasattr(filters, 'decode_stream_data'):
+            self.skipTest('the PDF library has no decode_stream_data')
+        decode = filters.decode_stream_data
+        seen = []
+
+        def spy(stream):
+            seen.append(str(stream.get('/Type')))
+            return decode(stream)
+
+        data = object_stream_pdf([101, 102, 103], megabytes=1)
+        with patch.object(filters, 'decode_stream_data', spy):
+            reader, count = pdf_tools.open_pdf(data)
+            pdf_tools.write_pdf(pdf_tools.page_range(reader, 1, count))
+        self.assertEqual(sorted(set(seen)), ['/ObjStm', '/XRef'])
+
+    def test_double_flate_and_text_filter_chains_of_either_stream_are_refused(self):
+        for where in ('objstm', 'xref'):
+            for chain in (('flate', 'flate'), ('a85', 'flate'), ('flate', 'flate', 'flate')):
+                with self.subTest(where=where, chain=chain):
+                    self._refused(self._bomb(chain, where), 'damaged')
+
+    def test_the_stream_cannot_hide_behind_another_spelling(self):
+        packed = _bomb_payload(('flate', 'flate'), self._HEAD)
+        for label, extra in (
+                ('type value escaped', {'type_text': b'/Type /Obj#53tm'}),
+                ('type key escaped', {'type_text': b'/Ty#70e /ObjStm'}),
+                ('filter key escaped', {'filter_text': b'/Fil#74er [/FlateDecode /FlateDecode]'}),
+                ('comment inside', {'filter_text': b'/Filter [/FlateDecode %c\n /FlateDecode]'}),
+                ('padded dictionary', {'type_text': b'/Type /ObjStm /Pad (' + b'x' * 300000 + b')'}),
+                ('keyword in a string', {'type_text': b'/Type /ObjStm /X (1 0 obj endstream)'})):
+            with self.subTest(label):
+                self._refused(object_stream_pdf([101], objstm_data=packed,
+                                                objstm_chain=('flate', 'flate'), **extra), 'damaged')
+
+    def test_a_gzip_wrapped_stream_is_counted_too(self):
+        wrapped = io.BytesIO()
+        with gzip.GzipFile(fileobj=wrapped, mode='wb', compresslevel=9) as target:
+            for _index in range(200):
+                target.write(b'\0' * _MIB)
+        data = object_stream_pdf([101], objstm_data=wrapped.getvalue())
+        self.assertLess(len(data), 400 * 1024)
+        self._refused(data, 'too_large')
+
+    def test_one_flate_step_and_harmless_filters_still_open(self):
+        self._opens(object_stream_pdf([101, 102, 103]), 3)
+        self._opens(object_stream_pdf([101, 102], content_dict=b'<< /Length 4 /Filter /DCTDecode >>'), 2)
+        self._opens(object_stream_pdf([101, 102], content_dict=b'<< /Length 4 /Filter [/FlateDecode] >>'), 2)
+        self._opens(object_stream_pdf([101, 102], filter_text=b'/Filter [/FlateDecode] /DecodeParms << /Predictor 1 >>'), 2)
+        self._opens(object_stream_pdf([101], xref_chain=('flate',), megabytes=2), 1)
+
+    def test_the_wizards_answer_a_refused_chain_with_a_message(self):
+        doc = self._doc('chain.pdf', self._bomb(('flate', 'flate'), 'objstm'))
+        with self.assertRaises(UserError):
+            self._split(self.member, doc).action_split()
+        self.assertEqual(self._count(self.target), 0)
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestSectionChains(FixRound3Case):
+    """F-B: a section that is its own earlier section keeps the parser busy for the whole budget."""
+
+    def test_sections_that_link_in_a_circle_are_refused_at_once(self):
+        for label, data in (('table to itself', linked_sections_pdf('self')),
+                            ('two tables', linked_sections_pdf('pair')),
+                            ('stream to itself', object_stream_pdf([101], self_prev=True))):
+            with self.subTest(label):
+                self._refused(data, 'damaged', seconds=1)
+
+    def test_a_chain_of_revisions_still_opens(self):
+        self._opens(revisions_pdf(3), 1)
+
+    def test_a_link_beyond_the_file_is_refused_and_one_that_misses_a_section_is_not(self):
+        data = revisions_pdf(2)
+        found = re.search(rb'/Prev (\d+)', data)       # the link of the middle section to the first
+        width = len(found.group(1))
+        beyond = 10 ** width - 1
+        self.assertGreater(beyond, len(data))
+        self._refused(data[:found.start(1)] + b'%0*d' % (width, beyond) + data[found.end(1):],
+                      'damaged', seconds=1)
+        stray = int(found.group(1)) + 3                 # inside the file, no section starts there
+        pdf_tools._check_xref_chain(data[:found.start(1)] + b'%0*d' % (width, stray)
+                                    + data[found.end(1):])
+
+    def test_the_walk_is_cheap_on_a_big_file(self):
+        data = revisions_pdf(2) + b'\0' * (60 * _MIB)
+        started = time.monotonic()
+        pdf_tools._check_xref_chain(data)
+        self.assertLess(time.monotonic() - started, 1)
+
+
+@tagged('woow_docmgmt_pdftools')
+class TestCapsScaleWithTheFile(FixRound3Case):
+    """F-C and F-G: a scan is a large file, a bomb is a small one; refusals for size say so."""
+
+    def test_a_twenty_page_scan_opens_with_a_table_and_with_object_streams(self):
+        self._opens(flate_scan_pdf(20, 8), 20)
+        data = object_stream_pdf([101 + index for index in range(20)], megabytes=8)
+        self.assertGreater(len(data), 20 * _MIB)
+        self.assertNotIn(b'/Type /Page ', data)    # the pages are inside the object stream
+        self._opens(data, 20)
+
+    def test_one_page_with_one_large_image_opens(self):
+        data = flate_scan_pdf(1, 150)
+        self.assertGreater(len(data), 15 * _MIB)
+        self._opens(data, 1)
+
+    def test_many_small_streams_open(self):
+        tiny = zlib.compress(b'q Q')
+        bodies = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+                  b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>']
+        bodies += [b'<< /Length %d /Filter /FlateDecode >>\nstream\n' % len(tiny) + tiny + b'\nendstream'
+                   for _index in range(60000)]
+        data = pdf_of_objects(bodies)
+        self.assertGreater(len(data), 5 * _MIB)
+        self._opens(data, 1)
+
+    def test_a_refusal_for_size_has_a_code_and_a_message_of_its_own(self):
+        self.assertIn('too_large', pdf_tools.CODES)
+        error = PdfToolError('too_large')
+        wizard = self.env[_SPLIT].with_user(self.member)
+        text = wizard._woow_pdf_message(error)
+        self.assertNotEqual(text, wizard._woow_pdf_message(PdfToolError('damaged')))
+        self.assertIn('too large', text)
+        self._refused(flate_bomb_pdf(8 * _MIB), 'too_large')
+        doc = self._doc('bomb.pdf', flate_bomb_pdf(8 * _MIB))
+        with self.assertRaises(UserError) as caught:
+            self._split(self.member, doc).action_split()
+        self.assertEqual(str(caught.exception), text)
+
+    def test_the_caps_still_hold_for_small_files_that_claim_much(self):
+        claims = b'% /Type /Page\n' * 400
+        self._refused(padded_pdf(claims) + flate_bomb_pdf(16 * _MIB), 'too_large')
+        self._refused(b'%PDF-1.4\n' + b'stream\nx\x9c\xff' * 1500000, 'too_large')
