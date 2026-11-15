@@ -14,13 +14,14 @@
 
 | Version | Odoo | Supported |
 |---|---|---|
-| 18.0.1.x | 18.0 Community | yes |
+| 18.0.2.x | 18.0 Community | yes |
+| 18.0.1.x | 18.0 Community | upgrade to 18.0.2 |
 
 ## Deliberate security design decisions (HD)
 
 These are decisions we made on purpose; reports that only restate them are not vulnerabilities.
 The full wording is supplied by the lanes that own each area (HD-01, 02, 03, 04, 07, 09, 10, 12, 13:
-core models and access; HD-05: trash; HD-14 and HD-15: inbound email and portal text). HD-06, HD-08 and HD-11 are retired: they described link
+core models and access; HD-05: trash; HD-14 and HD-15: inbound email and portal text; HD-16 to HD-22: the features of release 18.0.2). HD-06, HD-08 and HD-11 are retired: they described link
 sharing, which is not part of this module. Retired numbers are not reused.
 
 - **HD-01** Native attachment download routes follow the same record rules but are not audited.
@@ -123,6 +124,44 @@ sharing, which is not part of this module. Retired numbers are not reused.
   class attributes, so that it cannot restyle the page of the staff who read it. Text, links and
   images stay. Internal users keep their formatting.
 
+- **HD-16** A document shared with a person as editor can be changed by that person (rename, replace
+  the content, tags, description, trash) without any right on its folder. The share gives nothing else:
+  the editor cannot move the document, give it to another owner, manage who it is shared with, or
+  restore it from the trash, unless the person could do so through the folder before. Whoever may change
+  the share lists is exactly who could in 18.0.1 (write on the document and manage level on its folder).
+  A portal contact can only be a viewer. Every content replacement keeps the previous content as a
+  version, also one made by an editor by share; the server creates that version under a create-only rule.
+- **HD-17** An end date of access is enforced by a scheduled action that runs every 30 minutes. A person
+  keeps access until the next run after the last day, not until midnight. When a share row or member row
+  is removed, the server clears the locks of people who can no longer write the document (it asks in the
+  holder's own environment; the only write is clearing the lock, logged as a forced unlock).
+- **HD-18** Five places use another environment than the caller's, each registered in the static check
+  and documented: the folder mailbox creates documents *as the sender* (it lowers the gateway's rights to
+  the sender's own); automatic filing creates the filed document as the superuser, because the person who
+  attaches a file is usually no member of the target folder (the rule made by a document administrator is
+  the authorisation; policy and quota still apply, failures never break the attachment); filing first
+  reads the record in the environment of the maker of the rule, so a rule never files what its maker may
+  not read; the lost-lock release described in HD-17; and the removal of the oldest version when a permitted replacement reaches the limit of 20 versions (an editor by share may replace the content but has no right to delete history; the call is refused for a document under legal hold before it is used). Only the holder of a lock, a manager of the folder and a document administrator can unlock; the owner of the document cannot, unless he is one of them.
+- **HD-19** Files filed by a rule are visible to everyone who can open the target folder, even to people
+  who cannot open the record the file was attached to. The filing rule form says so in plain words.
+  A document administrator decides which kinds of record are filed and where.
+- **HD-20** A shortcut never gives access to its target, and neither does a requested-file placeholder;
+  both are hidden from portal and public users. A person who cannot read a shortcut's target learns
+  nothing about it (one neutral message for no access, trashed and gone). Requests grant no right: the
+  person asked must already be able to store a file in the folder.
+- **HD-21** PDF files are parsed with limits: raw markers are counted before parsing, the page tree is
+  walked with a node limit, the chain of cross-reference sections is walked with a link limit, parsing
+  has a time budget, and the streams the PDF library decodes are checked against size limits that scale
+  with the file. Page, output and input counts are limited (500 pages per source, 100 outputs per split,
+  50 inputs and 2,500 pages per merge). Encrypted, damaged, too large and non-PDF content is refused with
+  a short message. The pre-checks bound the common forms of hostile files but are not a full PDF parser;
+  the known remaining gaps are tracked.
+- **HD-22** A wizard row can only name documents and folders that the caller's own search finds; a
+  missing and a hidden id get the same refusal, and defaults from the context cannot add an unchecked id.
+  The attachment overview of other apps is visible to document users by default and shows exactly what
+  the user's own search over attachments returns; a folder that lists the overview group as a member is
+  therefore open to all document users (check member lists before upgrading from 18.0.1.0.0).
+
 ## Deployment notes
 
 - **Trusted proxies.** Behind a reverse proxy, set the trusted proxy networks and the client IP
@@ -148,6 +187,19 @@ sharing, which is not part of this module. Retired numbers are not reused.
   run, and enough refused messages at the head of the mailbox keep later mail from being fetched.
   Do not point a mail alias at these models: a refused new message makes core send a bounce and mark
   the alias as invalid.
+
+- **Folder mailbox.** Allowed senders are the followers of the mailbox record, and at the moment a mail
+  arrives the sender must be an active internal document user with upload level on the folder. The module
+  trusts the sender address that the gateway delivers, so the inbound mail server must enforce SPF, DKIM
+  and DMARC before a mailbox is used; the same rule as for replies (HD-14). The mail gateway must be
+  reachable only by the mail fetcher or a system administrator. Nothing of a received mail is kept on the
+  mailbox except a short note with counts.
+- **Expiry of access.** The scheduled action "Documents: End expired access" must be enabled; if it is
+  stopped, end dates are not enforced.
+- **Filing rules and requests mail.** Filing rules are limited to document administrators. Reminders of
+  requested files need the public address setting used for notices, and send a link that needs a login.
+- **Upgrade.** Take a database backup before `-u`; going back means restoring it. Check the member lists
+  of folders for the attachment overview group first (HD-22).
 
 ## Known limitations (pending owner decisions)
 

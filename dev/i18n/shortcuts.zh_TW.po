@@ -1,0 +1,103 @@
+# Copyright 2026 WoowTech
+# License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
+# Traditional Chinese terms of lane "shortcuts" (release 18.0.2.0.0); the integrator merges them into i18n/zh_TW.po.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_TW\n"
+
+msgid "Shortcut"
+msgstr "捷徑"
+
+msgid "Shortcut target"
+msgstr "捷徑目標"
+
+msgid "Target available"
+msgstr "目標可用"
+
+msgid "A shortcut points to one document, and only a shortcut has a target."
+msgstr "捷徑只指向一份文件，而且只有捷徑才有目標。"
+
+msgid "This field cannot be used in a search."
+msgstr "此欄位不能用於搜尋。"
+
+msgid "This field cannot be used to group documents."
+msgstr "此欄位不能用於分組文件。"
+
+msgid "This field cannot be exported."
+msgstr "此欄位不能匯出。"
+
+msgid "Only a shortcut has a target."
+msgstr "只有捷徑才有目標。"
+
+msgid "A shortcut points to a file or a link."
+msgstr "捷徑必須指向一個檔案或連結。"
+
+msgid "File metadata is set by the server."
+msgstr "檔案中繼資料由伺服器設定。"
+
+msgid "A shortcut is created with the shortcut wizard."
+msgstr "捷徑須透過建立捷徑精靈建立。"
+
+msgid "Only internal users can create shortcuts."
+msgstr "只有內部使用者可以建立捷徑。"
+
+msgid "Invalid number of files."
+msgstr "檔案數量無效。"
+
+msgid "A shortcut has no content of its own."
+msgstr "捷徑本身沒有內容。"
+
+msgid "The target folder is unavailable."
+msgstr "目標資料夾無法使用。"
+
+msgid "The document is unavailable."
+msgstr "這份文件無法使用。"
+
+msgid "A shortcut must be in the same company as its target."
+msgstr "捷徑必須與其目標屬於同一間公司。"
+
+msgid "A shortcut cannot be duplicated."
+msgstr "捷徑無法複製。"
+
+msgid "A shortcut can only point to a file or a link."
+msgstr "捷徑只能指向檔案或連結。"
+
+msgid "Create a shortcut"
+msgstr "建立捷徑"
+
+msgid "This document is not a shortcut."
+msgstr "此文件不是捷徑。"
+
+msgid "The target of this shortcut is not available."
+msgstr "此捷徑的目標無法使用。"
+
+msgid "Document"
+msgstr "文件"
+
+msgid "Destination folder"
+msgstr "目的資料夾"
+
+msgid "Shortcut created"
+msgstr "已建立捷徑"
+
+msgid "The shortcut is in the destination folder."
+msgstr "捷徑已放入目的資料夾。"
+
+msgid "Open target"
+msgstr "開啟目標"
+
+msgid "Create shortcut"
+msgstr "建立捷徑"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Shortcuts"
+msgstr "捷徑"
+
+msgid "The target of this shortcut is not available to you."
+msgstr "您無法使用此捷徑的目標。"
+
+msgid "Select one document."
+msgstr "請選擇一份文件。"

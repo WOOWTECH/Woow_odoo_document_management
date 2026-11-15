@@ -7,11 +7,19 @@ from odoo.exceptions import AccessError, UserError
 
 class WoowDocumentMoveWizard(models.TransientModel):
     _name = 'woow.document.move.wizard'
+    _inherit = ['woow.document.wizard.refs.mixin']
     _description = 'Move documents and folders'
 
     document_ids = fields.Many2many('woow.document')
     folder_ids = fields.Many2many('woow.document.folder')
     target_folder_id = fields.Many2one('woow.document.folder', required=True)
+
+    def _woow_visible_refs(self):
+        return {
+            'document_ids': ('woow.document', _('One or more selected items are unavailable.')),
+            'folder_ids': ('woow.document.folder', _('One or more selected items are unavailable.')),
+            'target_folder_id': ('woow.document.folder', _('The target folder is unavailable.')),
+        }
 
     def action_move(self):
         self.check_access('write')

@@ -61,7 +61,20 @@ class TestAddAttachment(TransactionCase):
             ('source_res_id', '=', self.source.res_id)]), 1)
 
     def test_requires_both_document_and_overview_groups(self):
-        self.user.groups_id = [Command.unlink(
-            self.env.ref('woow_document_management.group_woow_document_attachment_overview').id)]
+        overview = self.env.ref('woow_document_management.group_woow_document_attachment_overview')
+        document_user = self.env.ref('woow_document_management.group_woow_document_user')
+        # since 18.0.1.1.0 a document user holds the overview group by implication, so taking the
+        # overview group away alone leaves the import open; the document user group is the one
+        # that cannot be missing, and the overview group alone does not open the import either
+        self.user.groups_id = [Command.unlink(overview.id)]
+        self.assertTrue(self.user.has_group(
+            'woow_document_management.group_woow_document_attachment_overview'))
+        self.assertEqual(self._wizard([self.source.id]).action_add()['params']['type'], 'success')
+        viewer = self.env['res.users'].create({
+            'name': 'Overview only', 'login': 'wdoc-import-overview-only',
+            'groups_id': [Command.set([overview.id])]})
+        self.assertFalse(viewer.has_group(document_user.get_external_id()[document_user.id]))
+        wizard = self.env['woow.document.add.attachment.wizard'].with_user(viewer).with_context(
+            active_model='ir.attachment', active_ids=[self.source.id])
         with self.assertRaises(AccessError):
-            self._wizard([self.source.id]).action_add()
+            wizard.create({'folder_id': self.folder.id}).action_add()

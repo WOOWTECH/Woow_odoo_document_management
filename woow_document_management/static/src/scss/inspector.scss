@@ -1,0 +1,38 @@
+// Copyright 2026 WoowTech
+// License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0).
+.o_woow_inspector {
+    min-width: 0;
+
+    .o_woow_inspector_icon {
+        width: 3rem;
+        text-align: center;
+    }
+
+    .o_woow_inspector_facts dd {
+        margin-bottom: 0;
+    }
+
+    .o_woow_inspector_tag {
+        font-size: 0.85rem;
+    }
+
+    .o_woow_inspector_tag_choices {
+        max-height: 12rem;
+        overflow-y: auto;
+    }
+
+    .o_woow_inspector_chatter {
+        flex: 1 0 auto;
+
+        // the panel is narrow: let the tab bar of the chatter wrap instead of being cut at the edge
+        .o-mail-Chatter-topbar {
+            flex-wrap: wrap;
+            max-width: 100%;
+        }
+    }
+}
+
+.o_woow_inspector_page {
+    max-width: 48rem;
+    margin: 0 auto;
+}

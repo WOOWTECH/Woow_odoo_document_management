@@ -1,0 +1,11 @@
+from odoo import api, models
+
+
+class WoowDocumentSharing(models.Model):
+    _inherit = 'woow.document'
+
+    @api.model
+    def _woow_release_lost_locks(self, document_ids=()):
+        everything = self.sudo().with_context(active_test=False)  # sudo-ok: S5
+        return [doc for doc in everything.browse(document_ids)
+                if doc.with_user(doc.lock_uid).has_access('write')]  # sudo-ok: S5

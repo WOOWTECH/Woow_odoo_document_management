@@ -772,6 +772,23 @@ class TestGatewayCallerAndThreadLookup(TransactionCase):
                     record.id)
                 self.assertEqual(self._replies(record, accepted), 1)
 
+    def test_message_update_called_in_a_user_environment_needs_a_settings_administrator(self):
+        """Newer core runs a reply route in the caller's environment: the caller must be Settings."""
+        values = {'author_id': self.member.partner_id.id, 'email_from': self.member.email}
+        for record in self.records:
+            with self.subTest(model=record._name, caller='access rights only'), \
+                    self.assertRaises(AccessError) as caught:
+                record.with_user(self.rights_only).message_update(values)
+            self.assertEqual(caught.exception.args[0],
+                             'Documents and folders do not accept this email.')
+            with self.subTest(model=record._name, caller='settings administrator'):
+                self.assertFalse(record.with_user(self.settings_admin).env.su)
+                record.with_user(self.settings_admin).message_update(values)
+            with self.subTest(model=record._name, caller='settings administrator, portal sender'), \
+                    self.assertRaises(AccessError):
+                record.with_user(self.settings_admin).message_update({
+                    'author_id': self.portal.partner_id.id, 'email_from': self.portal.email})
+
     def test_the_thread_lookup_returns_nothing_to_a_portal_user_who_can_read_the_record(self):
         for record in self.records:
             with self.subTest(model=record._name):

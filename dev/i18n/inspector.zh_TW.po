@@ -1,0 +1,123 @@
+# Traditional Chinese terms of the inspector lane (release 18.0.2.0.0).
+# Plain PO: msgid is the English source exactly as it appears in the code, the views or the templates.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_TW\n"
+
+msgid "Details"
+msgstr "詳細資料"
+
+msgid "The details are for internal users only."
+msgstr "詳細資料僅供內部使用者查看。"
+
+msgid "The source record is not available to you."
+msgstr "來源紀錄已不存在，或你沒有權限查看。"
+
+msgid "Restricted"
+msgstr "受限"
+
+msgid "Something went wrong."
+msgstr "發生錯誤。"
+
+msgid "Versions"
+msgstr "版本"
+
+msgid "Nothing selected"
+msgstr "尚未選取任何項目"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Last change:"
+msgstr "最後變更："
+
+msgid "In the trash"
+msgstr "在回收桶中"
+
+msgid "Star"
+msgstr "加星號"
+
+msgid "Remove star"
+msgstr "取消星號"
+
+msgid "Lock"
+msgstr "鎖定"
+
+msgid "Unlock"
+msgstr "解除鎖定"
+
+msgid "Share"
+msgstr "分享"
+
+msgid "Upload the file"
+msgstr "上傳檔案"
+
+msgid "Locked by you"
+msgstr "已由你鎖定"
+
+msgid "Locked by"
+msgstr "鎖定者"
+
+msgid "Folder"
+msgstr "資料夾"
+
+msgid "Owner"
+msgstr "擁有者"
+
+msgid "Contact"
+msgstr "聯絡人"
+
+msgid "Company"
+msgstr "公司"
+
+msgid "Link"
+msgstr "連結"
+
+msgid "Points to"
+msgstr "指向"
+
+msgid "Came from"
+msgstr "來源"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Show versions"
+msgstr "顯示版本"
+
+msgid "Requested file"
+msgstr "索取的檔案"
+
+msgid "Asked of"
+msgstr "索取對象"
+
+msgid "Due"
+msgstr "到期日："
+
+msgid "Tags"
+msgstr "標籤"
+
+msgid "Remove tag"
+msgstr "移除標籤"
+
+msgid "Add a tag"
+msgstr "新增標籤"
+
+msgid "Shared with"
+msgstr "分享對象"
+
+msgid "until"
+msgstr "至"
+
+msgid "Not shared with anyone"
+msgstr "尚未分享給任何人"
+
+msgid "None"
+msgstr "無"
+
+msgid ""
+"This folder has portal members. Messages you send are emailed to every "
+"follower, including people outside the company. Use Log note for internal "
+"discussion."
+msgstr "這個資料夾有入口網站成員。用「傳送訊息」發出的內容會寄給所有追蹤者，可能包含公司以外的人；內部討論請用「記錄備註」。"

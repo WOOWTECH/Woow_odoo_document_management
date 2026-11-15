@@ -3,13 +3,129 @@
      License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
 <odoo>
   <record id="view_woow_document_attachment_overview_list" model="ir.ui.view">
-    <field name="name">ir.attachment.woow.overview.list</field><field name="model">ir.attachment</field>
-    <field name="arch" type="xml"><list create="0" edit="0" delete="0"><field name="name"/><field name="res_model"/><field name="res_id"/><field name="mimetype"/><field name="file_size"/><field name="create_uid"/><field name="create_date"/></list></field>
+    <field name="name">ir.attachment.woow.overview.list</field>
+    <field name="model">ir.attachment</field>
+    <field name="arch" type="xml">
+      <list create="0" edit="0" delete="0">
+        <field name="name"/>
+        <field name="woow_source_model_label"/>
+        <field name="woow_source_record_label"/>
+        <button name="action_woow_open_source" type="object" icon="fa-external-link" title="Open the source record" invisible="not res_id"/>
+        <field name="mimetype"/>
+        <field name="file_size"/>
+        <field name="create_uid"/>
+        <field name="create_date"/>
+        <field name="res_model" optional="hide"/>
+        <field name="res_id" optional="hide"/>
+      </list>
+    </field>
   </record>
+
+  <record id="view_woow_document_attachment_overview_form" model="ir.ui.view">
+    <field name="name">ir.attachment.woow.overview.form</field>
+    <field name="model">ir.attachment</field>
+    <field name="arch" type="xml">
+      <form create="0" edit="0" delete="0">
+        <header>
+          <button name="action_woow_download" type="object" string="Download" class="btn-primary"/>
+          <button name="action_woow_open_source" type="object" string="Open the source record" invisible="not res_id"/>
+        </header>
+        <sheet>
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="woow_source_model_label"/>
+              <field name="woow_source_record_label"/>
+              <field name="res_model"/>
+              <field name="res_id"/>
+            </group>
+            <group>
+              <field name="mimetype"/>
+              <field name="file_size"/>
+              <field name="create_uid"/>
+              <field name="create_date"/>
+            </group>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_woow_document_attachment_overview_kanban" model="ir.ui.view">
+    <field name="name">ir.attachment.woow.overview.kanban</field>
+    <field name="model">ir.attachment</field>
+    <field name="arch" type="xml">
+      <kanban create="0" edit="0" delete="0">
+        <field name="mimetype"/>
+        <templates>
+          <t t-name="card">
+            <field name="name" class="fw-bold"/>
+            <div><field name="woow_source_model_label"/></div>
+            <div class="text-muted"><field name="woow_source_record_label"/></div>
+            <div class="d-flex justify-content-between text-muted">
+              <field name="file_size"/>
+              <field name="create_date" widget="date"/>
+            </div>
+          </t>
+        </templates>
+      </kanban>
+    </field>
+  </record>
+
+  <record id="view_woow_document_attachment_overview_search" model="ir.ui.view">
+    <field name="name">ir.attachment.woow.overview.search</field>
+    <field name="model">ir.attachment</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="name" string="Name"/>
+        <field name="woow_source_model_label" string="Source type"/>
+        <field name="create_uid" string="Uploaded by"/>
+        <filter name="woow_business_records" string="Business records"
+                domain="[('res_id', '!=', 0), ('res_model', '!=', False), '!', ('res_model', '=like', 'ir.%'), ('res_model', '!=', 'mail.compose.message'), ('type', '=', 'binary')]"/>
+        <separator/>
+        <filter name="woow_my_uploads" string="My uploads" domain="[('create_uid', '=', uid)]"/>
+        <separator/>
+        <filter name="woow_images" string="Images" domain="[('mimetype', '=like', 'image/%')]"/>
+        <filter name="woow_pdf" string="PDF" domain="[('mimetype', '=', 'application/pdf')]"/>
+        <separator/>
+        <filter name="woow_last_30_days" string="Last 30 days"
+                domain="[('create_date', '&gt;=', (context_today() - relativedelta(days=30)).strftime('%Y-%m-%d'))]"/>
+        <group expand="0" string="Group by">
+          <filter name="woow_group_source_type" string="Source type" context="{'group_by': 'res_model'}"/>
+          <filter name="woow_group_uploader" string="Uploaded by" context="{'group_by': 'create_uid'}"/>
+          <filter name="woow_group_month" string="Upload month" context="{'group_by': 'create_date:month'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
   <record id="action_woow_document_attachment_overview" model="ir.actions.act_window">
-    <field name="name">Attachment overview</field><field name="res_model">ir.attachment</field><field name="view_mode">list</field>
+    <field name="name">Attachments in other apps</field>
+    <field name="res_model">ir.attachment</field>
+    <field name="view_mode">list,kanban,form</field>
     <field name="view_id" ref="view_woow_document_attachment_overview_list"/>
+    <field name="search_view_id" ref="view_woow_document_attachment_overview_search"/>
     <field name="domain">[('res_model', 'not in', ['woow.document', 'woow.document.folder'])]</field>
+    <field name="context">{'search_default_woow_business_records': 1}</field>
     <field name="groups_id" eval="[(4, ref('group_woow_document_attachment_overview'))]"/>
+  </record>
+
+  <record id="action_woow_document_attachment_overview_list" model="ir.actions.act_window.view">
+    <field name="sequence">10</field>
+    <field name="view_mode">list</field>
+    <field name="view_id" ref="view_woow_document_attachment_overview_list"/>
+    <field name="act_window_id" ref="action_woow_document_attachment_overview"/>
+  </record>
+  <record id="action_woow_document_attachment_overview_kanban" model="ir.actions.act_window.view">
+    <field name="sequence">20</field>
+    <field name="view_mode">kanban</field>
+    <field name="view_id" ref="view_woow_document_attachment_overview_kanban"/>
+    <field name="act_window_id" ref="action_woow_document_attachment_overview"/>
+  </record>
+  <record id="action_woow_document_attachment_overview_form" model="ir.actions.act_window.view">
+    <field name="sequence">30</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_woow_document_attachment_overview_form"/>
+    <field name="act_window_id" ref="action_woow_document_attachment_overview"/>
   </record>
 </odoo>

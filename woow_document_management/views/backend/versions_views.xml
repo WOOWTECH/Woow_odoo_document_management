@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_version_list" model="ir.ui.view">
+    <field name="name">woow.document.version.list</field>
+    <field name="model">woow.document.version</field>
+    <field name="arch" type="xml">
+      <list string="Versions" create="0" edit="0" delete="0">
+        <field name="number"/>
+        <field name="name"/>
+        <field name="create_date" string="Replaced on"/>
+        <field name="create_uid" string="Replaced by"/>
+        <field name="file_size"/>
+        <field name="woow_can_manage" column_invisible="1"/>
+        <button name="action_download" type="object" string="Download" icon="fa-download"/>
+        <button name="action_restore" type="object" string="Make current" icon="fa-undo"
+                invisible="not woow_can_manage"/>
+        <button name="action_delete" type="object" string="Delete" icon="fa-trash"
+                invisible="not woow_can_manage"
+                confirm="Delete this version? Its file is removed for good."/>
+      </list>
+    </field>
+  </record>
+  <record id="view_woow_document_document_form_versions" model="ir.ui.view">
+    <field name="name">woow.document.form.versions</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_new_version" string="New version" type="object"
+                invisible="document_type != 'binary' or not woow_user_can_write"/>
+      </xpath>
+      <!-- A file that has content is replaced through the New version button, which keeps the
+           earlier content; the field still takes the first file of an empty document. -->
+      <xpath expr="//field[@name='datas']" position="attributes">
+        <attribute name="readonly">id and file_size</attribute>
+      </xpath>
+      <xpath expr="//sheet" position="inside">
+        <field name="woow_user_can_write" invisible="1"/>
+        <field name="file_size" invisible="1"/>
+        <notebook>
+          <page string="Versions" name="woow_versions" invisible="document_type != 'binary'">
+            <field name="version_ids" nolabel="1" readonly="1"
+                   context="{'list_view_ref': 'woow_document_management.view_woow_document_version_list'}"/>
+          </page>
+        </notebook>
+      </xpath>
+    </field>
+  </record>
+</odoo>

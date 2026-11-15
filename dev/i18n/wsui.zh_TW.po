@@ -1,0 +1,167 @@
+# Traditional Chinese terms of the lane "wsui" (the workspace screen in the browser). The integrator
+# merges them into woow_document_management/i18n/zh_TW.po when it regenerates the catalogue.
+msgid ""
+msgstr ""
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "%(ok)s of %(total)s files uploaded"
+msgstr "已上傳 %(ok)s／%(total)s 個檔案"
+
+msgid "%s files here"
+msgstr "此處 %s 個檔案"
+
+msgid "%s files uploaded"
+msgstr "已上傳 %s 個檔案"
+
+msgid "%s selected"
+msgstr "已選取 %s 項"
+
+msgid "1 file here"
+msgstr "此處 1 個檔案"
+
+msgid "Actions"
+msgstr "動作"
+
+msgid "Ask for a file"
+msgstr "索取檔案"
+
+msgid "All folders"
+msgstr "所有資料夾"
+
+msgid "Choose a folder in the left panel, then drop the files again."
+msgstr "請先在左側面板選擇資料夾，再拖放檔案。"
+
+msgid "Clear the selection"
+msgstr "取消選取"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Create shortcut"
+msgstr "建立捷徑"
+
+msgid "Details"
+msgstr "詳細資料"
+
+msgid "Download"
+msgstr "下載"
+
+msgid "Drop at most %s files at a time."
+msgstr "一次最多只能拖放 %s 個檔案。"
+
+msgid "Drop the files to upload them to this folder"
+msgstr "放開滑鼠，即可把檔案上傳到此資料夾"
+
+msgid "Duplicate"
+msgstr "建立複本"
+
+msgid "Folder path"
+msgstr "資料夾路徑"
+
+msgid "Folders"
+msgstr "資料夾"
+
+msgid "Folders cannot be dropped; drop the files they hold."
+msgstr "無法拖放資料夾；請改為拖放其中的檔案。"
+
+msgid "Has earlier versions"
+msgstr "有較早的版本"
+
+msgid "Lock"
+msgstr "鎖定"
+
+msgid "Locked"
+msgstr "已鎖定"
+
+msgid "Merge PDF files"
+msgstr "合併 PDF 檔案"
+
+msgid "Move"
+msgstr "移動"
+
+msgid "Move to trash"
+msgstr "移到回收桶"
+
+msgid "Moved."
+msgstr "已移動。"
+
+msgid "New version"
+msgstr "新版本"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Remove star"
+msgstr "移除星號"
+
+msgid "Rename"
+msgstr "重新命名"
+
+msgid "Selection"
+msgstr "選取項目"
+
+msgid "Share"
+msgstr "分享"
+
+msgid "Split PDF"
+msgstr "分割 PDF"
+
+msgid "Star"
+msgstr "加星號"
+
+msgid "Star or remove the star"
+msgstr "加上或取消星號"
+
+msgid "The file could not be uploaded."
+msgstr "無法上傳此檔案。"
+
+msgid "The file is too large."
+msgstr "檔案太大。"
+
+msgid "The folder is not available."
+msgstr "此資料夾無法使用。"
+
+msgid "The server is busy. Try again in a moment."
+msgstr "伺服器忙碌中，請稍後再試。"
+
+msgid "This link cannot be opened."
+msgstr "無法開啟此連結。"
+
+msgid "Trash"
+msgstr "回收桶"
+
+msgid "Unlock"
+msgstr "解除鎖定"
+
+msgid "Uploading %(done)s of %(total)s"
+msgstr "正在上傳 %(done)s／%(total)s"
+
+msgid "You cannot add files to this folder."
+msgstr "您無法在此資料夾加入檔案。"
+
+msgid "You cannot move this selection."
+msgstr "您無法移動這些選取項目。"
+
+msgid "Export"
+msgstr "匯出"
+
+msgid "More folders are in the left panel."
+msgstr "更多資料夾請從左側面板選取。"
+
+msgid "The download failed. The file may have been moved or removed, or you may no longer have access to it."
+msgstr "下載失敗。檔案可能已被移動或刪除，或您已不再有存取權限。"
+
+msgid "Your session has expired. Log in again, then repeat the download."
+msgstr "登入已逾時。請重新登入後再下載一次。"
+
+msgid "Too many downloads are running at once. Wait a moment and try again."
+msgstr "同時進行的下載太多。請稍候再試。"
+
+msgid "The server is busy. Try the download again in a moment."
+msgstr "伺服器忙碌中，請稍後再重新下載。"
+
+msgid "Preparing the download. It starts when the archive is ready."
+msgstr "正在準備下載。壓縮檔完成後會自動開始。"

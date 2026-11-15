@@ -1,0 +1,129 @@
+# Traditional Chinese (zh_TW) terms of lane "versions", release 18.0.2.0.0.
+# New terms only; the integrator merges them into i18n/zh_TW.po and regenerates the template.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_TW\n"
+
+msgid "Versions are kept by the server."
+msgstr "版本由系統自動保存。"
+
+msgid "Versions cannot be changed."
+msgstr "版本不能修改。"
+
+msgid "Versions are removed by the server."
+msgstr "版本由系統自動移除。"
+
+msgid "Select fewer versions."
+msgstr "請選擇較少的版本。"
+
+msgid "The versions of a document under legal hold cannot be deleted."
+msgstr "受法律保留的文件，其版本不能刪除。"
+
+msgid "New version"
+msgstr "新版本"
+
+msgid "Only a file has versions."
+msgstr "只有檔案才有版本。"
+
+msgid "This document is unavailable."
+msgstr "此文件無法使用。"
+
+msgid "Another user has locked this file."
+msgstr "其他使用者已鎖定此檔案。"
+
+msgid "This version belongs to another document."
+msgstr "此版本屬於另一份文件。"
+
+msgid "This version has no file content."
+msgstr "此版本沒有檔案內容。"
+
+msgid "This document is under legal hold, so none of its versions can be removed. It has reached the limit of versions."
+msgstr "此文件受法律保留，版本一律不能移除，而它已達版本數量上限。"
+
+msgid "This file has no content to keep as a version."
+msgstr "此檔案沒有內容可保存為版本。"
+
+msgid "Document version"
+msgstr "文件版本"
+
+msgid "Upload a new version of a file"
+msgstr "上傳檔案的新版本"
+
+msgid "File name"
+msgstr "檔案名稱"
+
+msgid "Size"
+msgstr "大小"
+
+msgid "Checksum"
+msgstr "檢核碼"
+
+msgid "Number"
+msgstr "編號"
+
+msgid "Versions"
+msgstr "版本"
+
+msgid "Number of versions"
+msgstr "版本數量"
+
+msgid "Can change the document"
+msgstr "可修改文件"
+
+msgid "New file"
+msgstr "新檔案"
+
+msgid "Filename"
+msgstr "檔名"
+
+msgid "The first version of a document is number 1."
+msgstr "文件的第一個版本編號為 1。"
+
+msgid "The name the file had while this content was current."
+msgstr "此內容為目前內容時，檔案使用的名稱。"
+
+msgid "A document cannot have two versions with the same number."
+msgstr "同一份文件不能有兩個編號相同的版本。"
+
+msgid "The number of a version starts at 1."
+msgstr "版本編號從 1 開始。"
+
+msgid "Replaced on"
+msgstr "取代時間"
+
+msgid "Replaced by"
+msgstr "取代者"
+
+msgid "Make current"
+msgstr "設為目前版本"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "Delete this version? Its file is removed for good."
+msgstr "要刪除此版本嗎？它的檔案會被永久移除。"
+
+msgid "The file that is current now is kept as the newest version. The document keeps its name; if the new file has another extension, the name takes it."
+msgstr "目前的檔案會保存為最新的版本。文件沿用原本的名稱；如果新檔案的副檔名不同，名稱會改用新的副檔名。"
+
+msgid "These versions cannot be deleted."
+msgstr "這些版本不能刪除。"
+
+msgid "This document cannot take another version."
+msgstr "此文件不能再新增版本。"
+
+msgid "Last version number"
+msgstr "最後的版本編號"
+
+msgid "The number the newest version took. A number is never given twice, even after the newest version was deleted."
+msgstr "最新版本使用的編號。編號不會重複使用，即使最新的版本已被刪除。"
+
+msgid "Version added"
+msgstr "已新增版本"
+
+msgid "Version restored"
+msgstr "已還原版本"
+
+msgid "Version deleted"
+msgstr "已刪除版本"

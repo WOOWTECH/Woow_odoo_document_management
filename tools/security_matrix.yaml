@@ -9,22 +9,38 @@ aliases:
   manager: group_woow_document_manager
   portal: base.group_portal
 groups:
-  group_woow_document_user: {category: module_category_woow_document, implied: [base.group_user]}
+  group_woow_document_user: {category: module_category_woow_document, implied: [base.group_user, group_woow_document_attachment_overview]}
   group_woow_document_manager: {category: module_category_woow_document, implied: [group_woow_document_user]}
   group_woow_document_attachment_overview: {category: null, implied: [base.group_user]}
 categories: [module_category_woow_document]
-company_models: [woow.document.folder, woow.document.folder.access, woow.document, woow.document.tag, woow.document.log]
+company_models: [woow.document.folder, woow.document.folder.access, woow.document, woow.document.tag, woow.document.log, woow.document.favorite, woow.document.version, woow.document.share, woow.document.mail.intake, woow.document.auto.rule]
 acl:
   woow.document.folder: {user: '1110', manager: '1111', portal: '1100'}
   woow.document.folder.access: {user: '1111', manager: '1111'}
   woow.document: {user: '1110', manager: '1111', portal: '1010'}
   woow.document.tag: {user: '1010', manager: '1111'}
   woow.document.log: {user: '1000', manager: '1000'}
+  woow.document.mail.intake: {manager: '1111'}
   woow.document.move.wizard: {user: '1110', manager: '1110'}
   woow.document.restore.wizard: {user: '1110', manager: '1110'}
   woow.document.purge.wizard: {user: '1110', manager: '1110'}
   woow.document.add.attachment.wizard: {user: '1110', manager: '1110'}
   woow.document.notify.wizard: {user: '1110', manager: '1110'}
+  woow.document.favorite: {user: '1011', manager: '1011'}
+  woow.document.upload.wizard: {user: '1110', manager: '1110'}
+  woow.document.upload.wizard.line: {user: '1111', manager: '1111'}
+  woow.document.rename.wizard: {user: '1110', manager: '1110'}
+  woow.document.version: {user: '1011', manager: '1011'}
+  woow.document.version.wizard: {user: '1110', manager: '1110'}
+  woow.document.shortcut.wizard: {user: '1110', manager: '1110'}
+  woow.document.request.wizard: {user: '1110', manager: '1110'}
+  woow.document.request.fulfil.wizard: {user: '1110', manager: '1110'}
+  woow.document.share: {user: '1111', manager: '1111'}
+  woow.document.auto.rule: {manager: '1111'}
+  woow.document.autofile.wizard: {manager: '1110'}
+  woow.document.pdf.split.wizard: {user: '1110', manager: '1110'}
+  woow.document.pdf.merge.wizard: {user: '1110', manager: '1110'}
+  woow.document.pdf.merge.line: {user: '1111', manager: '1111'}
 hd07: [woow.document.folder, portal]
 rules:
 - id: rule_woow_document_folder_company
@@ -110,7 +126,7 @@ rules:
   model: woow.document
   groups: [user]
   perms: '0100'
-  domain: "['&', ('folder_in_trash', '=', False), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])]"
+  domain: "['&', ('folder_in_trash', '=', False), '|', '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)]), '&', ('active', '=', True), ('shared_editor_user_ids', 'in', [user.id])]"
 - id: rule_woow_document_user_create
   ref: R-D3
   model: woow.document
@@ -196,6 +212,31 @@ rules:
   groups: [user]
   perms: '1111'
   domain: "[('create_uid', '=', user.id)]"
+# R-FV0, R-FV1: a favourite is its user's alone. R-W7, R-W8: an upload wizard and its files are their creator's alone.
+- id: rule_woow_document_favorite_company
+  ref: R-FV0
+  model: woow.document.favorite
+  groups: []
+  perms: '1111'
+  domain: "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]"
+- id: rule_woow_document_favorite_owner
+  ref: R-FV1
+  model: woow.document.favorite
+  groups: [user]
+  perms: '1111'
+  domain: "[('user_id', '=', user.id)]"
+- id: rule_woow_document_upload_wizard_owner
+  ref: R-W7
+  model: woow.document.upload.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_upload_wizard_line_owner
+  ref: R-W8
+  model: woow.document.upload.wizard.line
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
 # R-M0 is a global rule on a core model (mail.message): share users (portal / public) never
 # read, write, create or unlink this module's chatter; internal users are unaffected (DEC-11).
 - id: rule_woow_mail_message_share_users
@@ -204,3 +245,175 @@ rules:
   groups: []
   perms: '1111'
   domain: "[(1, '=', 1)] if not user.share else [('model', 'not in', ['woow.document', 'woow.document.folder'])]"
+# R-V0..R-V6: versions of a file (see security/versions_rules.xml). R-V4 is global: no version is
+# removed while its document is under legal hold.
+- id: rule_woow_document_version_company
+  ref: R-V0
+  model: woow.document.version
+  groups: []
+  perms: '1111'
+  domain: "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]"
+- id: rule_woow_document_version_user_read
+  ref: R-V1
+  model: woow.document.version
+  groups: [user]
+  perms: '1000'
+  domain: "[('document_id', 'any', ['&', ('active', 'in', [True, False]), '&', ('folder_in_trash', '=', False), '|', '&', ('active', '=', True), '|', '|', ('folder_id', 'any', ['|', ('eff_read_user_ids', 'in', [user.id]), ('eff_read_group_ids', 'in', user.groups_id.ids)]), ('shared_user_ids', 'in', [user.id]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)]), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])])]"
+- id: rule_woow_document_version_user_change
+  ref: R-V2
+  model: woow.document.version
+  groups: [user]
+  perms: '0011'
+  domain: "[('document_id', 'any', ['&', ('active', 'in', [True, False]), '&', ('folder_in_trash', '=', False), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])])]"
+- id: rule_woow_document_version_manager
+  ref: R-V3
+  model: woow.document.version
+  groups: [manager]
+  perms: '1011'
+  domain: "[(1, '=', 1)]"
+- id: rule_woow_document_version_hold
+  ref: R-V4
+  model: woow.document.version
+  groups: []
+  perms: '0001'
+  domain: "[('document_id', 'any', [('active', 'in', [True, False]), ('legal_hold', '=', False)])]"
+- id: rule_woow_document_version_wizard_owner
+  ref: R-V5
+  model: woow.document.version.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_version_share_editor_create
+  ref: R-V6
+  model: woow.document.version
+  groups: [user]
+  perms: '0010'
+  domain: "[('document_id', 'any', ['&', ('active', '=', True), '&', ('folder_in_trash', '=', False), ('shared_editor_user_ids', 'in', [user.id])])]"
+- id: rule_woow_document_shortcut_share_users
+  ref: R-SC1
+  model: woow.document
+  groups: []
+  perms: '1111'
+  domain: "[(1, '=', 1)] if not user.share else [('document_type', '!=', 'shortcut')]"
+- id: rule_woow_document_shortcut_wizard_owner
+  ref: R-W9
+  model: woow.document.shortcut.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+# R-Q0 is a global rule on the documents: share users never see a placeholder of a requested file.
+- id: rule_woow_document_request_share_users
+  ref: R-Q0
+  model: woow.document
+  groups: []
+  perms: '1111'
+  domain: "[(1, '=', 1)] if not user.share else [('document_type', '!=', 'request')]"
+# R-Q3: the requester of a pending request may write the placeholder (the owner is the person asked).
+- id: rule_woow_document_request_creator_write
+  ref: R-Q3
+  model: woow.document
+  groups: [user]
+  perms: '0100'
+  domain: "['&', ('document_type', '=', 'request'), '&', ('create_uid', '=', user.id), '&', ('folder_in_trash', '=', False), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])]"
+# R-Q1, R-Q2: a wizard row is its creator's alone.
+- id: rule_woow_document_request_wizard_owner
+  ref: R-Q1
+  model: woow.document.request.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_request_fulfil_wizard_owner
+  ref: R-Q2
+  model: woow.document.request.fulfil.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+# R-S0..R-S3 (security/sharing_rules.xml): the rows of people a document is shared with.
+- id: rule_woow_document_share_company
+  ref: R-S0
+  model: woow.document.share
+  groups: []
+  perms: '1111'
+  domain: "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]"
+- id: rule_woow_document_share_user_read
+  ref: R-S1
+  model: woow.document.share
+  groups: [user]
+  perms: '1000'
+  domain: "[('document_id', 'any', ['&', ('active', 'in', [True, False]), '&', ('folder_in_trash', '=', False), '|', '&', ('active', '=', True), '|', '|', ('folder_id', 'any', ['|', ('eff_read_user_ids', 'in', [user.id]), ('eff_read_group_ids', 'in', user.groups_id.ids)]), ('shared_user_ids', 'in', [user.id]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)]), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])])]"
+- id: rule_woow_document_share_user_manage
+  ref: R-S2
+  model: woow.document.share
+  groups: [user]
+  perms: '1000'
+  domain: "[('folder_id', 'any', ['&', ('in_trash', '=', False), '|', ('eff_manage_user_ids', 'in', [user.id]), ('eff_manage_group_ids', 'in', user.groups_id.ids)])]"
+- id: rule_woow_document_share_user_manage_change
+  ref: R-S4
+  model: woow.document.share
+  groups: [user]
+  perms: '0111'
+  domain: "[('folder_id', 'any', ['|', ('eff_manage_user_ids', 'in', [user.id]), ('eff_manage_group_ids', 'in', user.groups_id.ids)])]"
+- id: rule_woow_document_share_manager
+  ref: R-S3
+  model: woow.document.share
+  groups: [manager]
+  perms: '1111'
+  domain: "[(1, '=', 1)]"
+# R-I0: a folder mailbox follows the company of its folder.
+- id: rule_woow_document_mail_intake_company
+  ref: R-I0
+  model: woow.document.mail.intake
+  groups: []
+  perms: '1111'
+  domain: "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]"
+- id: rule_woow_document_mail_intake_alias
+  ref: R-I1
+  model: mail.alias
+  groups: []
+  perms: '1111'
+  domain: "[(1, '=', 1)] if user.has_group('woow_document_management.group_woow_document_manager') or user.has_group('base.group_system') else [('alias_model_id.model', '!=', 'woow.document.mail.intake')]"
+- id: rule_woow_document_mail_intake_followers
+  ref: R-I2
+  model: mail.followers
+  groups: []
+  perms: '1111'
+  domain: "[(1, '=', 1)] if user.has_group('woow_document_management.group_woow_document_manager') or user.has_group('base.group_system') else [('res_model', '!=', 'woow.document.mail.intake')]"
+# R-AF0 / R-AF1 (lane autofile): only document administrators have an ACL on the filing rules.
+- id: rule_woow_document_auto_rule_company
+  ref: R-AF0
+  model: woow.document.auto.rule
+  groups: []
+  perms: '1111'
+  domain: "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]"
+- id: rule_woow_document_autofile_wizard_owner
+  ref: R-AF1
+  model: woow.document.autofile.wizard
+  groups: [manager]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+# R-P1, R-P2: the PDF split and merge wizards (and the lines of a merge) belong to their creator.
+- id: rule_woow_document_pdf_split_wizard_owner
+  ref: R-P1
+  model: woow.document.pdf.split.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_pdf_merge_wizard_owner
+  ref: R-P2
+  model: woow.document.pdf.merge.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+- id: rule_woow_document_pdf_merge_line_owner
+  ref: R-P3
+  model: woow.document.pdf.merge.line
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"
+# R-W10 (docactions lane): the rename wizard row is its creator's alone, like R-W2..R-W6.
+- id: rule_woow_document_rename_wizard_owner
+  ref: R-W10
+  model: woow.document.rename.wizard
+  groups: [user]
+  perms: '1111'
+  domain: "[('create_uid', '=', user.id)]"

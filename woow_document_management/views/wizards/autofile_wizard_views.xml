@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_autofile_wizard_form" model="ir.ui.view">
+    <field name="name">woow.document.autofile.wizard.form</field>
+    <field name="model">woow.document.autofile.wizard</field>
+    <field name="arch" type="xml">
+      <form string="File existing attachments">
+        <p>
+          This looks at the next batch of attachments of the kind of record named by the rule that
+          are not filed yet, and files them in the target folder. You can run it again until
+          nothing is left to look at. A file whose record is of another company, is gone, or cannot be
+          read by you is left out, and so is a file that was imported by hand before. A document that
+          was deleted for good is filed again by a later pass.
+        </p>
+        <field name="ran" invisible="1"/>
+        <group>
+          <field name="rule_id" readonly="1"/>
+        </group>
+        <group invisible="not ran">
+          <field name="looked"/>
+          <field name="filed"/>
+          <field name="refused"/>
+          <field name="skipped"/>
+          <field name="left"/>
+        </group>
+        <footer>
+          <button name="action_file" type="object" string="File existing attachments"
+                  class="btn-primary"/>
+          <button string="Close" special="cancel" class="btn-secondary"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>

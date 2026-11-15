@@ -26,6 +26,7 @@ import base64
 import random
 import re
 import xmlrpc.client
+from contextlib import contextmanager
 
 from psycopg2 import Error as DatabaseError, errors
 
@@ -41,6 +42,66 @@ from .test_reg_chatter_attachment_tokens import _ChatterFixture
 
 CONSTRAINT = 'ir_attachment_%s' % OPEN_ROW_CONSTRAINT
 ACCESS_ERROR = 4        # the fault code that /xmlrpc/2 gives an AccessError
+
+
+def foreign_overrides(env):
+    """The modules, installed next to this one, that extend ``ir.attachment`` without being a
+    dependency of it (a billing or accounting module of the site, say).
+
+    Such a module may judge the values of a create or a write before this module's guard does, and
+    answer a model that is not text with an error of its own (a ``TypeError`` from a set lookup, say)
+    instead of the access error of this module. The write is refused either way.
+    """
+    module = env['ir.module.module'].sudo().search([('name', '=', 'woow_document_management')])
+    own = set(module.upstream_dependencies(exclude_states=('uninstallable',))
+              .mapped('name')) | {'woow_document_management', 'base'}
+    found = set()
+    for klass in type(env['ir.attachment']).__mro__:
+        parts = klass.__module__.split('.')
+        if parts[:2] == ['odoo', 'addons'] and len(parts) > 2 and parts[2] not in own:
+            found.add(parts[2])
+    return found
+
+
+@contextmanager
+def refused(case):
+    """The call inside is refused and the database is as it was before it.
+
+    When this module's guard answers, it answers with its own ``AccessError``. When another installed
+    module that extends ``ir.attachment`` (see ``foreign_overrides``) answers first, any error class
+    is accepted, because the class is that module's choice; without such a module the error must be
+    the ``AccessError`` of this one. The savepoint undoes what the call did before it was refused.
+    """
+    try:
+        with case.env.cr.savepoint():
+            yield
+    except AccessError:
+        return
+    except Exception:           # noqa: BLE001 - what another module raises is not ours to name
+        if not foreign_overrides(case.env):
+            raise
+    else:
+        case.fail('the call was not refused')
+
+
+def applied(case, call):
+    """Run ``call``; True when it was made, False when another installed module refused it first.
+
+    For a call that this module lets through: another module that extends ``ir.attachment`` may
+    still refuse a model that is not text (see ``refused``), and then nothing was changed. A refusal
+    that comes from this module's own guard, or any error when no other module is installed, is not
+    tolerated.
+    """
+    try:
+        with case.env.cr.savepoint():
+            call()
+    except AccessError:
+        raise
+    except Exception:           # noqa: BLE001
+        if not foreign_overrides(case.env):
+            raise
+        return False
+    return True
 
 
 def spellings(model):
@@ -80,7 +141,9 @@ class _Fixture(_ChatterFixture):
         self.attachments = self.env['ir.attachment']
         self.targets = {'woow.document': self.document.id, 'woow.document.folder': self.folder.id,
                         'woow.document.folder.access': 0, 'woow.document.tag': 0,
-                        'woow.document.log': 0}
+                        'woow.document.log': 0, 'woow.document.favorite': 0,
+                        'woow.document.version': 0, 'woow.document.share': 0,
+                        'woow.document.mail.intake': 0, 'woow.document.auto.rule': 0}
         self.assertEqual(set(self.targets), set(WOOW_MODELS))
 
     def _file(self, user, **extra):
@@ -138,7 +201,7 @@ class TestTheModelOfAnAttachmentIsJudgedAsTheColumnKeepsIt(_Fixture, Transaction
                     with self.subTest(model=model, value=value, user=user.login, extra=extra):
                         row = self._file(user, **extra)
                         row.write({'res_id': res_id})
-                        with self.assertRaises(AccessError):
+                        with refused(self):
                             row.write({'res_model': value})
                         stored = row_of(self.env, row)
                         self.assertEqual(stored[:2], (None, res_id))
@@ -153,9 +216,12 @@ class TestTheModelOfAnAttachmentIsJudgedAsTheColumnKeepsIt(_Fixture, Transaction
                 with self.subTest(model=model, value=value):
                     row = self._file(self.editor)
                     row.write({'res_id': self.targets[model]})
-                    row.write({'res_model': value})
-                    self.assertEqual(row_of(self.env, row)[:4],
-                                     (model, self.targets[model], False, None))
+                    if applied(self, lambda: row.write({'res_model': value})):
+                        self.assertEqual(row_of(self.env, row)[:4],
+                                         (model, self.targets[model], False, None))
+                    else:       # another module refused the model that is not text: nothing moved
+                        self.assertEqual(row_of(self.env, row)[:4],
+                                         (None, self.targets[model], False, None))
 
     def test_a_create_for_a_model_that_is_not_text_is_judged_like_the_text(self):
         """The model of a create is read as the column keeps it, for the guard and for the defaults."""
@@ -163,7 +229,7 @@ class TestTheModelOfAnAttachmentIsJudgedAsTheColumnKeepsIt(_Fixture, Transaction
             for value in spellings(model):
                 for extra in ({'public': True}, {'access_token': 'created'}, {'res_field': 'datas'}):
                     with self.subTest(model=model, value=value, extra=extra):
-                        with self.assertRaises(AccessError):
+                        with refused(self):
                             self._file(self.editor, res_model=value, res_id=res_id, **extra)
         self.assertFalse(open_rows(self.env))
         # a file that is not open is made as before (core hashes the model of a create: no Binary)
@@ -188,8 +254,11 @@ class TestTheModelOfAnAttachmentIsJudgedAsTheColumnKeepsIt(_Fixture, Transaction
                         row = su.create({
                             'name': 'su.txt', 'raw': b'su bytes', 'res_model': 'res.partner',
                             'res_id': 0, 'public': True, 'access_token': 'su-token'})
-                        row.write(dict(extra, res_model=value))
-                        self.assertEqual(row_of(self.env, row)[2:4], (False, None))
+                        if applied(self, lambda: row.write(dict(extra, res_model=value))):
+                            self.assertEqual(row_of(self.env, row)[2:4], (False, None))
+                        else:   # refused by another module first: the row is a row of another model
+                            self.assertEqual(row_of(self.env, row)[:4],
+                                             ('res.partner', 0, True, 'su-token'))
                 with self.subTest(model=model, value=value, way='the flag, for a row that is one'):
                     row = su.create({'name': 'su.txt', 'raw': b'su bytes', 'res_model': model,
                                      'res_id': res_id})
@@ -212,7 +281,7 @@ class TestTheModelOfAnAttachmentIsJudgedAsTheColumnKeepsIt(_Fixture, Transaction
             with self.subTest(value=value, way='write'):
                 row = su.create({'name': 'other.txt', 'raw': b'other', 'res_model': 'res.partner',
                                  'res_id': 0, 'public': True, 'access_token': 'other-token'})
-                row.write({'res_model': value})
+                applied(self, lambda: row.write({'res_model': value}))
                 self.assertEqual(row_of(self.env, row)[2:4], (True, 'other-token'))
 
     def test_the_file_of_a_field_is_judged_by_the_model_as_kept(self):
@@ -227,16 +296,16 @@ class TestTheModelOfAnAttachmentIsJudgedAsTheColumnKeepsIt(_Fixture, Transaction
                 with self.subTest(model=model, value=value, way='a move'):
                     row = su.create({'name': 'pending.txt', 'raw': b'pending',
                                      'res_model': 'mail.compose.message', 'res_id': 0})
-                    with self.assertRaises(AccessError):
+                    with refused(self):
                         row.write({'res_model': value, 'res_id': res_id, 'res_field': 'datas'})
                     self.assertEqual(row_of(self.env, row)[:2], ('mail.compose.message', 0))
                 with self.subTest(model=model, value=value, way='a row that is its own file'):
                     own = su.create({'name': 'own.txt', 'raw': b'own', 'res_model': model,
                                      'res_id': res_id, 'res_field': 'datas'})
-                    own.write({'res_model': value})
+                    applied(self, lambda: own.write({'res_model': value}))
                     self.assertEqual((row_of(self.env, own)[:2], row_of(self.env, own)[4]),
                                      ((model, res_id), 'datas'))
-                    with self.assertRaises(AccessError):
+                    with refused(self):
                         own.write({'res_model': value, 'res_id': res_id + 1})
 
     def test_a_notification_that_names_the_model_as_bytes_needs_the_right_to_write_the_record(self):
@@ -245,7 +314,7 @@ class TestTheModelOfAnAttachmentIsJudgedAsTheColumnKeepsIt(_Fixture, Transaction
         thread = self.env['mail.thread'].with_user(self.plain)
         for model in ('woow.document', 'woow.document.folder'):
             for value in spellings(model):
-                with self.subTest(model=model, value=value), self.assertRaises(AccessError):
+                with self.subTest(model=model, value=value), refused(self):
                     thread._process_attachments_for_post(
                         [], [pending.id], {'message_type': 'user_notification', 'model': value,
                                            'res_id': self.targets[model]})
@@ -254,11 +323,15 @@ class TestTheModelOfAnAttachmentIsJudgedAsTheColumnKeepsIt(_Fixture, Transaction
             with self.subTest(value=value, way='the editor'):
                 own = self._file(self.editor, res_model='mail.compose.message', res_id=0,
                                  public=True, access_token='pending-token')
-                self.env['mail.thread'].with_user(self.editor)._process_attachments_for_post(
-                    [], [own.id], {'message_type': 'user_notification', 'model': value,
-                                   'res_id': self.document.id})
-                self.assertEqual(row_of(self.env, own)[:4],
-                                 ('woow.document', self.document.id, False, None))
+                if applied(self, lambda: self.env['mail.thread'].with_user(
+                        self.editor)._process_attachments_for_post(
+                            [], [own.id], {'message_type': 'user_notification', 'model': value,
+                                           'res_id': self.document.id})):
+                    self.assertEqual(row_of(self.env, own)[:4],
+                                     ('woow.document', self.document.id, False, None))
+                else:           # another module refused the model that is not text: still pending
+                    self.assertEqual(row_of(self.env, own)[:2], ('mail.compose.message', 0))
+                self.assertFalse(open_rows(self.env))
 
     def test_a_route_to_a_module_model_given_as_bytes_is_refused_to_a_user_who_is_not_an_administrator(self):
         thread = self.env['mail.thread'].with_user(self.editor)
@@ -479,8 +552,9 @@ class TestAnXmlRpcCallThatCarriesTheModelAsBase64(_Fixture, HttpCase):
                 with self.assertRaises(xmlrpc.client.Fault) as caught:
                     self._call(self.plain, 'write', [created],
                                {'res_model': xmlrpc.client.Binary(model.encode())})
-                self.assertEqual(caught.exception.faultCode, ACCESS_ERROR)
-                self.assertIn('cannot be reassigned', caught.exception.faultString)
+                if not foreign_overrides(self.env):     # else another module may answer first
+                    self.assertEqual(caught.exception.faultCode, ACCESS_ERROR)
+                    self.assertIn('cannot be reassigned', caught.exception.faultString)
                 row = self.env['ir.attachment'].sudo().browse(created)
                 self.assertEqual(row_of(self.env, row)[:3], (None, res_id, True))
                 self.assertFalse(open_rows(self.env))
@@ -503,7 +577,8 @@ class TestAnXmlRpcCallThatCarriesTheModelAsBase64(_Fixture, HttpCase):
                                {'res_model': xmlrpc.client.Binary(b'woow.document.log')}):
                     with self.assertRaises(xmlrpc.client.Fault) as caught:
                         self._call(self.editor, 'write', [created], values)
-                    self.assertEqual(caught.exception.faultCode, ACCESS_ERROR)
+                    if not foreign_overrides(self.env) or 'res_model' not in values:
+                        self.assertEqual(caught.exception.faultCode, ACCESS_ERROR)
                 self.assertEqual(row_of(self.env, row)[:4], (model, res_id, False, None))
                 self.authenticate(None, None)
                 self.assertEqual(self.url_open('/web/content/%d?download=1' % created,

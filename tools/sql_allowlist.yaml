@@ -57,3 +57,27 @@ entries:
   file: woow_document_management/models/trash_actions.py
   functions: [_woow_lock_purge_root]
   note: row locks on a purge root and on every folder of its subtree (trashed ones included, in id order) that write no row version, taken before any hold is read, so a legal hold, restore or move of any subtree folder committed after a purge batch's repeatable read snapshot fails that root with serialization_failure and a later one waits for the batch
+- id: Q61
+  file: woow_document_management/models/share.py
+  functions: [_woow_rows]
+  note: every share row of some documents, whatever the caller's rules, because the lists that the record rules read are built from all of them (sharing lane)
+- id: Q62
+  file: woow_document_management/models/share.py
+  functions: [_woow_lock_documents]
+  note: row locks on the documents whose shares change, in id order and with a bounded wait, so that two changes never build the lists from stale rows (sharing lane)
+- id: Q63
+  file: woow_document_management/migrations/18.0.2.0.0/post-sharing.py
+  functions: [migrate]
+  note: viewer rows for the people already listed in shared_user_ids and shared_partner_ids, set-based and idempotent (sharing lane)
+- id: Q64
+  file: woow_document_management/models/share.py
+  functions: [_woow_listed]
+  note: the people that the two old lists name, read from their relation tables without record rules, so that mirroring a direct change of a list into rows never drops a person whom the caller's rules hide (sharing lane)
+- id: Q65
+  file: woow_document_management/models/sharing.py
+  functions: [_woow_inherited_ends]
+  note: the parents, owners and member rows above a folder that inherits, read as stored without record rules, to find when the access that a copy of the inherited members stands for ends (sharing lane)
+- id: Q31
+  file: woow_document_management/models/versions.py
+  functions: [_woow_lock_document_rows]
+  note: row locks on the documents whose version history a new version, a restore or a delete changes, in id order and writing no row version, taken before the history or a legal hold is read, so a hold, a trash or an upload committed after the snapshot of the call fails it with serialization_failure (the call is run again) and a later one waits

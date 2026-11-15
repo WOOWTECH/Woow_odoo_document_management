@@ -19,7 +19,7 @@
       <div class="container py-4">
         <h1>Documents</h1>
         <ul class="list-unstyled">
-          <li t-foreach="folders" t-as="folder" t-key="folder.id">
+          <li t-foreach="folders" t-as="folder">
             <a t-att-href="'/my/docs/folder/%d' % folder.id" t-out="folder.name"/>
           </li>
         </ul>
@@ -27,7 +27,7 @@
         <section t-if="direct_docs">
           <h2>Files shared with me</h2>
           <ul class="list-unstyled">
-            <li t-foreach="direct_docs" t-as="doc" t-key="doc.id">
+            <li t-foreach="direct_docs" t-as="doc">
               <a t-att-href="'/my/docs/file/%d' % doc.id" t-out="doc.name"/>
             </li>
           </ul>
@@ -45,7 +45,7 @@
       <div class="container py-4">
         <nav aria-label="Folder path">
           <a href="/my/docs">Documents</a>
-          <t t-foreach="crumbs" t-as="crumb" t-key="crumb_index">
+          <t t-foreach="crumbs" t-as="crumb">
             <span> / </span>
             <a t-if="crumb[0]" t-att-href="'/my/docs/folder/%d' % crumb[0]"
                t-out="crumb[1]"/>
@@ -54,7 +54,7 @@
         </nav>
         <h1 t-out="folder.name"/>
         <ul class="list-unstyled">
-          <li t-foreach="items" t-as="item" t-key="item[0] + str(item[1].id)">
+          <li t-foreach="items" t-as="item">
             <a t-if="item[0] == 'folder'"
                t-att-href="'/my/docs/folder/%d' % item[1].id" t-out="item[1].name"/>
             <a t-else="" t-att-href="'/my/docs/file/%d' % item[1].id"

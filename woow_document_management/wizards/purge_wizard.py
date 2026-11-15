@@ -7,11 +7,18 @@ from odoo.exceptions import UserError
 
 class WoowDocumentPurgeWizard(models.TransientModel):
     _name = 'woow.document.purge.wizard'
+    _inherit = ['woow.document.wizard.refs.mixin']
     _description = 'Delete permanently'
 
     document_ids = fields.Many2many('woow.document')
     folder_ids = fields.Many2many('woow.document.folder')
     confirm = fields.Boolean()
+
+    def _woow_visible_refs(self):
+        return {
+            'document_ids': ('woow.document', _('One or more selected items are unavailable.')),
+            'folder_ids': ('woow.document.folder', _('One or more selected items are unavailable.')),
+        }
 
     def action_confirm_purge(self):
         """Delete the selected items permanently after confirmation."""

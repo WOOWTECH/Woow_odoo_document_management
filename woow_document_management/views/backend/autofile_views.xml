@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <record id="view_woow_document_auto_rule_list" model="ir.ui.view">
+    <field name="name">woow.document.auto.rule.list</field>
+    <field name="model">woow.document.auto.rule</field>
+    <field name="arch" type="xml">
+      <list string="Filing rules">
+        <field name="name"/>
+        <field name="model_id" string="Kind of record"/>
+        <field name="folder_id"/>
+        <field name="owner_id" optional="show"/>
+        <field name="tag_ids" widget="many2many_tags" optional="hide"/>
+        <field name="trash_on_delete" optional="hide"/>
+        <field name="filed_count"/>
+        <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+        <field name="active" column_invisible="1"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_woow_document_auto_rule_form" model="ir.ui.view">
+    <field name="name">woow.document.auto.rule.form</field>
+    <field name="model">woow.document.auto.rule</field>
+    <field name="arch" type="xml">
+      <form string="Filing rule">
+        <header>
+          <button name="action_open_backfill" type="object" string="File existing attachments"
+                  invisible="not id or not active"/>
+        </header>
+        <sheet>
+          <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+          <div class="alert alert-warning" role="alert">
+            Everyone who can open the target folder will see the filed files, even if they cannot
+            open the record that a file came from.
+          </div>
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="kind_model" required="1"/>
+              <field name="model_id" invisible="1"/>
+              <field name="folder_id" options="{'no_create': True}"/>
+              <field name="tag_ids" widget="many2many_tags" options="{'no_create': True}"/>
+            </group>
+            <group>
+              <field name="owner_id" options="{'no_create': True, 'no_open': True}"/>
+              <field name="trash_on_delete"/>
+              <field name="active" invisible="1"/>
+              <field name="company_id" groups="base.group_multi_company"/>
+              <field name="filed_count"/>
+            </group>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_woow_document_auto_rule_search" model="ir.ui.view">
+    <field name="name">woow.document.auto.rule.search</field>
+    <field name="model">woow.document.auto.rule</field>
+    <field name="arch" type="xml">
+      <search string="Filing rules">
+        <field name="name"/>
+        <field name="res_model"/>
+        <field name="folder_id"/>
+        <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
+      </search>
+    </field>
+  </record>
+
+  <!-- document administrators see where a filed document came from -->
+  <record id="view_woow_document_document_form_autofile" model="ir.ui.view">
+    <field name="name">woow.document.form.autofile</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <field name="owner_id" position="after">
+        <field name="auto_rule_id" groups="woow_document_management.group_woow_document_manager"
+               invisible="not auto_rule_id" readonly="1"/>
+        <field name="source_attachment_id" groups="woow_document_management.group_woow_document_manager"
+               invisible="not source_attachment_id" readonly="1"/>
+      </field>
+    </field>
+  </record>
+
+  <record id="action_woow_document_auto_rule" model="ir.actions.act_window">
+    <field name="name">Filing rules</field>
+    <field name="res_model">woow.document.auto.rule</field>
+    <field name="view_mode">list,form</field>
+  </record>
+
+</odoo>

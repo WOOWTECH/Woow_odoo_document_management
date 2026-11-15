@@ -36,7 +36,15 @@ class WoowDocument(models.Model):
         # computed from the file and the folder, and the chatter of the record
         'attachment_id', 'checksum', 'file_size', 'company_id', 'folder_in_trash',
         'woow_user_can_write', 'source_display', 'activity_ids',
-        'message_follower_ids', 'message_ids', 'website_message_ids'})
+        'message_follower_ids', 'message_ids', 'website_message_ids',
+        'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
+        'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other',
+        'version_ids', 'version_count',
+        'shortcut_target_id', 'shortcut_target_available',
+        'request_user_id', 'request_deadline', 'request_note', 'request_activity_id', 'request_last_reminder',
+        'share_ids', 'shared_editor_user_ids', 'woow_user_can_share',
+        'source_attachment_id', 'auto_rule_id',
+        'version_last_number'})
 
     name = fields.Char(required=True, tracking=True, index='trigram')
     document_type = fields.Selection([('binary', 'File'), ('url', 'Link')], required=True,
@@ -179,7 +187,12 @@ class WoowDocument(models.Model):
         manager = self.env.su or self.env.user.has_group(_MANAGER)
         portal_fields = {'name', 'folder_id', 'datas', 'description'}
         protected = {'mimetype', 'attachment_id', 'checksum', 'file_size',
-                     'uploaded_by_partner_id', 'folder_in_trash', 'company_id'}
+                     'uploaded_by_partner_id', 'folder_in_trash', 'company_id',
+                     'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
+                     'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other',
+                     'version_ids', 'version_count',
+                     'source_attachment_id', 'auto_rule_id',
+                     'version_last_number'}
         docs = self.browse()
         with self.env.cr.savepoint():
             policy = self.env['woow.document.upload.policy']
@@ -283,7 +296,12 @@ class WoowDocument(models.Model):
             protected = {'mimetype', 'attachment_id', 'checksum', 'file_size',
                          'uploaded_by_partner_id', 'folder_in_trash', 'company_id',
                          'active', 'trashed_date', 'trashed_by_id', 'restored_date',
-                         'legal_hold', 'woow_user_can_write'}
+                         'legal_hold', 'woow_user_can_write',
+                         'favorite_ids', 'is_favorite', 'woow_section', 'woow_icon',
+                         'lock_uid', 'lock_date', 'is_locked', 'woow_locked_by_other',
+                         'version_ids', 'version_count',
+                         'source_attachment_id', 'auto_rule_id',
+                         'version_last_number'}
             if protected.intersection(vals):
                 raise AccessError(_('File metadata is set by the server.'))
             if {'source_res_model', 'source_res_id'}.intersection(vals) and \
@@ -317,6 +335,7 @@ class WoowDocument(models.Model):
                 if {'shared_user_ids', 'shared_partner_ids'}.intersection(vals) and not self.env.su:
                     doc.folder_id._woow_require_rank(4)
                 update = dict(vals)
+                replaced = 'datas' in update
                 if 'datas' in update:
                     if doc.document_type != 'binary' or not update['datas']:
                         raise WoowUploadRejected('content')
@@ -326,6 +345,17 @@ class WoowDocument(models.Model):
                         raise WoowUploadRejected('content') from None
                     checked = policy._validate(update.get('name', doc.name), data)
                     update['name'], update['mimetype'] = checked.name, checked.mimetype
+                    if not self.env.su and doc.datas:
+                        # A replacement keeps the content it replaces as a version, by the same
+                        # rules as the new-version action (lock, trash, the limit, legal hold).
+                        # The file was judged above (policy and quota); the server writes the
+                        # content, the name and the type, and the rest of the call follows.
+                        doc._woow_history_open()
+                        doc._woow_push_version(
+                            data, update['name'], quota=False, event='replace', detail={},
+                            name=update['name'], log=False)
+                        for key in ('datas', 'name', 'mimetype'):
+                            update.pop(key)
                 elif 'name' in update and update['name'] != doc.name:
                     # A rename follows the upload name policy against the stored type.
                     # Writing other fields, or the unchanged name, leaves legacy names alone.
@@ -344,13 +374,13 @@ class WoowDocument(models.Model):
                     update['url'] = safe_url
                 result = super(WoowDocument, doc.with_context(**{NO_INDEX_CTX_KEY: True})).write(
                     update)
-                if 'datas' in update or 'folder_id' in update:
+                if replaced or 'folder_id' in update:
                     self.env['woow.document.log']._log_event(
-                        'replace' if 'datas' in update else 'move',
+                        'replace' if replaced else 'move',
                         channel=self._woow_log_channel(), document_id=doc.id,
                         folder_id=(target or doc.folder_id).id,
                         company_id=doc.company_id.id,
-                        detail={'bytes': len(data) if 'datas' in update else 0})
+                        detail={'bytes': len(data) if replaced else 0})
                 self.env.flush_all()
         return result
 

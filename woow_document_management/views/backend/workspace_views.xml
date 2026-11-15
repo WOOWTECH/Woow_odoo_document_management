@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <!-- Actions of the buttons in the control panel: they come first because the views name them. -->
+  <record id="action_woow_document_new_link" model="ir.actions.act_window">
+    <field name="name">New link</field>
+    <field name="res_model">woow.document</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_woow_document_document_form"/>
+    <field name="target">current</field>
+    <field name="context">{'default_document_type': 'url'}</field>
+  </record>
+  <record id="action_woow_document_new_folder" model="ir.actions.act_window">
+    <field name="name">New folder</field>
+    <field name="res_model">woow.document.folder</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_woow_document_folder_form"/>
+    <field name="target">current</field>
+  </record>
+
+  <!-- The existing form, with the star and the fields that fit the kind of document. -->
+  <record id="view_woow_document_document_form_workspace" model="ir.ui.view">
+    <field name="name">woow.document.form.workspace</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//button[@name='action_open_move_wizard']" position="after">
+        <field name="is_favorite" invisible="1" groups="base.group_user"/>
+        <button name="action_toggle_favorite" type="object" string="Star" icon="fa-star-o" invisible="not id or is_favorite" groups="base.group_user"/>
+        <button name="action_toggle_favorite" type="object" string="Remove star" icon="fa-star" invisible="not id or not is_favorite" groups="base.group_user"/>
+      </xpath>
+      <xpath expr="//field[@name='document_type']" position="attributes">
+        <attribute name="readonly">id</attribute>
+      </xpath>
+      <xpath expr="//field[@name='datas']" position="attributes">
+        <attribute name="invisible">document_type == 'url'</attribute>
+      </xpath>
+      <xpath expr="//field[@name='url']" position="attributes">
+        <attribute name="invisible">document_type != 'url'</attribute>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="view_woow_document_workspace_kanban" model="ir.ui.view">
+    <field name="name">woow.document.workspace.kanban</field>
+    <field name="model">woow.document</field>
+    <field name="arch" type="xml">
+      <kanban string="Documents" default_order="write_date desc, id desc" quick_create="0" records_draggable="0">
+        <header>
+          <button name="%(action_woow_document_upload_wizard)d" type="action" string="Upload" class="btn-primary" display="always"/>
+          <button name="%(action_woow_document_new_link)d" type="action" string="New link" display="always"/>
+          <button name="%(action_woow_document_new_folder)d" type="action" string="New folder" display="always"/>
+          <button name="%(action_woow_document_trash_documents)d" type="action" string="Trash" display="always"/>
+        </header>
+        <field name="woow_icon"/>
+        <field name="is_favorite" groups="base.group_user"/>
+        <field name="document_type"/>
+        <field name="mimetype"/>
+        <templates>
+          <t t-name="card">
+            <div class="d-flex align-items-start gap-3">
+              <span t-attf-class="fa #{record.woow_icon.raw_value} fa-2x text-muted pt-1" title="File kind"/>
+              <div class="flex-grow-1 overflow-hidden">
+                <field name="name" class="fw-bold text-truncate d-block"/>
+                <field name="folder_id" class="text-muted text-truncate d-block"/>
+              </div>
+              <button name="action_toggle_favorite" type="object" class="btn btn-link p-0 border-0" title="Star or remove the star" groups="base.group_user">
+                <i t-attf-class="fa #{record.is_favorite.raw_value ? 'fa-star text-warning' : 'fa-star-o text-muted'}"/>
+              </button>
+            </div>
+            <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color'}" class="mt-1"/>
+            <footer class="pt-1">
+              <div class="d-flex flex-wrap gap-2 text-muted align-items-center">
+                <field name="write_date" widget="date"/>
+                <field name="file_size" options="{'human_readable': true}" invisible="document_type == 'url'"/>
+                <field name="activity_ids" widget="kanban_activity"/>
+              </div>
+              <field name="owner_id" widget="many2one_avatar_user" class="ms-auto"/>
+            </footer>
+          </t>
+        </templates>
+      </kanban>
+    </field>
+  </record>
+
+  <record id="view_woow_document_workspace_list" model="ir.ui.view">
+    <field name="name">woow.document.workspace.list</field>
+    <field name="model">woow.document</field>
+    <field name="arch" type="xml">
+      <list string="Documents" delete="0" default_order="write_date desc, id desc">
+        <header>
+          <button name="%(action_woow_document_upload_wizard)d" type="action" string="Upload" class="btn-primary" display="always"/>
+          <button name="%(action_woow_document_new_link)d" type="action" string="New link" display="always"/>
+          <button name="%(action_woow_document_new_folder)d" type="action" string="New folder" display="always"/>
+          <button name="%(action_woow_document_trash_documents)d" type="action" string="Trash" display="always"/>
+        </header>
+        <field name="is_favorite" column_invisible="1" groups="base.group_user"/>
+        <field name="name"/>
+        <field name="folder_id"/>
+        <field name="owner_id" widget="many2one_avatar_user"/>
+        <field name="partner_id" string="Contact"/>
+        <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color'}"/>
+        <field name="write_date" string="Last change"/>
+        <field name="file_size" options="{'human_readable': true}"/>
+        <field name="document_type" optional="hide"/>
+        <field name="mimetype" optional="hide"/>
+        <field name="source_display" string="Source" optional="hide"/>
+        <button name="action_toggle_favorite" type="object" icon="fa-star" title="Remove the star" invisible="not is_favorite" groups="base.group_user"/>
+        <button name="action_toggle_favorite" type="object" icon="fa-star-o" title="Star" invisible="is_favorite" groups="base.group_user"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_woow_document_workspace_activity" model="ir.ui.view">
+    <field name="name">woow.document.workspace.activity</field>
+    <field name="model">woow.document</field>
+    <field name="arch" type="xml">
+      <activity string="Documents">
+        <templates>
+          <div t-name="activity-box" class="d-block">
+            <field name="name" display="full" class="o_text_block o_text_bold"/>
+            <field name="folder_id" muted="1" display="full" class="o_text_block"/>
+          </div>
+        </templates>
+      </activity>
+    </field>
+  </record>
+
+  <record id="view_woow_document_workspace_search" model="ir.ui.view">
+    <field name="name">woow.document.workspace.search</field>
+    <field name="model">woow.document</field>
+    <field name="arch" type="xml">
+      <search string="Documents">
+        <field name="name" string="Name"/>
+        <field name="folder_id"/>
+        <field name="tag_ids"/>
+        <field name="owner_id"/>
+        <field name="partner_id" string="Contact"/>
+        <separator/>
+        <filter name="filter_files" string="Files" domain="[('document_type', '=', 'binary')]"/>
+        <filter name="filter_links" string="Links" domain="[('document_type', '=', 'url')]"/>
+        <separator/>
+        <filter name="filter_my_uploads" string="My uploads" domain="[('create_uid', '=', uid)]"/>
+        <filter name="filter_activities" string="With activities" domain="[('activity_ids', '!=', False)]"/>
+        <group expand="0" string="Group by">
+          <filter name="group_folder" string="Folder" context="{'group_by': 'folder_id'}"/>
+          <filter name="group_owner" string="Owner" context="{'group_by': 'owner_id'}"/>
+          <filter name="group_type" string="Type" context="{'group_by': 'document_type'}"/>
+          <filter name="group_month" string="Month" context="{'group_by': 'create_date:month'}"/>
+        </group>
+        <searchpanel>
+          <field name="folder_id" string="Folders" enable_counters="1" hierarchize="1"/>
+          <field name="woow_section" string="Sections" select="one" expand="1"/>
+          <field name="tag_ids" string="Tags" select="multi" enable_counters="1"/>
+        </searchpanel>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_woow_document_workspace" model="ir.actions.act_window">
+    <field name="name">Documents</field>
+    <field name="res_model">woow.document</field>
+    <field name="view_mode">kanban,list,activity,form</field>
+    <field name="search_view_id" ref="view_woow_document_workspace_search"/>
+    <field name="domain">[('active', '=', True), ('folder_in_trash', '=', False)]</field>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">Add your first document</p>
+      <p>Use Upload to add files to a folder, or New link to keep the address of a web page.</p>
+    </field>
+  </record>
+  <record id="action_woow_document_workspace_kanban" model="ir.actions.act_window.view">
+    <field name="sequence" eval="1"/>
+    <field name="view_mode">kanban</field>
+    <field name="view_id" ref="view_woow_document_workspace_kanban"/>
+    <field name="act_window_id" ref="action_woow_document_workspace"/>
+  </record>
+  <record id="action_woow_document_workspace_list" model="ir.actions.act_window.view">
+    <field name="sequence" eval="2"/>
+    <field name="view_mode">list</field>
+    <field name="view_id" ref="view_woow_document_workspace_list"/>
+    <field name="act_window_id" ref="action_woow_document_workspace"/>
+  </record>
+  <record id="action_woow_document_workspace_activity" model="ir.actions.act_window.view">
+    <field name="sequence" eval="3"/>
+    <field name="view_mode">activity</field>
+    <field name="view_id" ref="view_woow_document_workspace_activity"/>
+    <field name="act_window_id" ref="action_woow_document_workspace"/>
+  </record>
+  <record id="action_woow_document_workspace_form" model="ir.actions.act_window.view">
+    <field name="sequence" eval="4"/>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_woow_document_document_form"/>
+    <field name="act_window_id" ref="action_woow_document_workspace"/>
+  </record>
+</odoo>

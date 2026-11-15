@@ -8,6 +8,21 @@ import time
 import zlib
 
 
+def plant_default(env, model, name, value, user=None):
+    """Store a default the way an old site may still hold one: a row made with superuser rights.
+
+    ``user`` is the user the default belongs to (a personal default); without it the row is a
+    site-wide default. Newer core refuses an ordinary user to store a default for a field that only
+    a privileged group may write (``ir.default.create`` checks the write right on the field), so a
+    test that wants such a row in the table plants it here. The tests that use it prove that the
+    module ignores the row, whoever stored it, so it is the row that counts, not who made it.
+    """
+    defaults = env['ir.default']
+    if user is not None:
+        return defaults.with_user(user).sudo().set(model, name, value, user_id=True)
+    return defaults.sudo().set(model, name, value)
+
+
 def csrf_token(case):
     """A CSRF token for the session of an ``HttpCase``, built the way core builds one."""
     secret = case.env['ir.config_parameter'].sudo().get_param('database.secret')

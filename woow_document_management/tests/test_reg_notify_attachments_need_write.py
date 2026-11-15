@@ -44,7 +44,19 @@ def _fixture(env, suffix, password=None):
         'woow.document.folder.access': rows['read'],
         'woow.document.tag': env['woow.document.tag'].sudo().create({'name': 'Notify %s' % suffix}),
         'woow.document.log': env['woow.document.log'].sudo().create({
-            'event': 'view', 'result': 'ok', 'channel': 'backend'})}
+            'event': 'view', 'result': 'ok', 'channel': 'backend'}),
+        'woow.document.favorite': env['woow.document.favorite'].sudo().create({
+            'document_id': document.id, 'user_id': users['reader'].id}),
+        'woow.document.version': env['woow.document.version'].sudo().create({
+            'document_id': document.id, 'number': 1, 'name': 'notify.txt',
+            'datas': base64.b64encode(b'EARLIER')})}
+    records['woow.document.share'] = env['woow.document.share'].sudo().create({
+        'document_id': document.id, 'subject_type': 'user', 'user_id': users['reader'].id})
+    records['woow.document.mail.intake'] = env['woow.document.mail.intake'].sudo().create({
+        'folder_id': folder.id, 'alias_name': 'notify-%s' % suffix})
+    records['woow.document.auto.rule'] = env['woow.document.auto.rule'].sudo().create({
+        'name': 'Notify %s' % suffix, 'folder_id': folder.id,
+        'model_id': env['ir.model']._get('res.currency').id})
     assert set(records) == set(WOOW_MODELS)
     env.flush_all()
     return records, users

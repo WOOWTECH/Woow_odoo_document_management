@@ -1,0 +1,8 @@
+from odoo import models
+
+
+class WoowDocumentVersion(models.Model):
+    _name = 'woow.document.version'
+
+    def _woow_server_scope(self):
+        return self.sudo()  # sudo-ok: S6

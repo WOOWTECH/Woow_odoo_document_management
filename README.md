@@ -4,12 +4,24 @@ WoowTech Document Management for Odoo 18 Community (LGPL-3, clean-room implement
 The repository holds one Odoo addon, `woow_document_management` ("Woow Document Management",
 zh_TW "WoowTech 文件管理"; app menu "Documents" / 「文件」). It depends on `mail` and `portal` only.
 
-What it provides (design scope):
+What it provides:
 
-- folders with members and four permission levels (view, upload, edit, manage), inherited down the tree;
+- folders with members and four permission levels (view, upload, edit, manage), inherited down the tree,
+  with optional end dates for access;
 - documents stored as Odoo attachments with server-side upload validation, quota and audit log;
+- one workspace screen (folder tree, cards or list, sections, tags, selection, drag and drop upload) with
+  a details panel, stars, and a chatter on every document;
+- locks, duplicate, rename, versions of a file, shortcuts to files in other folders, and requests for a
+  file from a colleague;
+- sharing one document as viewer or editor, with end dates, next to the folder members;
+- a mailbox for a folder (e-mail files to it), automatic filing of the attachments of other apps by rule,
+  and PDF split and merge;
 - a portal area under `/my/docs` for portal contacts;
-- trash, legal hold, scheduled clean-up and an attachment overview for selected internal users.
+- trash, legal hold, scheduled clean-up and an attachment overview for internal users.
+
+Anonymous links, spreadsheets, e-signature and automatic recognition of bills are not part of the module.
+The release records are in `docs/release/` (the one for 18.0.2.0.0 lists the data model, the security
+notes, the deployment and upgrade notes).
 
 > Status: implemented and under review before release. The checks and the gates that a release has
 > to pass (static tools, the sandbox suite with its browser tour, coverage) are described in
@@ -24,6 +36,7 @@ What it provides (design scope):
 | `.security/sweep.yaml` | repository settings of the WoowTech security sweep (changes always go to a human) |
 | `.github/` | CI workflow (static tools, semgrep, gitleaks), gitleaks config, PR template |
 | `docs/CONTRACTS.md` | cross-lane interface contracts (public version) and their change log |
+| `docs/release/` | one record per release: what changed, security, deployment and upgrade notes |
 | `dev/` | sandbox and test helpers |
 
 ## Checks
@@ -39,7 +52,7 @@ Every tool is `python3 -I tools/check_<name>.py [--g1] [--root <repo>]`, prints
 
 | Tool | Checks |
 |---|---|
-| `check_sudo.py` | the two allowed privilege escalations S1 and S3, aliases, cron su checks |
+| `check_sudo.py` | the registered privilege escalations (S1, S3, S4, S5, A1, A2), aliases, cron su checks |
 | `check_routes.py` | route rules R1-R10, R12 and R13 (R11 is retired) against `tools/routes.lock.json`; `--emit-entry-points` |
 | `check_forbidden.py` | forbidden Python, QWeb and JS constructs |
 | `check_sql.py` | raw SQL only at the statements of `tools/sql_allowlist.yaml`; advisory locks only in `services/locks.py` |

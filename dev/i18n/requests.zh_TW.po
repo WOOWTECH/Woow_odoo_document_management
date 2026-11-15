@@ -1,0 +1,162 @@
+# Translation of the lane "requests" (requested files) into Traditional Chinese.
+# Merge into i18n/zh_TW.po after regenerating the template.
+#
+msgid ""
+msgstr ""
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A file is requested from you:"
+msgstr "有人向您索取檔案："
+
+msgid "A file is requested here. Asked of:"
+msgstr "此處正在索取檔案。對象："
+
+msgid "A file is still requested from you"
+msgstr "仍有檔案在向您索取"
+
+msgid "A reminder was sent recently. Try again later."
+msgstr "不久前已寄出提醒，請稍後再試。"
+
+msgid "Ask"
+msgstr "索取對象"
+
+msgid "Ask a colleague, not yourself."
+msgstr "請向同事索取，不能向自己索取。"
+
+msgid "Ask for a file"
+msgstr "索取檔案"
+
+msgid "Ask someone for a file"
+msgstr "向他人索取檔案"
+
+msgid "Asked of"
+msgstr "索取對象"
+
+msgid "Asked of me"
+msgstr "向我索取"
+
+msgid "Choose a file."
+msgstr "請選擇檔案。"
+
+msgid "Choose between 1 and %(max)s days."
+msgstr "請選擇 1 到 %(max)s 天。"
+
+msgid "Choose the person who is asked."
+msgstr "請選擇索取對象。"
+
+msgid "Days until due"
+msgstr "幾天內到期"
+
+msgid "Due date"
+msgstr "到期日"
+
+msgid "Due date:"
+msgstr "到期日："
+
+msgid "Due:"
+msgstr "到期："
+
+msgid "Enter what you need."
+msgstr "請輸入需要的檔案名稱。"
+
+msgid "File"
+msgstr "檔案"
+
+msgid "File name"
+msgstr "檔案名稱"
+
+msgid "Folder"
+msgstr "資料夾"
+
+msgid "For example: signed contract"
+msgstr "例如：簽署後的合約"
+
+msgid "Last reminder"
+msgstr "上次提醒"
+
+msgid "Note"
+msgstr "備註"
+
+msgid "One or more tags are unavailable."
+msgstr "有一個或多個標籤無法使用。"
+
+msgid "Only the requester or a folder manager can send a reminder."
+msgstr "只有索取者或資料夾管理者可以寄出提醒。"
+
+msgid "Request activity"
+msgstr "索取待辦"
+
+msgid "Request note"
+msgstr "索取備註"
+
+msgid "Requested file"
+msgstr "索取的檔案"
+
+msgid "Requested file reminder"
+msgstr "索取檔案提醒"
+
+msgid "Requested files"
+msgstr "索取中的檔案"
+
+msgid "Send a requested file"
+msgstr "送出索取的檔案"
+
+msgid "Send reminder"
+msgstr "寄出提醒"
+
+msgid "Send request"
+msgstr "送出索取"
+
+msgid "Cancel request"
+msgstr "取消索取"
+
+msgid "Set a sender email address before sending a reminder."
+msgstr "寄出提醒前，請先設定寄件者電子郵件地址。"
+
+msgid "Sign in to send the file:"
+msgstr "請登入後送出檔案："
+
+msgid "Tags"
+msgstr "標籤"
+
+msgid "The note is too long."
+msgstr "備註太長。"
+
+msgid "The person asked cannot be reached by email."
+msgstr "無法以電子郵件聯絡索取對象。"
+
+msgid "The requested file was uploaded."
+msgstr "已上傳索取的檔案。"
+
+msgid "This file is not requested any more."
+msgstr "這個檔案已不在索取中。"
+
+msgid "This person cannot add files to this folder."
+msgstr "這個人無法在此資料夾新增檔案。"
+
+msgid "Upload"
+msgstr "上傳"
+
+msgid "Upload the file"
+msgstr "上傳檔案"
+
+msgid "Upload the requested file"
+msgstr "上傳索取的檔案"
+
+msgid "What is needed"
+msgstr "需要的檔案"
+
+msgid "You cannot request files."
+msgstr "您無法索取檔案。"
+
+msgid "You cannot upload to this request."
+msgstr "您無法上傳到這項索取。"
+
+msgid "Use \"Ask for a file\" to request a file from a colleague."
+msgstr "請用「索取檔案」向同事索取檔案。"
+
+msgid "Send the requested file with \"Upload the file\" on the request."
+msgstr "請在這項索取上用「上傳檔案」送出所索取的檔案。"

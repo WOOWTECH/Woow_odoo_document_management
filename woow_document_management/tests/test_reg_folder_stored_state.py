@@ -28,6 +28,7 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 from odoo.tests.common import new_test_user
 
+from .common import plant_default
 from ..models.document_folder import _m2o_value
 
 _USER = 'woow_document_management.group_woow_document_user'
@@ -101,8 +102,7 @@ class _Fixture:
 
     def _store_default(self, user, owner):
         """``user`` stores ``owner`` as their own default owner (any internal user may)."""
-        self.env['ir.default'].with_user(user).set(
-            'woow.document.folder', 'owner_id', owner.id, user_id=True)
+        plant_default(self.env, 'woow.document.folder', 'owner_id', owner.id, user=user)
 
     def _root_right(self, on=True):
         self.env['ir.config_parameter'].sudo().set_param(_ROOT_PARAM, 'True' if on else 'False')

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+    <!-- R-V0..R-V5: versions of a file. A version is read by whoever reads its document (R-V1
+         spells out the condition of R-D1; the document may be archived, as R-D1 allows), and is
+         made or removed by whoever writes its document (R-V2 spells out R-D2). The server paths
+         are the only ones that make or remove a row (models/versions.py). R-V4 is a global rule:
+         while the document is under legal hold no row is removed, whoever asks. Record rules run
+         as superuser, so it reads the hold that only administrators may read. -->
+    <record id="rule_woow_document_version_company" model="ir.rule">
+        <field name="name">R-V0 rule_woow_document_version_company</field>
+        <field name="model_id" ref="model_woow_document_version" />
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_version_user_read" model="ir.rule">
+        <field name="name">R-V1 rule_woow_document_version_user_read</field>
+        <field name="model_id" ref="model_woow_document_version" />
+        <field name="domain_force">[('document_id', 'any', ['&amp;', ('active', 'in', [True, False]), '&amp;', ('folder_in_trash', '=', False), '|', '&amp;', ('active', '=', True), '|', '|', ('folder_id', 'any', ['|', ('eff_read_user_ids', 'in', [user.id]), ('eff_read_group_ids', 'in', user.groups_id.ids)]), ('shared_user_ids', 'in', [user.id]), '&amp;', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)]), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&amp;', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+    <record id="rule_woow_document_version_user_change" model="ir.rule">
+        <field name="name">R-V2 rule_woow_document_version_user_change</field>
+        <field name="model_id" ref="model_woow_document_version" />
+        <field name="domain_force">[('document_id', 'any', ['&amp;', ('active', 'in', [True, False]), '&amp;', ('folder_in_trash', '=', False), '|', ('folder_id', 'any', ['|', ('eff_edit_user_ids', 'in', [user.id]), ('eff_edit_group_ids', 'in', user.groups_id.ids)]), '&amp;', ('owner_id', '=', user.id), ('folder_id', 'any', ['|', ('eff_upload_user_ids', 'in', [user.id]), ('eff_upload_group_ids', 'in', user.groups_id.ids)])])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_version_manager" model="ir.rule">
+        <field name="name">R-V3 rule_woow_document_version_manager</field>
+        <field name="model_id" ref="model_woow_document_version" />
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_manager'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_version_hold" model="ir.rule">
+        <field name="name">R-V4 rule_woow_document_version_hold</field>
+        <field name="model_id" ref="model_woow_document_version" />
+        <field name="domain_force">[('document_id', 'any', [('active', 'in', [True, False]), ('legal_hold', '=', False)])]</field>
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="False" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_version_wizard_owner" model="ir.rule">
+        <field name="name">R-V5 rule_woow_document_version_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_version_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <!-- R-V6: the one thing a person who edits the document only through a share may do to its
+         history: the server makes the version row that keeps the content they replace (R-D2 lets
+         them replace it). Create only: they never read more, remove or change a version. -->
+    <record id="rule_woow_document_version_share_editor_create" model="ir.rule">
+        <field name="name">R-V6 rule_woow_document_version_share_editor_create</field>
+        <field name="model_id" ref="model_woow_document_version" />
+        <field name="domain_force">[('document_id', 'any', ['&amp;', ('active', '=', True), '&amp;', ('folder_in_trash', '=', False), ('shared_editor_user_ids', 'in', [user.id])])]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="False" />
+        <field name="perm_write" eval="False" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="False" />
+    </record>
+</odoo>

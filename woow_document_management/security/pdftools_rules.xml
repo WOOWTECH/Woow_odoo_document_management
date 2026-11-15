@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech; License LGPL-3.0 or later. -->
+<odoo>
+    <!-- R-P1..R-P3: a PDF wizard row, and the lines of a merge, belong to the user who created
+         them. Core has no owner rule for transient models, and the actions of these wizards run
+         with the rights of whoever calls them on the stored row. -->
+    <record id="rule_woow_document_pdf_split_wizard_owner" model="ir.rule">
+        <field name="name">R-P1 rule_woow_document_pdf_split_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_pdf_split_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_pdf_merge_wizard_owner" model="ir.rule">
+        <field name="name">R-P2 rule_woow_document_pdf_merge_wizard_owner</field>
+        <field name="model_id" ref="model_woow_document_pdf_merge_wizard" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+    <record id="rule_woow_document_pdf_merge_line_owner" model="ir.rule">
+        <field name="name">R-P3 rule_woow_document_pdf_merge_line_owner</field>
+        <field name="model_id" ref="model_woow_document_pdf_merge_line" />
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_woow_document_user'))]" />
+        <field name="perm_read" eval="True" />
+        <field name="perm_write" eval="True" />
+        <field name="perm_create" eval="True" />
+        <field name="perm_unlink" eval="True" />
+    </record>
+</odoo>

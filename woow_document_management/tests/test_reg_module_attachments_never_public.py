@@ -27,12 +27,18 @@ from markupsafe import Markup
 
 from odoo.exceptions import AccessError
 from odoo.tests import HttpCase, TransactionCase, tagged
-from odoo.tests.common import JsonRpcException
+from odoo.tests.common import JsonRpcException, new_test_user
 
 from ..models.ir_attachment import IrAttachment
 from ..services.constants import WOOW_MODELS
-from .test_reg_chatter_attachment_tokens import _ChatterFixture, _png
+from .test_reg_chatter_attachment_tokens import _NO_SIGNUP_MAIL, _USER, _ChatterFixture, _png
 from .test_reg_server_columns_ignore_defaults import WAYS, _forget, _store
+
+
+def _passes_through(self, vals):
+    """The write of ``ir.attachment`` without the guard of this module (for the cost comparison)."""
+    return super(IrAttachment, self).write(vals)
+
 
 # Values that are not truthy and that a Char column nevertheless keeps as text ('0', '0.0', '[]',
 # '{}', '()'): the ORM stores ``str(value)`` for everything that is not None or False.
@@ -236,6 +242,17 @@ class TestAFileOfAModuleRecordNeverOpensForAVisitor(_OpenFiles, HttpCase):
         original unless something takes them off. The answer holds a url that opens nothing.
         """
         partner = self.env['res.partner'].sudo().create({'name': 'Html editor partner'})
+        # Newer core lets only a Settings administrator reach this route (it checks the right to
+        # write views before it copies anything); older core lets every internal user in. The
+        # caller here is a Settings administrator who is also an editor of the folder, so the route
+        # is open on both, and what is judged is still the attachment guard of the module.
+        gateway = new_test_user(
+            self.env, login='wdoc-html-editor', groups='%s,base.group_system' % _USER,
+            name='Html editor settings administrator', email='html-editor@example.test',
+            context=_NO_SIGNUP_MAIL)
+        self.env['woow.document.folder.access'].sudo().create({
+            'folder_id': self.folder.id, 'subject_type': 'user',
+            'user_id': gateway.id, 'level': 'edit'})
         picture = _png()
         source = self.env['ir.attachment'].sudo().create({
             'name': 'source.png', 'raw': picture, 'type': 'binary', 'mimetype': 'image/png',
@@ -244,7 +261,7 @@ class TestAFileOfAModuleRecordNeverOpensForAVisitor(_OpenFiles, HttpCase):
         self.env.flush_all()
         for record in self.records:
             with self.subTest(model=record._name):
-                self.authenticate(self.editor.login, self.editor.login)
+                self.authenticate(gateway.login, gateway.login)
                 url = self.make_jsonrpc_request(
                     '/html_editor/modify_image/%d' % source.id,
                     {'res_model': record._name, 'res_id': record.id, 'name': 'edited-%s.png' % record.id,
@@ -685,7 +702,18 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
         return self.env.cr.sql_log_count - before
 
     def test_the_look_at_the_rows_is_one_select_for_the_whole_set(self):
-        """A write that only names the flag or the token reads ``res_model`` once; others do not."""
+        """A write that only names the flag or the token reads ``res_model`` once for the set.
+
+        The count is not fixed: another installed module may add statements to every write of an
+        attachment. What is measured is the cost of the look at a cold cache, for a set of 1 row
+        and for a set of 5, and the two must be the same: one select for the whole set, not one
+        per row. A write that names the model, or none of the three, makes no look at all, so the
+        cache makes no difference to this module's guard and what is left is what others add: it
+        also does not grow with the set and is never more than the look costs. That part is
+        measured as the difference to the same write with this module's guard replaced by a
+        pass-through, so that the per-row queries of other installed modules cancel out.
+        """
+        looked, left = {}, {}
         for size in (1, 5):
             rows = self.attachments.browse([
                 self._module_row('woow.document' if index % 2 else 'woow.document.folder').id
@@ -695,14 +723,29 @@ class TestTheSuperuserNeverMakesTheFilesOfAModuleRecordOpen(_OpenFiles, Transact
                 with self.subTest(rows=size, vals=name):
                     cold = self._statements(rows, vals, cold=True)
                     warm = self._statements(rows, vals, cold=False)
-                    self.assertEqual(cold - warm, 1)
-            # The model is named, or nothing of the three: no row is read for the guard, so the
-            # cache makes no difference.
+                    looked[(name, size)] = cold - warm
+                    # the cold cache makes at least the select of the guard or one that is
+                    # made earlier for the same rows
+                    self.assertGreaterEqual(cold - warm, 1)
             for name, vals in (('the model', {'res_model': 'woow.document', 'res_id': 0}),
                                ('something else', {})):
                 with self.subTest(rows=size, vals=name):
-                    self.assertEqual(self._statements(rows, vals, cold=True),
-                                     self._statements(rows, vals, cold=False))
+                    # what the write costs with this module's guard, less what the very same
+                    # write costs with the guard replaced by a pass-through: what is left is the
+                    # guard's own cost, whatever another installed module adds to each row
+                    with_guard = (self._statements(rows, vals, cold=True)
+                                  - self._statements(rows, vals, cold=False))
+                    with patch.object(IrAttachment, 'write', _passes_through):
+                        without_guard = (self._statements(rows, vals, cold=True)
+                                         - self._statements(rows, vals, cold=False))
+                    left[(name, size)] = with_guard - without_guard
+        for name in ('the flag', 'the token', 'a typed token'):
+            with self.subTest(vals=name, check='the same for one row and for five'):
+                self.assertEqual(looked[(name, 1)], looked[(name, 5)])
+        for name in ('the model', 'something else'):
+            with self.subTest(vals=name, check='no look, whatever the size'):
+                self.assertEqual(left[(name, 1)], left[(name, 5)])
+                self.assertLessEqual(left[(name, 5)], looked[('the flag', 5)])
 
 
 @tagged('woow_docmgmt_core')
@@ -725,7 +768,9 @@ class TestATokenOrAFieldNameIsJudgedByWhatTheColumnKeeps(_OpenFiles, Transaction
         # (the editor) can make one for the document and the folder, the others have no record.
         self.targets = {'woow.document': self.document.id, 'woow.document.folder': self.folder.id,
                         'woow.document.folder.access': 0, 'woow.document.tag': 0,
-                        'woow.document.log': 0}
+                        'woow.document.log': 0, 'woow.document.favorite': 0,
+                        'woow.document.version': 0, 'woow.document.share': 0,
+                        'woow.document.mail.intake': 0, 'woow.document.auto.rule': 0}
         self.assertEqual(set(self.targets), set(WOOW_MODELS))
 
     def _values(self, name, model, res_id, **extra):

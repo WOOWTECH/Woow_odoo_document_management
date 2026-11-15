@@ -118,5 +118,18 @@
     "auth": "user",
     "type": "http",
     "website": true
+  },
+  {
+    "file": "woow_document_management/controllers/versions.py",
+    "func": "woow_version_download",
+    "routes": [
+      "/woow_document/version/<int:version_id>/download"
+    ],
+    "methods": [
+      "GET"
+    ],
+    "auth": "user",
+    "type": "http",
+    "website": false
   }
 ]

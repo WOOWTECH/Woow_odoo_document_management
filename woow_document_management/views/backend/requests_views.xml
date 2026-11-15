@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 WoowTech
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl-3.0). -->
+<odoo>
+  <!-- The wizard opens from the folder form and from the Action menu of the documents. -->
+  <record id="action_woow_document_request_wizard" model="ir.actions.act_window">
+    <field name="name">Ask for a file</field>
+    <field name="res_model">woow.document.request.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="target">new</field>
+    <field name="binding_model_id" ref="model_woow_document"/>
+    <field name="binding_view_types">list,form</field>
+    <field name="groups_id" eval="[(4, ref('group_woow_document_user'))]"/>
+  </record>
+
+  <!-- the document form: a banner and the buttons of a pending request -->
+  <record id="view_woow_document_document_form_requests" model="ir.ui.view">
+    <field name="name">woow.document.form.requests</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_open_fulfil_wizard" string="Upload the file" type="object"
+                class="btn-primary"
+                invisible="document_type != 'request' or not woow_user_can_write"/>
+        <button name="action_send_reminder" string="Send reminder" type="object"
+                invisible="document_type != 'request'"/>
+        <button name="action_trash" string="Cancel request" type="object"
+                invisible="document_type != 'request' or not woow_user_can_write"/>
+      </xpath>
+      <xpath expr="//sheet" position="before">
+        <div class="alert alert-info" role="alert" groups="base.group_user"
+             invisible="document_type != 'request'">
+          A file is requested here. Asked of: <field name="request_user_id" readonly="1" options="{'no_open': True}"/>
+          <span invisible="not request_deadline"> Due: <field name="request_deadline" readonly="1"/></span>
+          <div invisible="not request_note"><field name="request_note" readonly="1"/></div>
+        </div>
+      </xpath>
+      <xpath expr="//field[@name='datas']" position="attributes">
+        <attribute name="invisible">document_type == 'request'</attribute>
+      </xpath>
+      <xpath expr="//field[@name='url']" position="attributes">
+        <attribute name="invisible">document_type == 'request'</attribute>
+      </xpath>
+    </field>
+  </record>
+
+  <!-- the folder form: ask for a file in this folder -->
+  <record id="view_woow_document_folder_form_requests" model="ir.ui.view">
+    <field name="name">woow.document.folder.form.requests</field>
+    <field name="model">woow.document.folder</field>
+    <field name="inherit_id" ref="view_woow_document_folder_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="%(action_woow_document_request_wizard)d" string="Ask for a file" type="action"
+                context="{'default_folder_id': id}" invisible="woow_user_rank &lt; 2"/>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="view_woow_document_document_search_requests" model="ir.ui.view">
+    <field name="name">woow.document.search.requests</field>
+    <field name="model">woow.document</field>
+    <field name="inherit_id" ref="view_woow_document_document_search"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='name']" position="after">
+        <filter name="woow_requested_files" string="Requested files"
+                domain="[('document_type', '=', 'request')]"/>
+        <filter name="woow_requested_of_me" string="Asked of me"
+                domain="[('document_type', '=', 'request'), ('request_user_id', '=', uid)]"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

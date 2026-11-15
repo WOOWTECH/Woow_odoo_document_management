@@ -15,16 +15,21 @@ LEVELS: tuple[str, ...] = ('read', 'upload', 'edit', 'manage')
 PORTAL_LEVELS: tuple[str, ...] = ('read', 'upload')
 SUBJECT_TYPES: tuple[str, ...] = ('user', 'group', 'partner')
 
-EVENTS: tuple[str, ...] = (  # 12 events, fixed order (ER-37)
+EVENTS: tuple[str, ...] = (  # fixed order: the first 12 are release 18.0.1 (ER-37), the rest 18.0.2
     'view', 'download', 'zip', 'upload', 'replace', 'trash', 'restore', 'purge', 'move',
     'access_change', 'legal_hold', 'settings_change',
+    'lock', 'unlock', 'duplicate', 'version_add', 'version_restore', 'version_delete',
+    'request_create', 'request_done', 'access_expire', 'auto_file', 'mail_in',
+    'pdf_split', 'pdf_merge',
 )
 CHANNELS: tuple[str, ...] = ('backend', 'portal', 'rpc', 'cron')
 RESULTS: tuple[str, ...] = ('ok',)
 
 WOOW_MODELS: tuple[str, ...] = (
     'woow.document', 'woow.document.folder', 'woow.document.folder.access',
-    'woow.document.tag', 'woow.document.log',
+    'woow.document.tag', 'woow.document.log', 'woow.document.favorite',
+    'woow.document.version', 'woow.document.share', 'woow.document.mail.intake',
+    'woow.document.auto.rule',
 )
 TRASHABLE_MODELS: tuple[str, ...] = ('woow.document', 'woow.document.folder')   # I-04
 
@@ -54,3 +59,21 @@ MAIL_PER_USER_PER_HOUR = 100               # most recipients of one folder notic
 PURGE_BATCH = 200
 LOG_RETENTION_BATCH = 5000
 POISON_ALERT_DAYS = 3
+
+# release 18.0.2: fixed limits of the added features (no setting; change them here)
+RECENT_DAYS = 30                           # the "recent" section of the workspace
+MAX_VERSIONS_PER_DOCUMENT = 20             # older versions beyond this are removed, oldest first
+SHARE_ROWS_PER_DOCUMENT_MAX = 200          # people one document can be shared with directly
+ACCESS_EXPIRY_BATCH = 500                  # expired member rows removed per cron run
+PDF_MAX_PAGES = 500                        # most pages of a PDF that is split or merged
+PDF_MAX_OUTPUTS = 100                      # most documents one split makes
+PDF_MAX_INPUTS = 50                        # most documents one merge takes
+MAIL_IN_MAX_FILES = 10                     # most attachments of one inbound mail that become documents
+AUTO_FILE_BACKFILL_BATCH = 200             # attachments one backfill run looks at
+REQUEST_REMINDER_MIN_HOURS = 20            # shortest time between two reminders of one request
+
+# release 18.0.2 context keys (each is only honoured where its feature reads it)
+CTX_AUTO_FILE = 'woow_auto_file'           # set while a rule files an attachment: no rule runs inside
+CTX_SHARE_SYNC = 'woow_share_sync'         # set while share rows and the shared-with lists are aligned
+CTX_VERSION_SWAP = 'woow_version_swap'     # set while a version is stored or restored
+CTX_REQUEST_DONE = 'woow_request_done'     # set while a requested file is stored on its placeholder
