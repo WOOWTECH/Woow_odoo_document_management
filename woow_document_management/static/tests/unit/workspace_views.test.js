@@ -8,6 +8,7 @@ import { animationFrame } from "@odoo/hoot-mock";
 import { Component, xml } from "@odoo/owl";
 import {
     contains,
+    makeMockEnv,
     mockService,
     mountView,
     onRpc,
@@ -15,6 +16,7 @@ import {
 } from "@web/../tests/web_test_helpers";
 import { browser } from "@web/core/browser/browser";
 import { registry } from "@web/core/registry";
+import { startDownload } from "@woow_document_management/backend/wsui/workspace";
 import {
     defineWorkspaceModels,
     kanbanArch,
@@ -847,4 +849,115 @@ test("a name with markup is shown as text and builds no element", async () => {
     expect(card.querySelector("b")).toBe(null);
     expect(card.querySelector("img[src='x']")).toBe(null);
     expect(card.textContent).toInclude("<img src=x onerror=alert(1)>");
+});
+
+// -- the download call itself ---------------------------------------------------------------
+// ``answer`` is what the route says: a status, whether a redirect was followed, and the header.
+function fakeAnswer({ status = 200, redirected = false, disposition = 'attachment; filename="a.bin"' } = {}) {
+    return {
+        ok: status >= 200 && status < 300,
+        status,
+        redirected,
+        headers: new Headers(disposition ? { "Content-Disposition": disposition } : {}),
+        blob: async () => new Blob(["bytes"]),
+    };
+}
+
+function patchFetchWith(answerOf) {
+    const asked = [];
+    const saved = [];
+    const notices = [];
+    patchWithCleanup(browser, {
+        fetch: async (url) => {
+            asked.push(url);
+            return answerOf(url);
+        },
+    });
+    const onClick = (ev) => {
+        const link = ev.target.closest && ev.target.closest("a[href]");
+        if (link) {
+            ev.preventDefault();
+            saved.push(link.getAttribute("download"));
+        }
+    };
+    document.addEventListener("click", onClick, true);
+    after(() => document.removeEventListener("click", onClick, true));
+    const notification = { add: (message, options) => notices.push(`${options.type}: ${message}`) };
+    return { asked, saved, notices, notification };
+}
+
+const EXPIRED = "warning: Your session has expired. Log in again, then repeat the download.";
+
+test("an expired session (the login page after a redirect) saves nothing and says so", async () => {
+    await makeMockEnv(); // loads the translations that the texts need
+    const { saved, notices, notification } = patchFetchWith(() =>
+        fakeAnswer({ redirected: true, disposition: "" })
+    );
+    expect(await startDownload("/woow_document/doc/1/download", notification)).toBe(false);
+    expect(saved).toEqual([]);
+    expect(notices).toEqual([EXPIRED]);
+});
+
+test("an answer that is not an attachment is not saved, the same for a ZIP", async () => {
+    await makeMockEnv(); // loads the translations that the texts need
+    const { saved, notices, notification } = patchFetchWith(() => fakeAnswer({ disposition: "" }));
+    expect(await startDownload("/woow_document/doc/1/download", notification)).toBe(false);
+    expect(await startDownload("/woow_document/zip?document_ids=1%2C2", notification)).toBe(false);
+    expect(saved).toEqual([]);
+    expect(notices).toEqual([
+        EXPIRED,
+        "info: Preparing the download. It starts when the archive is ready.",
+        EXPIRED,
+    ]);
+});
+
+test("too many downloads and a busy server have their own texts", async () => {
+    await makeMockEnv(); // loads the translations that the texts need
+    let status = 429;
+    const { saved, notices, notification } = patchFetchWith(() => fakeAnswer({ status }));
+    await startDownload("/woow_document/doc/1/download", notification);
+    status = 503;
+    await startDownload("/woow_document/doc/1/download", notification);
+    status = 404;
+    await startDownload("/woow_document/doc/1/download", notification);
+    expect(saved).toEqual([]);
+    expect(notices).toEqual([
+        "danger: Too many downloads are running at once. Wait a moment and try again.",
+        "danger: The server is busy. Try the download again in a moment.",
+        "danger: The download failed. The file may have been moved or removed, or you may no longer have access to it.",
+    ]);
+});
+
+test("a second click on a download that is still running is ignored", async () => {
+    let release;
+    const gate = new Promise((resolve) => {
+        release = resolve;
+    });
+    const { asked, saved, notices, notification } = patchFetchWith(async () => {
+        await gate;
+        return fakeAnswer();
+    });
+    const first = startDownload("/woow_document/doc/1/download", notification);
+    const second = startDownload("/woow_document/doc/1/download", notification);
+    // another file is not blocked by it
+    const other = startDownload("/woow_document/doc/2/download", notification);
+    expect(await second).toBe(false);
+    release();
+    expect(await first).toBe(true);
+    expect(await other).toBe(true);
+    expect(asked).toEqual(["/woow_document/doc/1/download", "/woow_document/doc/2/download"]);
+    expect(saved.length).toBe(2);
+    expect(notices).toEqual([]);
+    // when it is over, the same file can be downloaded again
+    expect(await startDownload("/woow_document/doc/1/download", notification)).toBe(true);
+    expect(asked.length).toBe(3);
+});
+
+test("a ZIP shows the preparing notice once, a single file shows none", async () => {
+    await makeMockEnv(); // loads the translations that the texts need
+    const { notices, notification } = patchFetchWith(() => fakeAnswer());
+    await startDownload("/woow_document/doc/1/download", notification);
+    expect(notices).toEqual([]);
+    await startDownload("/woow_document/zip?document_ids=1%2C2", notification);
+    expect(notices).toEqual(["info: Preparing the download. It starts when the archive is ready."]);
 });

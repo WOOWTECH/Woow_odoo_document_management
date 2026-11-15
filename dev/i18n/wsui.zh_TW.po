@@ -153,3 +153,15 @@ msgstr "更多資料夾請從左側面板選取。"
 
 msgid "The download failed. The file may have been moved or removed, or you may no longer have access to it."
 msgstr "下載失敗。檔案可能已被移動或刪除，或您已不再有存取權限。"
+
+msgid "Your session has expired. Log in again, then repeat the download."
+msgstr "登入已逾時。請重新登入後再下載一次。"
+
+msgid "Too many downloads are running at once. Wait a moment and try again."
+msgstr "同時進行的下載太多。請稍候再試。"
+
+msgid "The server is busy. Try the download again in a moment."
+msgstr "伺服器忙碌中，請稍後再重新下載。"
+
+msgid "Preparing the download. It starts when the archive is ready."
+msgstr "正在準備下載。壓縮檔完成後會自動開始。"

@@ -1,6 +1,6 @@
 {
   "batches": {
-    "core": 1065,
+    "core": 1068,
     "files": 126,
     "portal": 3
   },
@@ -23,7 +23,7 @@
     "test_docactions.py": 72,
     "test_folding_service.py": 4,
     "test_i18n_complete.py": 1,
-    "test_inspector.py": 47,
+    "test_inspector.py": 48,
     "test_integration.py": 22,
     "test_internal_routes.py": 8,
     "test_locks.py": 7,
@@ -69,7 +69,7 @@
     "test_versions.py": 66,
     "test_wizard_refs.py": 10,
     "test_workspace.py": 58,
-    "test_wsui.py": 16,
+    "test_wsui.py": 18,
     "test_zip_builder.py": 5
   },
   "required_ca_methods": {

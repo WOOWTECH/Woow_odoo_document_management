@@ -106,6 +106,24 @@ class TestWorkspaceBrowserViews(TransactionCase):
         self.assertTrue(card.xpath(".//field[@name='tag_ids']"))
         self.assertTrue(card.xpath(".//field[@name='activity_ids']"))
 
+    def test_the_card_picture_carries_the_name_of_the_document_as_alt(self):
+        arch = etree.fromstring(self._views(self.reader)['kanban']['arch'].encode())
+        images = arch.xpath("//t[@t-name='card']//div[contains(@class, 'woow-card-preview')]//img")
+        self.assertTrue(images)
+        for image in images:
+            # the text comes from the name field of the record; a fixed or empty alt is not enough
+            self.assertEqual(image.get('t-att-alt'), 'record.name.value')
+            self.assertFalse('alt' in image.attrib and not image.get('alt'))
+
+    def test_the_views_of_the_module_load_without_a_warning(self):
+        data = self.env['ir.model.data'].sudo().search([
+            ('module', '=', 'woow_document_management'), ('model', '=', 'ir.ui.view')])
+        views = self.env['ir.ui.view'].sudo().browse(data.mapped('res_id')).exists()
+        self.assertTrue(views)
+        with self.assertNoLogs('odoo.addons.base.models.ir_ui_view', 'WARNING'), \
+                self.assertNoLogs('odoo.addons.woow_document_management', 'WARNING'):
+            views._check_xml()
+
     def test_the_folder_tree_holds_every_folder_the_user_may_open_empty_ones_too(self):
         search = etree.fromstring(self._views(self.reader)['search']['arch'].encode())
         node = search.xpath("//searchpanel/field[@name='folder_id']")[0]

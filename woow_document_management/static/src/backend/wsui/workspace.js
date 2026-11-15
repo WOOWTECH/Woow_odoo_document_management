@@ -58,27 +58,80 @@ export function downloadFilename(response) {
     return plain ? plain[1].trim() : "download";
 }
 
+// The downloads that are running now (by address): a second click on the same one is ignored.
+const downloadsInFlight = new Set();
+const ZIP_PATH = "/woow_document/zip";
+
+/** What the user is told when the route answers with this status. */
+export function downloadRefusal(status) {
+    if (status === 429) {
+        return _t("Too many downloads are running at once. Wait a moment and try again.");
+    }
+    if (status === 503) {
+        return _t("The server is busy. Try the download again in a moment.");
+    }
+    return _t("The download failed. The file may have been moved or removed, or you may no longer have access to it.");
+}
+
+/** Whether the answer is the file the route sends and not another page (such as the login page). */
+export function isFileAnswer(response) {
+    if (response.redirected) {
+        return false;
+    }
+    const header = (response.headers && response.headers.get("Content-Disposition")) || "";
+    return /^\s*attachment/i.test(header);
+}
+
 /**
  * Downloads a file or a ZIP of this module. The route is asked first (as the logged-in user,
  * through fetch) and the file is saved only when the answer is a success: a refusal or a failure
  * shows a notification and the screen stays, instead of the whole web client navigating to a
- * bare error page.
+ * bare error page. An answer that is not the file (the login page of an expired session, reached
+ * by a redirect) is never saved. A second click on a download that is still running is ignored.
  * @returns {Promise<boolean>} whether the download was started
  */
 export async function startDownload(url, notification) {
+    if (downloadsInFlight.has(url)) {
+        return false;
+    }
+    downloadsInFlight.add(url);
+    try {
+        return await fetchAndSave(url, notification);
+    } finally {
+        downloadsInFlight.delete(url);
+    }
+}
+
+async function fetchAndSave(url, notification) {
     let blob;
     let filename;
+    if (String(url).startsWith(ZIP_PATH)) {
+        notification.add(_t("Preparing the download. It starts when the archive is ready."), {
+            type: "info",
+        });
+    }
     try {
         const response = await browser.fetch(url, { credentials: "same-origin" });
+        if (response.redirected) {
+            notification.add(_t("Your session has expired. Log in again, then repeat the download."), {
+                type: "warning",
+            });
+            return false;
+        }
         if (!response.ok) {
-            throw new Error("refused");
+            notification.add(downloadRefusal(response.status), { type: "danger" });
+            return false;
+        }
+        if (!isFileAnswer(response)) {
+            notification.add(_t("Your session has expired. Log in again, then repeat the download."), {
+                type: "warning",
+            });
+            return false;
         }
         filename = downloadFilename(response);
         blob = await response.blob();
     } catch {
-        notification.add(_t("The download failed. The file may have been moved or removed, or you may no longer have access to it."), {
-            type: "danger",
-        });
+        notification.add(downloadRefusal(0), { type: "danger" });
         return false;
     }
     const objectUrl = URL.createObjectURL(blob);
