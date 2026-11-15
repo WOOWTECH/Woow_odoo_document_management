@@ -8,6 +8,7 @@ import { animationFrame } from "@odoo/hoot-mock";
 import { Component, xml } from "@odoo/owl";
 import {
     contains,
+    makeMockEnv,
     mockService,
     mountView,
     onRpc,
@@ -888,6 +889,7 @@ function patchFetchWith(answerOf) {
 const EXPIRED = "warning: Your session has expired. Log in again, then repeat the download.";
 
 test("an expired session (the login page after a redirect) saves nothing and says so", async () => {
+    await makeMockEnv(); // loads the translations that the texts need
     const { saved, notices, notification } = patchFetchWith(() =>
         fakeAnswer({ redirected: true, disposition: "" })
     );
@@ -897,6 +899,7 @@ test("an expired session (the login page after a redirect) saves nothing and say
 });
 
 test("an answer that is not an attachment is not saved, the same for a ZIP", async () => {
+    await makeMockEnv(); // loads the translations that the texts need
     const { saved, notices, notification } = patchFetchWith(() => fakeAnswer({ disposition: "" }));
     expect(await startDownload("/woow_document/doc/1/download", notification)).toBe(false);
     expect(await startDownload("/woow_document/zip?document_ids=1%2C2", notification)).toBe(false);
@@ -909,6 +912,7 @@ test("an answer that is not an attachment is not saved, the same for a ZIP", asy
 });
 
 test("too many downloads and a busy server have their own texts", async () => {
+    await makeMockEnv(); // loads the translations that the texts need
     let status = 429;
     const { saved, notices, notification } = patchFetchWith(() => fakeAnswer({ status }));
     await startDownload("/woow_document/doc/1/download", notification);
@@ -950,6 +954,7 @@ test("a second click on a download that is still running is ignored", async () =
 });
 
 test("a ZIP shows the preparing notice once, a single file shows none", async () => {
+    await makeMockEnv(); // loads the translations that the texts need
     const { notices, notification } = patchFetchWith(() => fakeAnswer());
     await startDownload("/woow_document/doc/1/download", notification);
     expect(notices).toEqual([]);
