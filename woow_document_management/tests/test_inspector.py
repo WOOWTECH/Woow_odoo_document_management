@@ -315,6 +315,28 @@ class TestInspectorLock(InspectorCase):
         self.assertTrue(doc.with_user(self.uploader).has_access('write'))
         self.assertFalse(self._data(self.uploader, doc)['can_unlock'])
 
+    def test_a_holder_who_lost_write_access_is_not_offered_unlock(self):
+        # the holder was demoted (here: a share lowered to viewer on a document of a hidden folder)
+        hidden = self._document('demoted.txt', b'demoted', folder=self._folder('Demoted', {}))
+        share = self.env['woow.document.share'].sudo().create({
+            'document_id': hidden.id, 'subject_type': 'user', 'user_id': self.outsider.id,
+            'role': 'editor'})
+        self.env.flush_all()
+        hidden.with_user(self.outsider).action_lock()
+        self.assertTrue(self._data(self.outsider, hidden)['can_unlock'])
+        share.write({'role': 'viewer'})
+        # whatever the sharing code did with the lock, put the lock back on the demoted holder
+        hidden.sudo().write({'lock_uid': self.outsider.id})
+        self.env.flush_all()
+        self.env.invalidate_all()
+        self.assertFalse(hidden.with_user(self.outsider).has_access('write'))
+        data = self._data(self.outsider, hidden)
+        self.assertTrue(data['locked_by_me'])
+        self.assertFalse(data['can_unlock'])
+        with self.assertRaises(UserError):
+            hidden.with_user(self.outsider).action_unlock()
+        self.assertEqual(hidden.sudo().lock_uid, self.outsider)
+
     def test_another_editor_cannot_unlock(self):
         second = new_test_user(self.env, login='ins_editor2', groups=_USER)
         self.env['woow.document.folder.access'].sudo().create({

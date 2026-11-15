@@ -102,7 +102,9 @@ class WoowDocumentInspector(models.Model):
         lock_user = doc.lock_uid
         holder_is_me = bool(lock_user) and lock_user.id == uid
         administrator = self.env.user.has_group(_MANAGER)
-        can_unlock = bool(lock_user) and (
+        # the same conditions as action_unlock, write access included (a holder whose access
+        # dropped to read is not offered a button that the server would refuse)
+        can_unlock = bool(lock_user) and writable and (
             holder_is_me or administrator or (folder_readable and folder._woow_has_rank(4)))
         data = {
             'id': doc.id,
