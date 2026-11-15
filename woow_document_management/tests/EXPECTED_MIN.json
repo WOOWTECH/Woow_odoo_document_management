@@ -32,7 +32,7 @@
     "test_multicompany.py": 4,
     "test_naming.py": 7,
     "test_native_routes.py": 5,
-    "test_pdftools.py": 91,
+    "test_pdftools.py": 106,
     "test_portal_routes.py": 3,
     "test_quota.py": 17,
     "test_record_rules.py": 4,

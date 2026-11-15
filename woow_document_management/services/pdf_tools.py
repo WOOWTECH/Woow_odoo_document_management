@@ -22,7 +22,8 @@ from .constants import PDF_MAX_OUTPUTS, PDF_MAX_PAGES
 
 RANGES_MAX_CHARS = 1000        # the text a user types is cut off here before it is looked at
 
-CODES = ('syntax', 'range', 'overlap', 'outputs', 'encrypted', 'damaged', 'pages', 'total')
+CODES = ('syntax', 'range', 'overlap', 'outputs', 'encrypted', 'damaged', 'too_large', 'pages',
+         'total')
 
 # The page tree of a file is walked by ``_check_page_tree`` before the library flattens it. A tree
 # with more nodes than this (a page counts as one) holds either too many pages or little else
@@ -47,22 +48,28 @@ PDF_PARSE_SECONDS = 10.0
 # Most "/Prev" keys of any kind that are looked at; a file with more is refused as damaged (a long
 # outline has thousands of them, the cost of each one is a constant).
 PDF_MAX_PREV_KEYS = 100000
-# Flate streams are inflated here, in bounded steps, before the library sees the file. One stream
-# may decode to at most ``PDF_STREAM_MAX_BYTES``; all streams of a file to at most the smallest of
-# ``PDF_DECODED_MAX_BYTES``, ``PDF_INFLATE_RATIO`` times the size of the file (a floor of
-# ``PDF_INFLATE_FLOOR`` keeps tiny files usable) and ``PDF_DECODED_BASE`` plus
-# ``PDF_DECODED_PER_PAGE`` for every page the file claims (a scan of large flate images has few
-# bytes per page and many decoded ones; a bomb is small and claims few pages). A file that holds
-# more than ``PDF_MAX_FLATE_STREAMS`` flate streams, or whose streams make the check read more than
-# ``PDF_INFLATE_INPUT_RATIO`` times the size of the file, is refused too: the check itself is
-# bounded work.
+# Flate streams are inflated here, in bounded steps, before the library sees the file. The caps grow
+# with the size of the file, because a bomb is a small file that decodes to a lot, and a scan is a
+# large file whose images decode to a lot more than the pages suggest. All streams of a file may
+# decode to at most the smallest of ``PDF_DECODED_MAX_BYTES``, ``PDF_INFLATE_RATIO`` times the size
+# of the file (a floor of ``PDF_INFLATE_FLOOR`` keeps tiny files usable) and the larger of
+# ``PDF_DECODED_BASE`` plus ``PDF_DECODED_PER_PAGE`` for every page the file shows (a page that
+# stands as text) and ``PDF_DECODED_BASE`` plus ``PDF_DECODED_PER_BYTE`` times the size of the file
+# (pages inside object streams are not seen). One stream may decode to at most the larger of
+# ``PDF_STREAM_MAX_BYTES`` and ``PDF_DECODED_PER_BYTE`` times the size of the file, and never more
+# than all streams together. More than the larger of ``PDF_MAX_FLATE_STREAMS`` and one stream for
+# every ``PDF_BYTES_PER_STREAM`` bytes of the file is refused, and so is a file whose streams make
+# the check read more than ``PDF_INFLATE_INPUT_RATIO`` times its size: the check itself is bounded
+# work. These refusals are about size (code ``too_large``), not about a damaged file.
 PDF_STREAM_MAX_BYTES = 128 * 1024 * 1024
 PDF_DECODED_MAX_BYTES = 2048 * 1024 * 1024
 PDF_DECODED_BASE = 64 * 1024 * 1024
 PDF_DECODED_PER_PAGE = 48 * 1024 * 1024
+PDF_DECODED_PER_BYTE = 40
 PDF_INFLATE_RATIO = 250
 PDF_INFLATE_FLOOR = 1024 * 1024
 PDF_MAX_FLATE_STREAMS = 50000
+PDF_BYTES_PER_STREAM = 64
 PDF_INFLATE_INPUT_RATIO = 4
 _INFLATE_STEP = 64 * 1024
 
@@ -73,7 +80,50 @@ _BOUNDARY = re.compile(rb'(?<![A-Za-z])(?:obj|trailer)(?![A-Za-z])')
 _PREV_LOOKBACK = 4096
 _LAST_BOUNDARY = re.compile(rb'.*(?<![A-Za-z])(obj|trailer)(?![A-Za-z])', re.DOTALL)
 _PAGE_TYPE = re.compile(rb'/Type\s*/Page(?![A-Za-z])')
-_STREAM = re.compile(rb'(?<![A-Za-z])stream\r?\n')
+# The keyword that starts the data of a stream, as the library accepts it: spaces, then an end of line.
+_STREAM = re.compile(rb'(?<![A-Za-z])stream[ ]*(?:\r\n|\r|\n)')
+
+
+def _spelled(text):
+    """A pattern for the name ``text`` (without its slash) in any spelling the library reads.
+
+    The library reads ``#xx`` inside a name as the character with that hex code, so a name can be
+    written with any of its letters escaped. The pattern accepts a letter or its escape (digits of
+    the code in either case) and ends the name at a delimiter or a space.
+    """
+    parts = []
+    for char in text:
+        code = ord(char)
+        forms = {char, '#%02x' % code, '#%02X' % code}
+        parts.append('(?:%s)' % '|'.join(re.escape(form) for form in sorted(forms)))
+    return rb'/' + ''.join(parts).encode() + rb'(?![^\s/<>\[\](){}%])'
+
+
+_HEX_ESCAPE = re.compile(rb'#([0-9A-Fa-f]{2})')
+_NAME_END = rb'(?![^\s/<>\[\](){}%])'
+# The values of a stream's "/Filter" that cannot do harm while the library decodes the stream: one
+# flate filter, or one of the filters that make no more data than they are given (or that the
+# library does not decode at all), as a name or as an array of that one name.
+_SAFE_FILTERS = (rb'(?:FlateDecode|Fl|DCTDecode|DCT|JPXDecode|CCITTFaxDecode|CCF|JBIG2Decode'
+                 rb'|RunLengthDecode|RL|ASCII85Decode|A85|ASCIIHexDecode|AHx|Crypt)' + _NAME_END)
+_HAZARDOUS_FILTER = re.compile(
+    _spelled('Filter') + rb'(?!\s*(?:/' + _SAFE_FILTERS + rb'|\[\s*(?:/' + _SAFE_FILTERS
+    + rb'\s*)?\]))')
+# What makes the library decode a stream while it opens a file: a "/Type" that is "/XRef" or
+# "/ObjStm", or that is not written as a name (a reference may stand for any value).
+_DECODED_TYPE = re.compile(_spelled('Type') + rb'\s*(?:' + _spelled('XRef') + rb'|' + _spelled('ObjStm')
+                           + rb'|[0-9]+\s+[0-9]+\s+R)')
+# How far apart (bytes) a "/Type" and a "/Filter" may be and still belong to one dictionary.
+PDF_DICTIONARY_REACH = 1024 * 1024
+_DECODED_POSITIONS_MAX = 2 * (PDF_MAX_XREF_STREAMS + PDF_MAX_OBJSTM)
+# The sections of the chain of cross-reference sections ("startxref", "/Prev", "/XRefStm").
+_STARTXREF = re.compile(rb'startxref\s*([0-9]{1,18})')
+_SPACE = re.compile(rb'[\x00\t\n\x0c\r ]*')
+_OBJ_HEADER = re.compile(rb'[0-9]+\s+[0-9]+\s+obj')
+_PREV_VALUE = re.compile(rb'/Prev\s+([0-9]{1,18})')
+_XREFSTM_VALUE = re.compile(rb'/XRefStm\s+([0-9]{1,18})')
+_SECTION_WINDOW = 64 * 1024
+
 
 # One part of the text: a page number, or two joined by a dash. ASCII digits only, at most six.
 _PART = re.compile(r'\s*([0-9]{1,6})\s*(?:-\s*([0-9]{1,6})\s*)?', re.ASCII)
@@ -248,13 +298,83 @@ def _chain_links(data):
     return links
 
 
+def _section_links(data, offset):
+    """The offsets that the section at ``offset`` leads to, or ``None`` if no section starts there.
+
+    A section is a cross-reference table (its "trailer" dictionary is read) or the object of a
+    cross-reference stream (its dictionary is read). The links are the "/Prev" values and, for a
+    hybrid file, the "/XRefStm" values: ``([prev, ...], [xrefstm, ...])``. Only a window of
+    ``_SECTION_WINDOW`` bytes after the keyword is looked at, so the cost is one search.
+    """
+    size = len(data)
+    pos = _SPACE.match(data, offset).end()
+    if data.startswith(b'xref', pos):
+        keyword = data.find(b'trailer', pos)
+        if keyword < 0:
+            return None
+        end = min(size, keyword + _SECTION_WINDOW)
+        cut = data.find(b'startxref', keyword, end)
+        text = data[keyword:end if cut < 0 else cut]
+    elif _OBJ_HEADER.match(data, pos):
+        end = min(size, pos + _SECTION_WINDOW)
+        cut = data.find(b'stream', pos, end)
+        text = data[pos:end if cut < 0 else cut]
+        if b'#' in text:
+            text = _HEX_ESCAPE.sub(_unescaped, text)
+        if not _XREF_TYPE.search(text):
+            return None
+    else:
+        return None
+    return ([int(value) for value in _PREV_VALUE.findall(text)],
+            [int(value) for value in _XREFSTM_VALUE.findall(text)])
+
+
+def _check_xref_chain(data):
+    """Refuse a chain of cross-reference sections that runs in a circle or is too long.
+
+    The library follows "/Prev" (and "/XRefStm") from the section that the last "startxref" names,
+    and does not notice that it has been there before, so a section that points at itself keeps it
+    busy until its time is up. The walk here does what the library does, once: a section that is
+    reached a second time, more than ``PDF_MAX_PREV`` links of either kind, and an offset outside the
+    file are refused as damaged. An offset that does not point at a section ends that branch of the
+    walk without a refusal (the library finds sections whose offsets are a little off), and the
+    other checks decide about such a file. The work is at most one search for each section.
+    """
+    if b'/Prev' not in data and b'/XRefStm' not in data:
+        return
+    last = data.rfind(b'startxref')
+    found = _STARTXREF.match(data, last) if last >= 0 else None
+    if found is None:
+        return
+    size = len(data)
+    todo = [int(found.group(1))]
+    seen = set()
+    prev_hops = 0
+    stream_hops = 0
+    while todo:
+        offset = todo.pop()
+        if offset >= size or offset in seen:
+            raise PdfToolError('damaged')
+        seen.add(offset)
+        links = _section_links(data, offset)
+        if links is None:
+            continue
+        prev_hops += len(links[0])
+        stream_hops += len(links[1])
+        if prev_hops > PDF_MAX_PREV or stream_hops > PDF_MAX_PREV:
+            raise PdfToolError('damaged')
+        todo.extend(links[0])
+        todo.extend(links[1])
+
+
 def _check_markers(data):
     """Refuse a file with more revisions, links or object streams than a real file has.
 
     Every marker is counted in its structural form ("/Type /XRef", "/Type /ObjStm", "/Prev" in a
     trailer or cross-reference stream dictionary) so that ordinary content, such as the hundreds of
     "/Prev" keys of a document outline, is never taken for a parsing hazard. The counting stops at
-    the limit, so the work does not depend on how many markers an attacker writes.
+    the limit, so the work does not depend on how many markers an attacker writes. The chain of
+    cross-reference sections is then walked (``_check_xref_chain``).
     """
     if (data.count(b'startxref') > PDF_MAX_STARTXREF
             or _count_up_to(_XREF_TYPE, data, PDF_MAX_XREF_STREAMS) > PDF_MAX_XREF_STREAMS
@@ -263,37 +383,96 @@ def _check_markers(data):
     links = _chain_links(data) if b'/Prev' in data else []
     if len(links) > PDF_MAX_PREV or len(set(links)) != len(links):
         raise PdfToolError('damaged')
+    _check_xref_chain(data)
+    _check_decoded_chains(data)
+
+
+def _unescaped(found):
+    """The character that a ``#xx`` escape of a name stands for."""
+    return bytes([int(found.group(1), 16)])
+
+
+def _positions(pattern, data, limit):
+    """Where ``pattern`` matches in ``data``; more than ``limit`` matches are refused as damaged."""
+    found = []
+    for match in pattern.finditer(data):
+        found.append(match.start())
+        if len(found) > limit:
+            raise PdfToolError('damaged')
+    return found
+
+
+def _check_decoded_chains(data):
+    """Refuse a file that has a stream, decoded by the library, with a chain of filters it cannot bound.
+
+    Which streams does the library decode while a file is opened, and while pages are copied and
+    written (the paths of ``open_pdf`` and of the split and merge wizards)? Only two kinds: the
+    cross-reference streams (``/Type /XRef``) and the object streams (``/Type /ObjStm``); content,
+    fonts and images are copied as they are. The library runs the whole chain of filters of such a
+    stream and inflates every flate step in one piece, so a chain of two flate steps (or a text
+    filter and a flate step) turns a few bytes into gigabytes of memory, and ``_check_inflated_size``
+    sees only the first layer. A stream of these two kinds may have no filter or one flate filter
+    (with or without parameters); anything else is refused. Because "/Type" may be an indirect
+    reference, a name written with ``#xx`` escapes, or sit anywhere in a padded dictionary, the
+    stream's own dictionary is not looked for: a file is refused when a "/Type" that can mean one of
+    the two kinds and a "/Filter" that is not one flate step (or one harmless filter) lie within
+    ``PDF_DICTIONARY_REACH`` bytes of each other. Real files of the two kinds use one flate step.
+    """
+    if b'/' not in data:
+        return
+    decoded = _positions(_DECODED_TYPE, data, _DECODED_POSITIONS_MAX)
+    if not decoded:
+        return
+    hazards = _positions(_HAZARDOUS_FILTER, data, _DECODED_POSITIONS_MAX)
+    index = 0
+    for position in hazards:
+        while index < len(decoded) and decoded[index] < position - PDF_DICTIONARY_REACH:
+            index += 1
+        if index < len(decoded) and decoded[index] <= position + PDF_DICTIONARY_REACH:
+            raise PdfToolError('damaged')
 
 
 def _check_inflated_size(data):
-    """Refuse a file that holds a flate stream (or flate streams) that inflate far too much.
+    """Refuse a file with a flate stream that inflates far too much.
 
-    Every stream that starts with a zlib header is inflated in steps of ``_INFLATE_STEP`` bytes
-    and the output is only counted, never kept. The inflater itself finds the end of the stream,
-    so a stream that hides its end marker is counted all the same. Anything that is not valid
-    flate data is left to the library. The check is bounded work: it looks at no more than
-    ``PDF_MAX_FLATE_STREAMS`` streams and reads no more than ``PDF_INFLATE_INPUT_RATIO`` times the
-    size of the file, whatever the file holds (beyond that the file is refused as damaged).
+    Every stream that starts with a zlib or gzip header (the library inflates both) is inflated in
+    steps of ``_INFLATE_STEP`` bytes and the output is only counted, never kept. The inflater itself
+    finds the end of the stream, so a stream that hides its end marker is counted all the same.
+    Anything that is not valid flate data is left to the library. The streams that the library
+    decodes with more than one step are refused before (``_check_decoded_chains``), so this check
+    sees the one flate layer that the library inflates. The sizes are limited as the comment at
+    ``PDF_STREAM_MAX_BYTES`` says; a file over a limit is refused as too large. The work is bounded
+    too: a file with more streams than the larger of ``PDF_MAX_FLATE_STREAMS`` and the size of the
+    file over ``PDF_BYTES_PER_STREAM`` is refused, and no more than ``PDF_INFLATE_INPUT_RATIO``
+    times the size of the file is read, whatever the file holds.
     """
     size_of_file = len(data)
-    one_max = min(PDF_STREAM_MAX_BYTES, max(PDF_INFLATE_FLOOR, PDF_INFLATE_RATIO * size_of_file))
     pages = max(1, min(_count_up_to(_PAGE_TYPE, data, PDF_MAX_PAGES), PDF_MAX_PAGES))
     all_max = min(PDF_DECODED_MAX_BYTES,
                   max(PDF_INFLATE_FLOOR, PDF_INFLATE_RATIO * size_of_file),
-                  PDF_DECODED_BASE + PDF_DECODED_PER_PAGE * pages)
+                  max(PDF_DECODED_BASE + PDF_DECODED_PER_PAGE * pages,
+                      PDF_DECODED_BASE + PDF_DECODED_PER_BYTE * size_of_file))
+    one_max = min(all_max, max(PDF_STREAM_MAX_BYTES, PDF_DECODED_PER_BYTE * size_of_file))
     read_max = PDF_INFLATE_INPUT_RATIO * size_of_file
+    streams_max = max(PDF_MAX_FLATE_STREAMS, size_of_file // PDF_BYTES_PER_STREAM)
+    if data.count(b'stream') > 2 * streams_max:     # every stream has two of the keyword
+        raise PdfToolError('too_large')
     view = memoryview(data)
     total = 0
     read = 0
     streams = 0
     for found in _STREAM.finditer(data):
         start = found.end()
-        if start + 2 > size_of_file or data[start] & 0x0f != 8 or (data[start] * 256 + data[start + 1]) % 31:
+        if start + 3 > size_of_file:
+            continue
+        first, second = data[start], data[start + 1]
+        if not ((first & 0x0f == 8 and (first * 256 + second) % 31 == 0)
+                or (first == 0x1f and second == 0x8b and data[start + 2] == 8)):
             continue
         streams += 1
-        if streams > PDF_MAX_FLATE_STREAMS:
-            raise PdfToolError('damaged')
-        inflater = zlib.decompressobj()
+        if streams > streams_max:
+            raise PdfToolError('too_large')
+        inflater = zlib.decompressobj(zlib.MAX_WBITS | 32)
         size = 0
         position = start
         used = 0       # input the inflater took without an error (a chunk that fails is not charged)
@@ -305,14 +484,14 @@ def _check_inflated_size(data):
                 while True:
                     size += len(piece)
                     if size > one_max or total + size > all_max:
-                        raise PdfToolError('damaged')
+                        raise PdfToolError('too_large')
                     tail = inflater.unconsumed_tail
                     if inflater.eof or (len(piece) < _INFLATE_STEP and not tail):
                         break
                     piece = inflater.decompress(tail, _INFLATE_STEP)
                 used = position - start - (len(inflater.unused_data) if inflater.eof else 0)
                 if read + used > read_max:
-                    raise PdfToolError('damaged')
+                    raise PdfToolError('too_large')
         except zlib.error:
             pass    # not flate data after all: the library decides what to do with it
         read += used
