@@ -26,6 +26,8 @@ Rules the user meets:
   than 50 selected files are refused with a message, not opened as an empty dialog.
 - Password protected files, damaged files, files too large to process and anything that is not a PDF give
   a short message.
+- Known limitation: a signed PDF, or a PDF that uses an uncommon filter, is refused as damaged when it
+  also has a cross-reference stream (tracked for the next patch release).
 
 ## Data model
 
