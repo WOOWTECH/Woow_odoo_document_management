@@ -150,9 +150,12 @@ sharing, which is not part of this module. Retired numbers are not reused.
   nothing about it (one neutral message for no access, trashed and gone). Requests grant no right: the
   person asked must already be able to store a file in the folder.
 - **HD-21** PDF files are parsed with limits: raw markers are counted before parsing, the page tree is
-  walked with a node limit, parsing has a time budget, and sizes of inflated streams are capped. Page,
-  output and input counts are limited (500 pages per source, 100 outputs per split, 50 inputs and 2,500
-  pages per merge). Encrypted, damaged and non-PDF content is refused with a short message.
+  walked with a node limit, the chain of cross-reference sections is walked with a link limit, parsing
+  has a time budget, and the streams the PDF library decodes are checked against size limits that scale
+  with the file. Page, output and input counts are limited (500 pages per source, 100 outputs per split,
+  50 inputs and 2,500 pages per merge). Encrypted, damaged, too large and non-PDF content is refused with
+  a short message. The pre-checks bound the common forms of hostile files but are not a full PDF parser;
+  the known remaining gaps are tracked.
 - **HD-22** A wizard row can only name documents and folders that the caller's own search finds; a
   missing and a hidden id get the same refusal, and defaults from the context cannot add an unchecked id.
   The attachment overview of other apps is visible to document users by default and shows exactly what

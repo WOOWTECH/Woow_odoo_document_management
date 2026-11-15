@@ -24,7 +24,8 @@ Rules the user meets:
   2,500 pages in all (`MERGE_MAX_PAGES` in `services/pdf_tools.py`); the library copies pages in time that
   grows faster than their number (about 4 s for 2,500 pages, 12 s for 5,000), so the total is capped too. More
   than 50 selected files are refused with a message, not opened as an empty dialog.
-- Password protected files, damaged files and anything that is not a PDF give a short message.
+- Password protected files, damaged files, files too large to process and anything that is not a PDF give
+  a short message.
 
 ## Data model
 

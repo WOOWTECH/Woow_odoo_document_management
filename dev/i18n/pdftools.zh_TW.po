@@ -160,3 +160,6 @@ msgstr "PDF 檔案已合併為一份共 %(pages)s 頁的文件。"
 
 msgid "%(count)s of the originals were moved to the trash."
 msgstr "已有 %(count)s 個原檔移到回收桶。"
+
+msgid "The PDF file is too large to process here."
+msgstr "此 PDF 檔案太大，無法在這裡處理。"
